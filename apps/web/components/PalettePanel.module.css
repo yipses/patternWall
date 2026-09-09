@@ -1,0 +1,290 @@
+.panel {
+  display: block;
+}
+
+.current {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.currentTop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.currentName {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.strip {
+  display: flex;
+  height: 34px;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.stripCell {
+  flex: 1;
+}
+
+.stripCell:first-child {
+  flex: 2.2;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-faint);
+  padding: 8px 11px;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tabOn {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.search {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.tagRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+
+.libGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
+  gap: 8px;
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.libItem {
+  position: relative;
+}
+
+.libBtn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.libBtn:hover {
+  border-color: var(--line-strong);
+}
+
+.libOn {
+  border-color: var(--accent);
+}
+
+.libStrip {
+  display: flex;
+  height: 30px;
+}
+
+.libStrip span {
+  flex: 1;
+}
+
+.libStrip span:first-child {
+  flex: 2.4;
+}
+
+.libName {
+  display: block;
+  padding: 6px 8px 7px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.libDelete {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid var(--line-strong);
+  color: var(--text-dim);
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+}
+
+.libDelete:hover {
+  color: var(--danger);
+}
+
+.slot {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 11px 12px;
+  margin-bottom: 10px;
+  background: var(--bg-raised);
+}
+
+.slotHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 10px;
+}
+
+.slotLabel {
+  font-size: 12.5px;
+  flex: 1 1 auto;
+}
+
+.swatchInput {
+  width: 34px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+  flex: none;
+}
+
+.hexInput {
+  width: 96px;
+  flex: none;
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 5px 8px;
+  min-height: 30px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: lowercase;
+}
+
+.hexBad {
+  border-color: var(--danger);
+}
+
+.sliders {
+  display: grid;
+  gap: 6px;
+}
+
+.sliderRow {
+  display: grid;
+  grid-template-columns: 14px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+
+.dropZone {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  padding: 22px 16px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.dropZone input {
+  display: block;
+  margin: 12px auto 0;
+  font-size: 12px;
+  max-width: 100%;
+}
+
+.thumbRow {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-top: 14px;
+}
+
+.thumb {
+  width: 84px;
+  height: 84px;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  flex: none;
+}
+
+.stops {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.stop {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--text-faint);
+  line-height: 1.5;
+  margin: 0 0 12px;
+}

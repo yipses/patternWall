@@ -64,3 +64,13 @@ export {
 } from './types.js';
 export { createRenderContext, DEFAULT_BLEED, renderToSvg, seedToInt, type RenderRequest } from './render.js';
 export { generators, getGenerator } from './generators/index.js';
+export {
+  decodeConfig,
+  defaultSeed,
+  encodeConfig,
+  initialConfig,
+  packPalette,
+  unpackPalette,
+  type DecodeResult,
+  type PatternConfig,
+} from './share.js';
