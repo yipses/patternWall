@@ -6,7 +6,7 @@ import { el, num, points, svgRoot } from '../svg.js';
 import { pBool, pNum, type Generator, type RenderContext } from '../types.js';
 
 const description = `
-A flow field is nothing more than a rule that says "if you are standing here, walk that way". Give every point on the canvas an angle and you have a vector field; drop a particle onto it and follow the arrows and you get a streamline. Almost all of the character of the result comes from how you choose the angles, and almost none of it from the particle simulation, which is just Euler integration with a small step.
+A flow field is nothing more than a rule that says “if you are standing here, walk that way”. Give every point on the canvas an angle and you have a vector field; drop a particle onto it and follow the arrows and you get a streamline. Almost all of the character of the result comes from how you choose the angles, and almost none of it from the particle simulation, which is just Euler integration with a small step.
 
 The angle here is a weighted sum of two noise fields sampled at deliberately non-harmonic frequencies — the second is about 2.7 times the first, not 2 or 4. Harmonic frequencies reinforce each other at regular intervals and the field develops a grid of eddies you can see; an irrational-ish ratio keeps the interference pattern from ever repeating inside the frame. The lower frequency sets the large sweeps that carry the eye down the canvas, and the higher one roughens them so the streamlines fray instead of running in parallel like combed hair. **Turbulence** is the weight between them, and it is the single control that most changes what the pattern feels like.
 
@@ -14,7 +14,7 @@ Particles are not drawn as lines. Each one is stamped with a dot every time it h
 
 Composition is handled by two biases rather than by cropping. Dot radius grows with height down the canvas, so the lower third carries the visual weight and the top stays airy; and **quiet top** scales both size and opacity down inside the region iOS reserves for the clock and the widget row. At the default of 0.6 the top is not empty — an empty top looks like a mistake — it is simply about half the density of the bottom, which is enough that white numerals sit on it cleanly.
 
-**Trail length** and **density** trade against each other. Many short trails read as a texture or a grain; few long ones read as a diagram of the field itself. The default sits closer to the texture end because a wallpaper is looked at for a second at a time, and long legible streamlines start to feel like a screenshot of somebody's data.
+**Trail length** and **density** trade against each other. Many short trails read as a texture or a grain; few long ones read as a diagram of the field itself. The default sits closer to the texture end because a wallpaper is looked at for a second at a time, and long legible streamlines start to feel like a screenshot of somebody’s data.
 `.trim();
 
 export const flowDots: Generator = {

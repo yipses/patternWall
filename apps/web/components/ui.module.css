@@ -69,6 +69,17 @@
   color: var(--ok);
 }
 
+.selected {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-raised));
+}
+
+.selected:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-raised));
+  border-color: var(--accent);
+}
+
 .spinner {
   width: 13px;
   height: 13px;

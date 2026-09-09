@@ -261,10 +261,10 @@ export function ExportPanel({ subject }: { subject: ExportSubject }) {
           <span className={ui.value}>{depth === 'png8' ? `PNG-8 · ${colors}` : 'PNG-24'}</span>
         </div>
         <div className={styles.buttons}>
-          <Button size="small" onClick={() => setDepth('png8')} aria-pressed={depth === 'png8'} success={depth === 'png8'}>
+          <Button size="small" onClick={() => setDepth('png8')} aria-pressed={depth === 'png8'} selected={depth === 'png8'}>
             PNG-8
           </Button>
-          <Button size="small" onClick={() => setDepth('png24')} aria-pressed={depth === 'png24'} success={depth === 'png24'}>
+          <Button size="small" onClick={() => setDepth('png24')} aria-pressed={depth === 'png24'} selected={depth === 'png24'}>
             PNG-24
           </Button>
         </div>

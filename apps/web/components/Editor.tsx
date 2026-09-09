@@ -197,7 +197,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
         <div className={styles.previewCol}>
           <div className={styles.modeRow} role="group" aria-label="Preview mode">
             {PREVIEW_MODES.map((m) => (
-              <Button key={m.value} size="small" onClick={() => setMode(m.value)} aria-pressed={mode === m.value} success={mode === m.value}>
+              <Button key={m.value} size="small" onClick={() => setMode(m.value)} aria-pressed={mode === m.value} selected={mode === m.value}>
                 {m.label}
               </Button>
             ))}
@@ -354,9 +354,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
             </div>
           ) : null}
         </div>
-      </div>
-
-      <div className={styles.essay}>
+        <div className={styles.essay}>
         <div className={styles.prose}>
           <h2>How {generator.name} works</h2>
           {renderProse(generator.description)}
@@ -388,6 +386,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
               ))}
             </ul>
           )}
+          </div>
         </div>
       </div>
     </div>

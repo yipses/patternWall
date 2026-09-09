@@ -69,7 +69,12 @@ export function PreviewFrame({
           <div className={styles.statusBar} aria-hidden="true">
             <span>{mode === 'lock' ? '' : time}</span>
             <span className={styles.statusRight}>
-              <span className={styles.bars} />
+              <span className={styles.bars}>
+                <i />
+                <i />
+                <i />
+                <i />
+              </span>
               <span className={styles.battery} />
             </span>
           </div>

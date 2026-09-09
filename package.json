@@ -8,12 +8,14 @@
     "apps/*"
   ],
   "scripts": {
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev": "npm run build --workspace @patternwall/core && npm run dev --workspace @patternwall/web",
+    "typecheck": "npm run build --workspace @patternwall/core && npm run typecheck --workspaces --if-present",
     "lint": "eslint . --max-warnings=0",
     "test": "npm run test --workspace @patternwall/core",
     "build": "npm run build --workspace @patternwall/core && npm run build --workspace @patternwall/web",
-    "dev": "npm run dev --workspace @patternwall/web",
-    "test:e2e": "npm run test:e2e --workspace @patternwall/web"
+    "test:e2e": "npm run build && npm run test:e2e --workspace @patternwall/web",
+    "start": "npm run start --workspace @patternwall/web",
+    "samples": "npm run build --workspace @patternwall/core && node packages/core/scripts/sample.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",

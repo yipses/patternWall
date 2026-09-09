@@ -8,15 +8,17 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   size?: 'default' | 'small';
   loading?: boolean;
   success?: boolean;
+  selected?: boolean;
 };
 
-export function Button({ variant = 'default', size = 'default', loading = false, success = false, children, className, disabled, ...rest }: ButtonProps) {
+export function Button({ variant = 'default', size = 'default', loading = false, success = false, selected = false, children, className, disabled, ...rest }: ButtonProps) {
   const classes = [
     styles.btn,
     variant === 'primary' ? styles.primary : '',
     variant === 'ghost' ? styles.ghost : '',
     size === 'small' ? styles.small : '',
     success ? styles.success : '',
+    selected ? styles.selected : '',
     className ?? '',
   ]
     .filter(Boolean)

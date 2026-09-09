@@ -53,14 +53,13 @@
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 40px;
   align-items: start;
 }
 
 .previewCol {
-  position: sticky;
-  top: 74px;
+  min-width: 0;
 }
 
 .modeRow {
@@ -74,8 +73,9 @@
   font-size: 12px;
   color: var(--text-faint);
   margin: -8px 0 14px;
-  min-height: 2.6em;
+  min-height: 2.5em;
   line-height: 1.4;
+  max-width: 42ch;
 }
 
 .underPreview {
@@ -133,12 +133,13 @@
 }
 
 .essay {
-  margin-top: 64px;
-  padding-top: 34px;
+  min-width: 0;
+  margin-top: 40px;
+  padding-top: 32px;
   border-top: 1px solid var(--line);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
-  gap: 48px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 40px;
   align-items: start;
 }
 
@@ -212,18 +213,52 @@
   color: var(--text-faint);
 }
 
-@media (max-width: 1000px) {
+/* Two columns: the preview parks itself, the controls scroll beside it. */
+@media (min-width: 1000px) {
   .layout {
-    grid-template-columns: 1fr;
-    gap: 34px;
+    grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
   }
 
   .previewCol {
-    position: static;
+    position: sticky;
+    top: 74px;
   }
 
   .essay {
-    grid-template-columns: 1fr;
-    gap: 34px;
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
+    margin-top: 24px;
+  }
+}
+
+/* Three columns: the essay moves alongside instead of below, which is what the
+   extra width is actually for. */
+@media (min-width: 1300px) {
+  .layout {
+    grid-template-columns: minmax(300px, 380px) minmax(340px, 470px) minmax(280px, 1fr);
+    gap: 48px;
+  }
+
+  .essay {
+    grid-column: 3;
+    grid-row: 1;
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+    gap: 36px;
+  }
+
+  .prose {
+    font-size: 14.5px;
+    line-height: 1.68;
+  }
+
+  .prose h2 {
+    font-size: 20px;
+  }
+
+  .prose p:first-of-type {
+    font-size: 15.5px;
   }
 }

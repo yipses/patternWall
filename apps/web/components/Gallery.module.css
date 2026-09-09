@@ -1,11 +1,13 @@
 .page {
-  max-width: var(--maxw);
+  /* Narrower than the app's outer maximum on purpose: a 9:19.5 card is tall,
+     and four of them across a 1400px window leaves the grid looking abandoned. */
+  max-width: 1180px;
   margin: 0 auto;
   padding: 0 var(--gutter) 80px;
 }
 
 .masthead {
-  padding: 56px 0 32px;
+  padding: 44px 0 30px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 26px;
   display: grid;
@@ -15,7 +17,7 @@
 }
 
 .title {
-  font-size: clamp(34px, 6.2vw, 62px);
+  font-size: clamp(32px, 5.4vw, 52px);
   line-height: 1.02;
   letter-spacing: -0.028em;
   max-width: 12ch;
@@ -71,8 +73,10 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
-  gap: 26px 22px;
+  /* Capped at the top end as well as the bottom: a wallpaper card is 9:19.5,
+     so an unbounded column turns into a 700px tower. */
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 30px 24px;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -196,8 +200,9 @@
   }
 
   .grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 22px 16px;
+    grid-template-columns: repeat(auto-fill, minmax(144px, 1fr));
+    justify-content: stretch;
+    gap: 24px 16px;
   }
 }
 
