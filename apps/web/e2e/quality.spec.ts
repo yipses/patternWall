@@ -53,7 +53,8 @@ test.describe('layout and accessibility', () => {
     const text = await page.evaluate(() => document.activeElement?.textContent ?? '');
     expect(text).toContain('Skip to content');
     await page.keyboard.press('Enter');
-    expect(page.url()).toContain('#main');
+    await page.waitForFunction(() => window.location.hash === '#main');
+    await expect(page.locator('#main')).toBeVisible();
   });
 
   test('tabs and switches expose the right roles and state', async ({ page }) => {
