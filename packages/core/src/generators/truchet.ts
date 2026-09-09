@@ -186,7 +186,11 @@ export const truchet: Generator = {
         // app grid is, not under the clock.
         const bias = smoothstep(0.15, 1, (cy + cell) / h);
         const chance = subdivide * (0.25 + 0.95 * bias) * (0.3 + 0.7 * q);
-        if (cell > 26 && rng.bool(clamp(chance, 0, 0.95))) {
+        // The guard is on column count, not on pixels: a threshold in pixels
+        // would make a 108px thumbnail subdivide differently from a 1399px
+        // export, and since the decision consumes the random stream the two
+        // would stop being the same picture at all.
+        if (cols <= 18 && rng.bool(clamp(chance, 0, 0.95))) {
           const half = cell / 2;
           for (let sy = 0; sy < 2; sy++) {
             for (let sx = 0; sx < 2; sx++) {

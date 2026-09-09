@@ -121,7 +121,9 @@ What the contract asks of you:
   `accentRamp(p, n)` samples. Never index `palette.accents` directly — a palette extracted from a
   photograph may have one accent or four, and a generator that assumes three will break on both.
 - **Scale everything to `Math.min(width, height)`,** so the render looks the same at a 240px preview
-  and a 1496px export.
+  and a 1496px export. Never gate a decision on an absolute pixel threshold — the thumbnail and the
+  export would then be different pictures, and if the decision touches `ctx.rng` it desynchronises
+  everything after it. `packages/core/test/determinism.test.ts` enforces this.
 - **Compose portrait-first.** Tune for 9:19.5. Take a `quietTop` number param and apply
   `quietFactor(y, height, quietTop, ctx.safeZones)`.
 - **Stay inside the vocabulary,** and emit numbers through `num()` so output stays byte-stable.
@@ -159,5 +161,9 @@ a non-blank canvas on six palettes, share-link round-tripping, and browser/Node 
   to another browser or device. Copy a link for that.
 - **Safe zones are approximations.** Apple moves the clock and widget row a little between models;
   the boxes are fractions of the screen chosen to be close enough to compose against, not a spec.
+- **Scale invariance is structural, not exact.** A dot that lands within a rounding error of the
+  canvas edge can fall inside at one resolution and outside at another, so a 108px thumbnail and a
+  1399px export can differ by a handful of shapes out of several thousand. The test suite holds this
+  to half a percent per element type.
 - **Four generators.** The taxonomy has eight tags; `isometric`, `distortion` and `physics` have no
   patterns yet.

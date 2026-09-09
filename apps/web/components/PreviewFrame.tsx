@@ -63,7 +63,7 @@ export function PreviewFrame({
         <PatternImage spec={spec} alt={alt} className={styles.pattern} onRenderError={onRenderError} />
 
         {mode === 'home' ? <div className={styles.homeVeil} aria-hidden="true" /> : null}
-        <div className={styles.island} aria-hidden="true" />
+        {mode !== 'flat' ? <div className={styles.island} aria-hidden="true" /> : null}
 
         {mode !== 'flat' ? (
           <div className={styles.statusBar} aria-hidden="true">

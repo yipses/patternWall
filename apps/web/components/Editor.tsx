@@ -142,13 +142,15 @@ export function Editor({ generatorId }: { generatorId: string }) {
     [generator.id, committed, previewWidth],
   );
 
+  // Shared tags first, then whatever else is in the registry. An empty column
+  // is a dead end; three patterns with an honest label about why they are here
+  // is not.
   const related = useMemo(
     () =>
       generators
         .filter((g) => g.id !== generator.id)
         .map((g) => ({ g, shared: g.tags.filter((t) => generator.tags.includes(t)).length }))
         .sort((a, b) => b.shared - a.shared || a.g.name.localeCompare(b.g.name))
-        .filter((x) => x.shared > 0)
         .slice(0, 3),
     [generator],
   );
@@ -360,7 +362,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
           {renderProse(generator.description)}
         </div>
         <div className={styles.related}>
-          <h3>Related patterns</h3>
+          <h3>{related.some((r) => r.shared > 0) ? 'Related patterns' : 'Elsewhere in the gallery'}</h3>
           {related.length === 0 ? (
             <p className={styles.relatedEmpty}>
               Nothing else shares a tag with this one yet. <Link href="/">Back to the gallery</Link>.
@@ -378,7 +380,8 @@ export function Editor({ generatorId }: { generatorId: string }) {
                     <span>
                       <span className={styles.relatedName}>{g.name}</span>
                       <span className={styles.relatedTag}>
-                        {shared === 1 ? 'Shares one tag' : `Shares ${shared} tags`} · {g.tags.join(', ')}
+                        {shared === 0 ? 'Nothing in common' : shared === 1 ? 'Shares one tag' : `Shares ${shared} tags`} ·{' '}
+                        {g.tags.join(', ')}
                       </span>
                     </span>
                   </Link>

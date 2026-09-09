@@ -124,7 +124,7 @@ export const ridgelines: Generator = {
       const fillMix = clamp(tint * (0.2 + 0.8 * t), 0, 1);
       const fill = oklchToHex(mixOklab(bg, hexToOklch(accentAt(palette, clamp(t, 0, 1))), fillMix * 0.28));
       const stroke = accentAt(palette, clamp(t * colorSpread + (1 - colorSpread) * 0.15, 0, 1));
-      const sw = Math.max(0.4, minDim * 0.0022 * weight * (0.6 + 0.6 * t));
+      const sw = Math.max(minDim * 0.0009, minDim * 0.0022 * weight * (0.6 + 0.6 * t));
 
       body += el('path', { d: closed, fill, stroke: 'none' });
       body += el('path', {

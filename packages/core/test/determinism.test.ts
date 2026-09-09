@@ -83,3 +83,43 @@ describe('determinism', () => {
     expect(dirty).toBe(clean);
   });
 });
+
+/**
+ * Generators must be resolution-independent: a 108px thumbnail and a 1399px
+ * export of the same configuration have to be the same picture, not two
+ * different ones. A threshold expressed in absolute pixels breaks this, and
+ * because such a threshold usually gates a random decision, it desynchronises
+ * the whole stream rather than just changing a detail.
+ *
+ * Exact equality is not achievable — dots that land within a rounding error of
+ * the canvas edge fall inside at one scale and outside at another — so the
+ * contract is that the shape counts agree to within a fraction of a percent.
+ */
+describe('scale invariance', () => {
+  const countTag = (svg: string, tag: string): number => (svg.match(new RegExp(`<${tag}[ /]`, 'g')) ?? []).length;
+  const TAGS = ['circle', 'path', 'polygon', 'polyline', 'ellipse', 'rect'];
+
+  for (const g of ALL_GENERATORS) {
+    it(`${g.id} emits the same structure at 108px, 430px and 1399px`, () => {
+      const palette = TEST_PALETTES[0]!;
+      const render = (w: number): string =>
+        renderToSvg({
+          generator: g,
+          width: w,
+          height: Math.round((w * 19.5) / 9),
+          palette,
+          params: baseParams(g),
+          seed: 'scale',
+          bleed: 0.08,
+        });
+      const [small, mid, big] = [render(108), render(430), render(1399)];
+      for (const tag of TAGS) {
+        const counts = [countTag(small, tag), countTag(mid, tag), countTag(big, tag)];
+        const lo = Math.min(...counts);
+        const hi = Math.max(...counts);
+        const tolerance = Math.max(1, Math.ceil(hi * 0.005));
+        expect(hi - lo, `${g.id} <${tag}> counts drift across scales: ${counts.join(' / ')}`).toBeLessThanOrEqual(tolerance);
+      }
+    });
+  }
+});

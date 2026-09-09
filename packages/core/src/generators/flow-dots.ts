@@ -193,7 +193,7 @@ export const flowDots: Generator = {
           [w * 0.94, y0],
         ]),
         stroke: accentAt(palette, 1),
-        'stroke-width': num(Math.max(1, minDim * 0.0012)),
+        'stroke-width': num(Math.max(minDim * 0.0008, minDim * 0.0012)),
         'stroke-opacity': '0.25',
         fill: 'none',
         'stroke-linecap': 'round',
