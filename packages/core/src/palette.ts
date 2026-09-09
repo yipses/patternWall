@@ -7,7 +7,7 @@
  * colours from a photograph can be dropped into a generator written for four.
  */
 
-import { contrastRatio, hexToOklch, mixOklch, oklchToHex, relativeLuminance, type Oklch } from './color.js';
+import { contrastRatio, hexToOklch, mixOklab, oklchToHex, relativeLuminance, type Oklch } from './color.js';
 
 export interface Palette {
   id: string;
@@ -49,7 +49,7 @@ export function accentAt(p: Palette, t: number): string {
   const i = Math.floor(k);
   const a = hexToOklch(list[i] as string);
   const b = hexToOklch(list[Math.min(list.length - 1, i + 1)] as string);
-  return oklchToHex(mixOklch(a, b, k - i));
+  return oklchToHex(mixOklab(a, b, k - i));
 }
 
 /** Even ramp across the whole palette's accents, inclusive of both ends. */

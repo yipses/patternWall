@@ -70,6 +70,15 @@ export function unpackPalette(token: string): Palette | null {
   };
 }
 
+/** Decimal places implied by a slider step, e.g. 0.005 -> 3. */
+function decimalsOf(step: number): number {
+  if (!Number.isFinite(step) || step <= 0) return 3;
+  const s = String(step);
+  if (s.includes('e-')) return Math.min(8, Number(s.split('e-')[1] ?? 3));
+  const dot = s.indexOf('.');
+  return dot < 0 ? 0 : Math.min(8, s.length - dot - 1);
+}
+
 function packParams(generatorId: string, params: Record<string, ParamValue>): string {
   const g = getGenerator(generatorId);
   if (!g) return '';
@@ -78,9 +87,9 @@ function packParams(generatorId: string, params: Record<string, ParamValue>): st
       const v = params[spec.key];
       if (spec.type === 'number') {
         const n = typeof v === 'number' ? v : spec.default;
-        // Trim to the precision the control can actually produce.
-        const dp = spec.step >= 1 ? 0 : spec.step >= 0.1 ? 1 : 2;
-        return Number(n.toFixed(dp)).toString();
+        // Trim to exactly the precision the control can produce, no more and
+        // — this is the part that bites — no less.
+        return Number(n.toFixed(decimalsOf(spec.step))).toString();
       }
       if (spec.type === 'boolean') return v === true ? '1' : '0';
       const idx = spec.options.findIndex((o) => o.value === v);
@@ -115,13 +124,42 @@ function unpackParams(generatorId: string, token: string, notes: string[]): Reco
   return coerceParams(g, out);
 }
 
+/**
+ * Minimal query-string handling.
+ *
+ * `URLSearchParams` is a host global, and this package is meant to run
+ * anywhere — a browser, Node, a worker, eventually a render service — without
+ * assuming any of them. Encoding three keys by hand is cheaper than the
+ * assumption.
+ */
+function encodeComponent(v: string): string {
+  return encodeURIComponent(v);
+}
+
+function parseQuery(search: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const body = search.startsWith('?') ? search.slice(1) : search;
+  for (const chunk of body.split('&')) {
+    if (!chunk) continue;
+    const eq = chunk.indexOf('=');
+    const rawKey = eq < 0 ? chunk : chunk.slice(0, eq);
+    const rawVal = eq < 0 ? '' : chunk.slice(eq + 1);
+    try {
+      out.set(decodeURIComponent(rawKey.replace(/\+/g, ' ')), decodeURIComponent(rawVal.replace(/\+/g, ' ')));
+    } catch {
+      // A hand-mangled escape sequence should lose one key, not the whole link.
+    }
+  }
+  return out;
+}
+
 /** Encode everything but the generator id, which lives in the path. */
 export function encodeConfig(config: PatternConfig): string {
-  const q = new URLSearchParams();
-  q.set('s', config.seed);
-  q.set('q', packParams(config.generatorId, config.params));
-  q.set('c', packPalette(config.palette));
-  return q.toString();
+  return [
+    `s=${encodeComponent(config.seed)}`,
+    `q=${encodeComponent(packParams(config.generatorId, config.params))}`,
+    `c=${encodeComponent(packPalette(config.palette))}`,
+  ].join('&');
 }
 
 /**
@@ -135,15 +173,15 @@ export function decodeConfig(generatorId: string, search: string): DecodeResult 
     notes.push(`There is no pattern called “${generatorId}”. Showing ${generators[0]!.name} instead.`);
     g = generators[0]!;
   }
-  const q = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  const q = parseQuery(search);
 
-  const rawSeed = q.get('s');
+  const rawSeed = q.get('s') ?? null;
   const seed = rawSeed && rawSeed.length > 0 && rawSeed.length <= 64 ? rawSeed : defaultSeed(g.id);
   if (rawSeed !== null && seed !== rawSeed) notes.push('The seed in the link was unusable, so a default was used.');
 
   const params = unpackParams(g.id, q.get('q') ?? '', notes);
 
-  const rawPalette = q.get('c');
+  const rawPalette = q.get('c') ?? null;
   let palette = rawPalette ? unpackPalette(rawPalette) : null;
   if (rawPalette && !palette) {
     notes.push('The palette in the link could not be read, so the default palette was used.');

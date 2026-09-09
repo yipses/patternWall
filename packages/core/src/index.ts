@@ -4,6 +4,7 @@ export {
   flatten,
   hexToOklch,
   isHex,
+  mixOklab,
   mixOklch,
   oklchToHex,
   rampBetween,

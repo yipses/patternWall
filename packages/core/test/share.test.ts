@@ -43,7 +43,7 @@ describe('share links', () => {
       const { config: back } = decodeConfig(g.id, encodeConfig(config));
       const a = renderToSvg({ generator: g, width: 200, height: 430, palette: config.palette, params: config.params, seed: config.seed, bleed: 0.08 });
       const b = renderToSvg({ generator: g, width: 200, height: 430, palette: back.palette, params: back.params, seed: back.seed, bleed: 0.08 });
-      expect(b, `config ${i} for ${g.id}`).toBe(a);
+      expect(b === a, `config ${i} for ${g.id} did not round-trip`).toBe(true);
     }
   });
 

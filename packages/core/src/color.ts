@@ -180,6 +180,33 @@ export function mixOklch(a: Oklch, b: Oklch, t: number): Oklch {
   return out;
 }
 
+/**
+ * Blend two OKLCH colours through rectangular OKLab rather than around the hue
+ * circle.
+ *
+ * `mixOklch` takes the short way round the wheel, which is right for tints and
+ * shades of one colour. It is wrong for a palette ramp: orange to blue is
+ * nearly half a turn, so the "short way" is a coin toss that lands on magenta
+ * and quietly inserts a colour the palette does not contain. Straight-line
+ * OKLab interpolation passes through a desaturated middle instead, which
+ * preserves the identity of the two colours it is joining.
+ */
+export function mixOklab(a: Oklch, b: Oklch, t: number): Oklch {
+  const k = safe(t, 0);
+  const ar = (a.h * Math.PI) / 180;
+  const br = (b.h * Math.PI) / 180;
+  const ax = Math.cos(ar) * a.c;
+  const ay = Math.sin(ar) * a.c;
+  const bx = Math.cos(br) * b.c;
+  const by = Math.sin(br) * b.c;
+  const x = ax + (bx - ax) * k;
+  const y = ay + (by - ay) * k;
+  const c = Math.hypot(x, y);
+  let h = (Math.atan2(y, x) * 180) / Math.PI;
+  if (h < 0) h += 360;
+  return { l: a.l + (b.l - a.l) * k, c, h: c < 1e-7 ? 0 : h };
+}
+
 /** WCAG 2.x relative luminance of a hex colour (alpha ignored). */
 export function relativeLuminance(hex: string): number {
   const c = parseHex(hex);
