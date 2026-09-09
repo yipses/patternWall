@@ -135,12 +135,16 @@ export default function SetupPage() {
           model, and it can target the Lock Screen, the Home Screen, or both.
         </p>
         <p>
-          Expand the action to see its options. Community write-ups consistently report two toggles worth turning off —{' '}
-          <em>Show Preview (check the label on your device)</em> and{' '}
-          <em>Crop to Subject (check the label on your device)</em> — because a preview step turns an automation that was
-          supposed to be silent into one that asks you to confirm every morning, and subject cropping will happily zoom
-          into the middle of a pattern that was composed for the whole screen. Neither label could be confirmed against
-          Apple&rsquo;s own documentation from here, so look at what your version actually says.
+          Expand the action to see its options. Community write-ups consistently report three toggles worth turning off —{' '}
+          <em>Show Preview (check the label on your device)</em>,{' '}
+          <em>Crop to Subject (check the label on your device)</em> and{' '}
+          <em>Legibility Blur (check the label on your device)</em>. A preview step turns an automation that was supposed
+          to be silent into one that asks you to confirm every morning. Subject cropping will happily zoom into the
+          middle of a pattern that was composed for the whole screen. And the legibility blur is the Home Screen
+          softening iOS applies to help icon labels stand out — useful over a photograph, but it turns fine line work
+          into mud, which is the entire reason the Home Screen variant in the Export tab raises contrast instead. None of
+          these three labels could be confirmed against Apple&rsquo;s own documentation from here, so look at what your
+          version actually says.
         </p>
         <p>
           Name the shortcut something you will recognise in a list — <code>PatternWall Morning</code> — and run it once
