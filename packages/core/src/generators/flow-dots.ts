@@ -55,7 +55,7 @@ export const flowDots: Generator = {
     const f1 = (scale * 2.1) / minDim;
     const f2 = f1 * 2.718; // non-harmonic on purpose
     const stepLen = minDim * 0.005;
-    const rBase = minDim * 0.0034 * dotSize;
+    const rBase = minDim * 0.0039 * dotSize;
     const gap = Math.max(rBase * 1.2, rBase * 2 * spacing);
 
     const angleAt = (x: number, y: number): number => {
@@ -65,6 +65,9 @@ export const flowDots: Generator = {
     };
     const speedAt = (x: number, y: number): number => 0.55 + 0.9 * Math.abs(noise.value(x * f1 * 0.7, y * f1 * 0.7));
 
+    // Faint marks read less on paper than they do on black, so light palettes
+    // get a small opacity boost to land in the same perceptual place.
+    const inkBoost = palette.mode === 'light' ? 1.18 : 1;
     const bg = hexToOklch(palette.background);
     const tint = mixOklch(bg, hexToOklch(accentAt(palette, 0.5)), palette.mode === 'dark' ? 0.14 : 0.1);
     const gradId = 'fd-bg';
@@ -127,8 +130,8 @@ export const flowDots: Generator = {
           const life = s / Math.max(1, trail - 1);
           const q = quietFactor(py, h, quietTop, safeZones);
           const depth = smoothstep(0.05, 0.95, py / h);
-          let r = rBase * (0.5 + 0.95 * depth) * (0.55 + 0.45 * q);
-          let o = (0.5 + 0.45 * depth) * (0.35 + 0.65 * q);
+          let r = rBase * (0.48 + 1.05 * depth) * (0.55 + 0.45 * q);
+          let o = (0.55 + 0.45 * depth) * (0.4 + 0.6 * q) * inkBoost;
           if (taper) {
             const env = Math.sin(Math.PI * clamp(life, 0, 1));
             r *= 0.4 + 0.6 * env;
@@ -158,7 +161,7 @@ export const flowDots: Generator = {
     for (let b = 0; b < bands; b++) {
       const items = buckets[b] as string[];
       if (items.length === 0) continue;
-      const color = accentAt(palette, bands === 1 ? 0 : b / (bands - 1));
+      const color = accentAt(palette, b / (bands - 1));
       // Opacity is quantised into a few groups so identical values share a <g>.
       const byOpacity = new Map<string, string[]>();
       const ops = bandOpacity[b] as number[];

@@ -78,7 +78,9 @@ export function validateSvgVocabulary(svg: string): VocabularyViolation[] {
       if (lower.startsWith('on')) {
         out.push({ kind: 'attribute', name: attr, detail: `event handler attribute "${attr}" is not allowed` });
       }
-      if (/^(https?:)?\/\//.test(value.trim()) || /url\(\s*['"]?https?:/i.test(value)) {
+      // The SVG namespace declaration is the one legitimate absolute URL.
+      const isNamespace = lower === 'xmlns' || lower.startsWith('xmlns:');
+      if (!isNamespace && (/^(https?:)?\/\//.test(value.trim()) || /url\(\s*['"]?https?:/i.test(value))) {
         out.push({ kind: 'attribute', name: attr, detail: `attribute "${attr}" references an external URL` });
       }
     }

@@ -161,7 +161,7 @@ export function oklchToHex(col: Oklch): string {
 
 /** Shortest-arc hue interpolation, so 350° -> 10° goes through 0° not 180°. */
 function mixHue(a: number, b: number, t: number): number {
-  let d = ((b - a) % 360 + 540) % 360 - 180;
+  const d = ((b - a) % 360 + 540) % 360 - 180;
   return ((a + d * t) % 360 + 360) % 360;
 }
 
