@@ -33,6 +33,37 @@ The Playwright suite expects a Chromium binary at `/opt/pw-browsers/chromium`; o
 
 ---
 
+## Deploying
+
+The build is a static export — 40 files, no server, no database, no API. `apps/web/out`
+can be dropped onto any static host as-is.
+
+GitHub Pages is wired up in `.github/workflows/pages.yml`. Enable it once under
+**Settings → Pages → Source → GitHub Actions**; after that every push to `main`
+publishes, and the workflow can also be run by hand from the Actions tab.
+
+A project site is served from `https://<user>.github.io/<repo>/`, so the build needs
+to know its prefix:
+
+```bash
+PATTERNWALL_BASE_PATH=/patternWall npm run build
+```
+
+The workflow sets this from the repository name. Leave the variable unset for local
+builds, a custom domain, or a `<user>.github.io` root site. Two details that the
+subpath makes load-bearing:
+
+- `trailingSlash` is on, so routes export as `p/flow-dots/index.html` rather than
+  `p/flow-dots.html`. That resolves on every static host, including the ones that do
+  no extensionless lookup.
+- The workflow writes `.nojekyll`, without which Pages refuses to serve the
+  `_next` directory.
+
+Export and batch-zip use browser APIs that need a real origin, so serve the folder
+over `http(s)://` — opening `out/index.html` from the filesystem will not work.
+
+---
+
 ## Architecture
 
 ```

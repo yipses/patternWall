@@ -46,7 +46,9 @@ test.describe('gallery', () => {
     await page.goto('/');
     const first = generators[generators.length - 1]!; // "Recent" puts the last-registered first
     await page.getByRole('listitem').first().getByRole('link').first().click();
-    await expect(page).toHaveURL(new RegExp(`/p/${first.id}\\?`));
+    // `trailingSlash` is on so the export works on static hosts that do no
+    // extensionless resolution, which puts a slash before the query string.
+    await expect(page).toHaveURL(new RegExp(`/p/${first.id}/?\\?`));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(first.name);
   });
 
