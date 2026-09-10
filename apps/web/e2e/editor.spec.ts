@@ -176,4 +176,29 @@ test.describe('editor', () => {
     expect(copied).toContain('/p/phyllotaxis?');
     expect(copied).toContain('c=');
   });
+
+  test('a select commits the value just chosen, not the previous one', async ({ page }) => {
+    // Regression: selects fire onChange and onCommit in the same event, so a
+    // commit that read React state instead of a synchronously-written ref
+    // settled the value the control had just replaced. The preview and the URL
+    // sat one change behind, and picking "Triangles" drew the previous set.
+    await page.goto('/p/truchet');
+    const select = page.getByLabel('Tile set');
+    const marks = async () => {
+      const src = await page.locator('img[src^="data:image/svg"]').first().getAttribute('src');
+      const svg = Buffer.from((src ?? '').split(';base64,')[1] ?? '', 'base64').toString('utf8');
+      return { poly: (svg.match(/<polygon/g) ?? []).length, path: (svg.match(/<path/g) ?? []).length };
+    };
+    // Triangles are the only tile set drawn as polygons, so they are a clean
+    // fingerprint for "the render matches the control".
+    await select.selectOption('mixed');
+    await expect.poll(async () => (await marks()).poly > 0 && (await marks()).path > 0).toBe(true);
+    await select.selectOption('triangles');
+    await expect.poll(async () => (await marks()).path).toBe(0);
+    expect((await marks()).poly).toBeGreaterThan(0);
+    await expect(page).toHaveURL(/q=[^&]*_2_/);
+    await select.selectOption('arcs');
+    await expect.poll(async () => (await marks()).poly).toBe(0);
+    await expect(page).toHaveURL(/q=[^&]*_0_/);
+  });
 });

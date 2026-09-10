@@ -70,9 +70,18 @@ export function Editor({ generatorId }: { generatorId: string }) {
   }));
   const settleRef = useRef<number | null>(null);
 
+  // `params` captured in a callback is the value from the render that created
+  // that callback. Selects and switches fire onChange and onCommit in the same
+  // event, before React has re-rendered, so a commit reading the state variable
+  // would settle the value the control just replaced — the preview and the URL
+  // would sit one change behind. This ref is written synchronously on every
+  // change, so the commit always sees the newest params.
+  const latestParams = useRef(params);
+
   useEffect(() => {
     const decoded = decodeConfig(generator.id, typeof window === 'undefined' ? '' : window.location.search);
     setSeed(decoded.config.seed);
+    latestParams.current = decoded.config.params;
     setParams(decoded.config.params);
     setPalette(decoded.config.palette);
     setCommitted({ params: decoded.config.params, palette: decoded.config.palette, seed: decoded.config.seed });
@@ -98,6 +107,16 @@ export function Editor({ generatorId }: { generatorId: string }) {
   useEffect(() => () => {
     if (settleRef.current !== null) window.clearTimeout(settleRef.current);
   }, []);
+
+  /** The only way params should change: keeps the ref, the state and the pending commit in step. */
+  const applyParams = useCallback(
+    (next: Record<string, ParamValue>, delay: number) => {
+      latestParams.current = next;
+      setParams(next);
+      settle({ params: next }, delay);
+    },
+    [settle],
+  );
 
   const dirty = committed.params !== params || committed.palette !== palette || committed.seed !== seed;
 
@@ -310,17 +329,14 @@ export function Editor({ generatorId }: { generatorId: string }) {
               <ParamControls
                 generator={generator}
                 params={params}
-                onChange={(key, value) => {
-                  const next = { ...params, [key]: value };
-                  setParams(next);
-                  settle({ params: next }, 110);
-                }}
-                onCommit={() => settle({ params }, 0)}
+                onChange={(key, value) => applyParams({ ...latestParams.current, [key]: value }, 110)}
+                onCommit={() => settle({ params: latestParams.current }, 0)}
               />
               <Button
                 size="small"
                 onClick={() => {
                   const next = defaultParams(generator);
+                  latestParams.current = next;
                   setParams(next);
                   setCommitted((prev) => ({ ...prev, params: next }));
                 }}
