@@ -155,11 +155,18 @@ export const truchet: Generator = {
         const r = s / 2;
         const a = rot % 2 === 0;
         // Two quarter arcs joining opposite pairs of edge midpoints.
+        // Sweep flag 0, not 1. With sweep 1 the renderer picks the other of the
+        // two circles that fit these endpoints — the one centred on the cell
+        // centre — so every arc bulged away from its corner. The marks still
+        // met at the edge midpoints, so the tiling looked plausible, but no arc
+        // was ever centred on a grid vertex and the loops, half circles and
+        // full circles that make a Truchet tiling worth looking at could not
+        // form at all. Sweep 0 centres each quarter arc on its corner.
         const d = a
-          ? `M${num(x0, 1)} ${num(y0 + r, 1)}A${num(r, 1)} ${num(r, 1)} 0 0 1 ${num(x0 + r, 1)} ${num(y0, 1)}` +
-            `M${num(x0 + s, 1)} ${num(y0 + r, 1)}A${num(r, 1)} ${num(r, 1)} 0 0 1 ${num(x0 + r, 1)} ${num(y0 + s, 1)}`
-          : `M${num(x0 + r, 1)} ${num(y0, 1)}A${num(r, 1)} ${num(r, 1)} 0 0 1 ${num(x0 + s, 1)} ${num(y0 + r, 1)}` +
-            `M${num(x0 + r, 1)} ${num(y0 + s, 1)}A${num(r, 1)} ${num(r, 1)} 0 0 1 ${num(x0, 1)} ${num(y0 + r, 1)}`;
+          ? `M${num(x0, 1)} ${num(y0 + r, 1)}A${num(r, 1)} ${num(r, 1)} 0 0 0 ${num(x0 + r, 1)} ${num(y0, 1)}` +
+            `M${num(x0 + s, 1)} ${num(y0 + r, 1)}A${num(r, 1)} ${num(r, 1)} 0 0 0 ${num(x0 + r, 1)} ${num(y0 + s, 1)}`
+          : `M${num(x0 + r, 1)} ${num(y0, 1)}A${num(r, 1)} ${num(r, 1)} 0 0 0 ${num(x0 + s, 1)} ${num(y0 + r, 1)}` +
+            `M${num(x0 + r, 1)} ${num(y0 + s, 1)}A${num(r, 1)} ${num(r, 1)} 0 0 0 ${num(x0, 1)} ${num(y0 + r, 1)}`;
         (strokeBuckets[band] as string[]).push(el('path', { d, 'stroke-width': num(sw, 2), 'stroke-opacity': opacity }));
         return;
       }
