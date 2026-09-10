@@ -6,7 +6,7 @@ import styles from './setup.module.css';
 export const metadata: Metadata = {
   title: 'Automate',
   description:
-    'Export thirty wallpapers, put them in a Photos album, and let a Shortcuts personal automation set a different one each morning. Including an honest account of what iOS will and will not let a third-party app do.',
+    'Collect the wallpapers you want, export them as one album, and let a Shortcuts personal automation set a different one each morning. Including an honest account of what iOS will and will not let a third-party app do.',
 };
 
 export default function SetupPage() {
@@ -16,7 +16,7 @@ export default function SetupPage() {
         <div className={styles.kicker}>Automate</div>
         <h1 className={styles.title}>A different wallpaper every morning, without an app.</h1>
         <p className={styles.standfirst}>
-          Export thirty variations, drop them into a Photos album, and let Shortcuts pick one at random on a schedule. It
+          Collect the wallpapers you want, export them into a Photos album, and let Shortcuts pick one at random on a schedule. It
           takes about five minutes to set up and then never needs touching again.
         </p>
       </div>
@@ -61,24 +61,27 @@ export default function SetupPage() {
           </ul>
         </div>
 
-        <h2>1. Export a batch</h2>
+        <h2>1. Collect the ones you want</h2>
         <p>
-          Open any pattern, get it to a configuration you like, then go to the <strong>Export</strong> tab and use{' '}
-          <strong>Export 30 as a zip</strong>. That renders the same configuration with thirty different seeds — the same
-          palette, the same parameters, thirty different arrangements — and downloads them as one archive. Pick your
-          device from the preset list first so the files come out at your panel&rsquo;s pixel size, and leave the 8% bleed
-          switched on so iOS&rsquo;s parallax zoom never finds an unpainted edge.
+          Open a pattern, get it to a configuration you like, and press <strong>Collect</strong>. Do that as many times as
+          you like — different patterns, different palettes, different seeds. Everything you collect is listed on the{' '}
+          <Link href="/collected">Collected</Link> page.
         </p>
         <p>
-          Thirty is a deliberate number: it is enough that you will not notice the loop inside a month, and small enough
-          that the zip stays around ten megabytes at PNG-8.
+          Then, from that page, use <strong>Export all as a zip</strong>. Every configuration is rendered at one size and
+          zipped together, each file keeping its own pattern, seed and palette. Open <strong>Export settings</strong> first
+          to pick your device from the preset list so the files come out at your panel&rsquo;s pixel size, and leave the 8%
+          bleed switched on so iOS&rsquo;s parallax zoom never finds an unpainted edge.
+        </p>
+        <p>
+          How many you collect is up to you, and it is the whole point of doing it this way: the album is a set you chose
+          rather than a sweep of random seeds. Twenty or thirty is enough that you will not notice the loop inside a month.
         </p>
         <div className={styles.cta}>
           <Link className={`${ui.btn} ${ui.primary}`} href="/">
             Choose a pattern
           </Link>
         </div>
-
         <h2>2. Get them into an album</h2>
         <ol className={styles.steps}>
           <li className={styles.step}>
@@ -86,7 +89,7 @@ export default function SetupPage() {
             iCloud Drive or Files on the phone itself, select them all and use <strong>Save Images</strong>.
           </li>
           <li className={styles.step}>
-            In Photos, select the thirty imported images, then add them to a <strong>New Album</strong> and call it{' '}
+            In Photos, select the imported images, then add them to a <strong>New Album</strong> and call it{' '}
             <code>PatternWall</code>. The name matters only in that the shortcut has to point at the same one.
           </li>
           <li className={styles.step}>
@@ -125,7 +128,7 @@ export default function SetupPage() {
           tap <strong>All Photos</strong> and choose your <code>PatternWall</code> album. The same guide describes tapping{' '}
           <strong>Sort by</strong>, choosing from the list, and then setting the <strong>Order</strong> parameter that
           appears; choose Random, which needs no order. Finally set the limit to one photo, so the action hands a single
-          image to the next step rather than all thirty.
+          image to the next step rather than the whole album.
         </p>
 
         <h3>About the wallpaper action</h3>

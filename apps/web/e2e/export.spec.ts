@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { pngSize, settled } from './helpers';
+import { pngSize } from './helpers';
 
 test.describe('export', () => {
   test('downloads a PNG at the stated size, well under a megabyte', async ({ page }) => {
@@ -69,31 +69,45 @@ test.describe('export', () => {
     expect(toKb(twentyFour)).toBeGreaterThan(toKb(eight));
   });
 
-  test('batch export produces a zip and keeps the page responsive', async ({ page }) => {
-    await page.goto('/p/truchet');
-    await page.getByRole('tab', { name: 'Export' }).click();
+  test('the collection exports as one zip, one entry per collected item', async ({ page }) => {
+    // Collect three configurations across two patterns, so the zip is proving
+    // that each entry keeps its own generator and seed rather than being a
+    // seed sweep of whatever happened to be open.
+    const collect = async (id: string, seed: string) => {
+      await page.goto(`/p/${id}?s=${seed}`);
+      await page.getByRole('button', { name: /^Collect/ }).click();
+    };
+    await collect('truchet', 'batch-a');
+    await collect('truchet', 'batch-b');
+    await collect('phyllotaxis', 'batch-c');
+
+    await page.goto('/collected');
+    await expect(page.getByTestId('export-collection')).toHaveText(/Export all 3 as a zip/);
+
+    // Keep the render small so the suite stays quick.
+    await page.getByRole('button', { name: 'Export settings' }).click();
     await page.getByLabel('Device').selectOption('custom');
     await page.getByLabel('Width').fill('240');
     await page.getByLabel('Height').fill('520');
-    await settled(page);
 
     const downloadPromise = page.waitForEvent('download', { timeout: 120_000 });
-    await page.getByTestId('batch-export').click();
+    await page.getByTestId('export-collection').click();
     await expect(page.getByRole('progressbar')).toBeVisible();
 
-    // The UI must still accept input while the batch runs.
-    await page.getByRole('tab', { name: 'Pattern' }).click();
-    await expect(page.getByLabel('Grid density')).toBeVisible();
-
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toMatch(/^patternwall_truchet_.*_x30\.zip$/);
+    expect(download.suggestedFilename()).toMatch(/^patternwall_collection_3\.zip$/);
     const buf = readFileSync((await download.path()) as string);
     expect(buf.subarray(0, 2).toString('latin1')).toBe('PK');
-    expect(buf.length).toBeGreaterThan(30_000);
-    // 30 local file headers means 30 entries.
     let entries = 0;
     for (let i = 0; i + 4 <= buf.length; i++) if (buf.readUInt32LE(i) === 0x04034b50) entries++;
-    expect(entries).toBe(30);
+    expect(entries).toBe(3);
+  });
+
+  test('the editor no longer offers a thirty-seed batch', async ({ page }) => {
+    await page.goto('/p/truchet');
+    await page.getByRole('tab', { name: 'Export' }).click();
+    await expect(page.getByTestId('batch-export')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Collected' }).last()).toBeVisible();
   });
 
   test('the Home Screen variant renders differently from the base export', async ({ page }) => {

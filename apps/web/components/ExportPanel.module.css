@@ -78,3 +78,11 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Collapsed export settings on the Collected page: the batch button is the
+   primary action there, and the knobs only appear when asked for. */
+.settings {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line, #26262a);
+}

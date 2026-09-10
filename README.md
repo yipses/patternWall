@@ -81,7 +81,7 @@ a wallpaper rather than a suggestion.
 
 ### One string is the source of truth
 
-The gallery card, the editor preview, the PNG export, the thirty-file batch and the Node test suite
+The gallery card, the editor preview, the PNG export, the collection batch and the Node test suite
 all call the same `renderToSvg`. Nothing else builds a render. The preview is an `<img>` whose source
 is that exact SVG as a data URL, and the exporter draws that same `<img>` to a canvas. There is no
 second code path for the two to drift apart in, and `apps/web/e2e/parity.spec.ts` asserts the point
@@ -180,7 +180,7 @@ a non-blank canvas on six palettes, share-link round-tripping, and browser/Node 
 - **Rendering is synchronous on the main thread.** A dense `flow-dots` configuration emits tens of
   thousands of circles, and while the preview is debounced and drops to a lower resolution during a
   drag, a very heavy configuration can still cost a frame. A worker would fix this properly.
-- **Batch export is chunked, not parallel.** Thirty full-resolution renders take a while; the work
+- **Batch export is chunked, not parallel.** A collection of full-resolution renders takes a while; the work
   yields a frame between each so the UI stays live, but it is one core doing one image at a time.
 - **PNG quantisation happens after rasterisation.** UPNG's quantiser is good but it works on pixels,
   not on the palette the generator actually used, so a very smooth gradient can band at low colour

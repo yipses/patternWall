@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { encodeConfig, getGenerator } from '@patternwall/core';
 import { PatternImage } from './PatternImage';
+import { CollectionExport } from './CollectionExport';
 import { Button, uiStyles as ui } from './ui';
 import { loadCollected, removeCollected, type CollectedItem } from '../lib/storage';
 import styles from './Collected.module.css';
@@ -39,6 +40,8 @@ export function Collected() {
           </Link>
         </div>
       ) : (
+        <>
+        <CollectionExport items={items} />
         <ul className={styles.grid}>
           {items.map((item) => {
             const g = getGenerator(item.generatorId);
@@ -72,6 +75,7 @@ export function Collected() {
             );
           })}
         </ul>
+        </>
       )}
     </div>
   );
