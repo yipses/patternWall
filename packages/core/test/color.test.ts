@@ -228,11 +228,21 @@ describe('geometry', () => {
     expect(z.widgets.y).toBeLessThan(z.controls.y);
   });
 
-  it('insets the visible rect by the bleed on every edge', () => {
-    const v = visibleRect(1000, 2000, 0.08);
-    expect(v.x).toBeCloseTo(80);
-    expect(v.w).toBeCloseTo(840);
-    expect(visibleRect(1000, 2000, 5).w).toBeCloseTo(700);
+  // A round trip rather than a restatement of the formula: the export renders
+  // at `base * (1 + 2 * bleed)`, so asking for the visible rect of that canvas
+  // has to give the base back exactly. Stated as two numbers instead, the test
+  // would have agreed with whichever arithmetic was in the file -- and it did,
+  // asserting 840 where the screen is 1000.
+  it('returns exactly the screen the export padded around', () => {
+    const base = 1000;
+    const bleed = 0.08;
+    const padded = Math.round(base * (1 + 2 * bleed));
+    const v = visibleRect(padded, padded * 2, bleed);
+    expect(v.w).toBeCloseTo(base, 0);
+    expect(v.h).toBeCloseTo(base * 2, 0);
+    expect(v.x).toBeCloseTo((padded - base) / 2, 0);
+    // bleed clamps to [0, 0.15].
+    expect(visibleRect(1000, 2000, 5).w).toBeCloseTo(1000 / 1.3);
     expect(visibleRect(1000, 2000, -1).w).toBe(1000);
   });
 });

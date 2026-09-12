@@ -54,11 +54,21 @@ export function safeZonesFor(width: number, height: number): SafeZones {
  *
  * We render wallpapers larger than the screen so that iOS's perspective-zoom
  * parallax never slides an un-painted edge into view. `bleed` is the fraction
- * of each edge that may be cropped.
+ * of the *screen* added to each edge — the same number the export panel uses
+ * when it renders at `base * (1 + 2 * bleed)`, and the same one the UI calls
+ * "8% larger on every edge".
+ *
+ * So the inverse divides; it does not subtract. This used to return
+ * `width * (1 - 2b)`, which treats `bleed` as a fraction of the padded canvas
+ * instead of the screen — two different denominators for one number. At the
+ * default 8% that made the visible rectangle 2.6% too small and pushed its
+ * origin 1.1% of the canvas too far in, so every safe zone sat slightly up and
+ * to the left of the screen it was describing.
  */
 export function visibleRect(width: number, height: number, bleed: number): Rect {
   const b = Math.min(0.15, Math.max(0, Number.isFinite(bleed) ? bleed : 0));
-  return { x: width * b, y: height * b, w: width * (1 - 2 * b), h: height * (1 - 2 * b) };
+  const f = 1 / (1 + 2 * b);
+  return { x: (width * (1 - f)) / 2, y: (height * (1 - f)) / 2, w: width * f, h: height * f };
 }
 
 /** Safe zones positioned inside a bleed-padded canvas. */
