@@ -68,9 +68,9 @@ export const truchet: Generator = {
     const subdivide = pNum(params, 'subdivide', 0.35);
     const colorSpread = pNum(params, 'colorSpread', 0.6);
     const colorBlend = pNum(params, 'colorBlend', 1);
-    const openEnds = pNum(params, 'openEnds', 0.22);
+    const openEnds = pNum(params, 'openEnds', 0);
     const arcCount = Math.max(1, Math.round(pNum(params, 'arcCount', 1)));
-    const arcSpacing = pNum(params, 'arcSpacing', 0.09);
+    const arcSpacing = pNum(params, 'arcSpacing', 1);
     const quietTop = pNum(params, 'quietTop', 0.55);
     const gap = pBool(params, 'gap', false);
 

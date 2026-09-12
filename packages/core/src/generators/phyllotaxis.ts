@@ -54,14 +54,14 @@ export const phyllotaxis: Generator = {
     const noise = createNoise2D(rng);
     const minDim = Math.min(w, h);
 
-    const count = Math.round(pNum(params, 'count', 1500));
+    const count = Math.round(pNum(params, 'count', 1800));
     const detune = pNum(params, 'detune', 0);
     const falloff = pNum(params, 'falloff', 1);
     const dotScale = pNum(params, 'dotScale', 1);
     const originX = pNum(params, 'originX', 0.5);
     const originY = pNum(params, 'originY', 0.62);
     const shape = pStr(params, 'shape', 'dot');
-    const colorSpread = pNum(params, 'colorSpread', 0.75);
+    const colorSpread = pNum(params, 'colorSpread', 0.72);
     const jitter = pNum(params, 'jitter', 0.12);
     const quietTop = pNum(params, 'quietTop', 0.5);
 
