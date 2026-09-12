@@ -23,8 +23,11 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // No maximumScale or userScalable: false. Locking zoom is the reflex for an
+  // app-like layout and it takes pinch-to-zoom away from anyone who needs it,
+  // which WCAG 1.4.4 is explicit about. Nothing here needs it either — the
+  // inputs are 16px or larger, so iOS has no reason to zoom on focus, which is
+  // the problem the lock is usually reached for.
   themeColor: '#0a0a0b',
 };
 
