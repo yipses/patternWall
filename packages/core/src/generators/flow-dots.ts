@@ -31,7 +31,7 @@ export const flowDots: Generator = {
     { key: 'spacing', label: 'Dot spacing', type: 'number', min: 1, max: 7, step: 0.05, default: 2.4, description: 'Arc length between stamps, in dot diameters. Below about 1.6 the dots merge into a line.' },
     { key: 'dotSize', label: 'Dot size', type: 'number', min: 0.3, max: 3, step: 0.05, default: 1, description: 'Base radius, scaled to the canvas so it looks the same at any export size.' },
     { key: 'sweep', label: 'Sweep', type: 'number', min: -1, max: 1, step: 0.02, default: 0.22, description: 'A constant angle added to the whole field. Pushes the current toward the horizontal or the vertical.' },
-    { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.7, description: 'How much of the accent ramp gets used. At zero every dot is the first accent.' },
+    { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.7, description: 'How much of each dot\u2019s colour comes from its own draw rather than from how far down the canvas it sits. At zero the palette runs top to bottom and the field reads as one gradient; at one every dot takes an independent step of the ramp and the colours mix like confetti.' },
     { key: 'quietTop', label: 'Quiet top', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'Holds density and contrast back where iOS draws the clock and the widget row.' },
     { key: 'taper', label: 'Taper trails', type: 'boolean', default: true, description: 'Fade each trail in and out along its length, so paths dissolve rather than stopping dead.' },
   ],
@@ -139,7 +139,16 @@ export const flowDots: Generator = {
           }
           if (r < minDim * 0.0006) continue;
 
-          const mix = clamp(hueSeed * colorSpread + depth * (1 - colorSpread * 0.4), 0, 1);
+          // A crossfade between the two sources, not a sum of them. Adding
+          // them overflowed: at spread 1 the old expression reached 1.6 and the
+          // clamp dropped everything above 1 into the last band, so 38% of
+          // every dot landed on the final accent and 0.6% on the first — and at
+          // the default 0.7 it was still 25%, which is a quarter of the image
+          // painted one colour by an arithmetic accident rather than a choice.
+          // Weights that sum to one keep the ramp evenly populated at both ends
+          // and everywhere between: 8.4% per band at each extreme, a gentle
+          // bell in the middle.
+          const mix = clamp((1 - colorSpread) * depth + colorSpread * hueSeed, 0, 1);
           const band = Math.min(bands - 1, Math.floor(mix * bands));
           (buckets[band] as string[]).push(`${num(px, 1)},${num(py, 1)},${num(r, 2)}`);
           (bandOpacity[band] as number[]).push(o);
@@ -193,7 +202,7 @@ export const flowDots: Generator = {
           [w * 0.94, y0],
         ]),
         stroke: accentAt(palette, 1),
-        'stroke-width': num(Math.max(minDim * 0.0008, minDim * 0.0012)),
+        'stroke-width': num(minDim * 0.0012),
         'stroke-opacity': '0.25',
         fill: 'none',
         'stroke-linecap': 'round',
