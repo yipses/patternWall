@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToSvg } from '../src/index.js';
-import { ALL_GENERATORS, baseParams, TEST_PALETTES } from './helpers.js';
+import { ALL_GENERATORS, baseParams, rasterize, TEST_PALETTES } from './helpers.js';
 
 const W = 320;
 const H = 693;
@@ -122,4 +122,89 @@ describe('scale invariance', () => {
       }
     });
   }
+
+  /**
+   * The counts above are necessary and nowhere near sufficient, and phyllotaxis
+   * proved it: two noise fields keyed on pixel coordinates drew a visibly
+   * different picture at 108px and 1399px — different dot positions, the
+   * desaturated region in a different place, six accent bands against eight —
+   * while emitting 809 / 812 / 807 circles, a drift of 5 against a tolerance of
+   * 5. A count cannot see where anything is or what colour it came out.
+   *
+   * So compare the pictures. Render at two sizes an exact factor of four apart,
+   * rasterise both down to the same width, and take the mean absolute
+   * difference per channel. The threshold comes from measuring both cases
+   * rather than from what sounds reasonable: with the bug, phyllotaxis scores
+   * 9.55; without it, the four generators score 0.00 to 0.47, and the floor set
+   * by resampling alone — the same render at 864 and 865 px — is 0.08 to 0.23.
+   * 2.0 sits four times above the worst honest score and nearly five times
+   * below the broken one.
+   */
+  const COMMON = 216;
+  const MAX_DRIFT = 2;
+
+  const meanChannelDiff = (a: Buffer, b: Buffer): number => {
+    const n = Math.min(a.length, b.length);
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += Math.abs((a[i] as number) - (b[i] as number));
+    return sum / n;
+  };
+
+  const drift = (g: (typeof ALL_GENERATORS)[number], params: Record<string, number | string | boolean>): number => {
+    const shot = (w: number): Buffer =>
+      rasterize(
+        renderToSvg({
+          generator: g,
+          width: w,
+          height: Math.round((w * 19.5) / 9),
+          palette: TEST_PALETTES[0]!,
+          params,
+          seed: 'scale',
+          bleed: 0.08,
+        }),
+        COMMON,
+      ).pixels;
+    return meanChannelDiff(shot(COMMON), shot(COMMON * 4));
+  };
+
+  for (const g of ALL_GENERATORS) {
+    it(`${g.id} draws the same picture at ${COMMON}px and ${COMMON * 4}px`, () => {
+      const d = drift(g, baseParams(g));
+      expect(d, `${g.id} renders differently at the two sizes: mean channel difference ${d.toFixed(2)}`).toBeLessThan(
+        MAX_DRIFT,
+      );
+    });
+  }
+
+  /**
+   * The default phyllotaxis shape is a filled dot, which has no stroke, so the
+   * loop above never touches the ring path at all. Its stroke width used to be
+   * floored at an absolute 0.35px, which is a different fraction of the canvas
+   * at every size.
+   *
+   * The raster comparison above is the wrong instrument for this one, and
+   * writing it that way first produced a test that could not fail: at 216px
+   * only 56% of rings sit on the old floor and the excess is a fraction of a
+   * pixel, which resampling swallows whole. Measure the quantity that is
+   * actually wrong instead — stroke width as a fraction of the canvas — and at
+   * the size where it bites, the 108px gallery thumbnail. With the absolute
+   * floor, 100% of rings sit on it at 108px and none do at 864px, so the mean
+   * relative width is 3.24e-3 against 1.40e-3, a ratio of 2.31. With a relative
+   * floor both sizes read 1.40e-3. The bound is 1.2.
+   */
+  it('phyllotaxis draws rings at the same relative weight at 108px and 864px', () => {
+    const g = ALL_GENERATORS.find((x) => x.id === 'phyllotaxis')!;
+    const params = { ...baseParams(g), shape: 'ring', dotScale: 0.25, count: 4200 };
+    const meanRelativeWidth = (w: number): number => {
+      const h = Math.round((w * 19.5) / 9);
+      const svg = renderToSvg({ generator: g, width: w, height: h, palette: TEST_PALETTES[0]!, params, seed: 'scale', bleed: 0.08 });
+      const widths = [...svg.matchAll(/stroke-width="([\d.]+)"/g)].map((m) => Number(m[1]));
+      expect(widths.length, 'the ring shape emitted no strokes to measure').toBeGreaterThan(100);
+      return widths.reduce((a, b) => a + b, 0) / widths.length / Math.min(w, h);
+    };
+    const small = meanRelativeWidth(108);
+    const big = meanRelativeWidth(864);
+    const ratio = small / big;
+    expect(ratio, `phyllotaxis rings are ${ratio.toFixed(2)}x heavier at 108px than at 864px, relative to the canvas`).toBeLessThan(1.2);
+  });
 });

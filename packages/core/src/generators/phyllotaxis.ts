@@ -19,6 +19,22 @@ Dot size is tied to the local packing rather than being constant. Seeds near the
 
 const GOLDEN_ANGLE = 137.50776405003785;
 
+/**
+ * Both noise fields are sampled in canvas-relative units, never in pixels.
+ *
+ * They used to be keyed straight off pixel coordinates — `r * 0.01` and
+ * `x * 0.004` — which meant a 108px thumbnail sampled a field thirteen times
+ * coarser than a 1399px export and drew a different picture. Rasterised to a
+ * common width, the two disagreed by 9.55 mean levels per channel against a
+ * floor of 0.23 for the same render at two adjacent sizes.
+ *
+ * The constants are the old pixel rates times 430, the preview width, so a
+ * 430px-wide render is unchanged and every other size now matches it rather
+ * than drifting away from it.
+ */
+const JITTER_FIELD = 4.3;
+const COLOR_FIELD = 1.72;
+
 export const phyllotaxis: Generator = {
   id: 'phyllotaxis',
   name: 'Phyllotaxis',
@@ -53,6 +69,7 @@ export const phyllotaxis: Generator = {
     const { width: w, height: h, palette, params, rng, safeZones } = ctx;
     const noise = createNoise2D(rng);
     const minDim = Math.min(w, h);
+    const aspect = h / Math.max(1, w);
 
     const count = Math.round(pNum(params, 'count', 1800));
     const detune = pNum(params, 'detune', 0);
@@ -110,7 +127,8 @@ export const phyllotaxis: Generator = {
       const spacing = Math.max(minDim * 0.002, c * 1.7725 * Math.pow(Math.max(1, i), exponent - 0.5));
 
       if (jitter > 0) {
-        const n = noise.gradient(Math.cos(theta) * r * 0.01 + 5, Math.sin(theta) * r * 0.01 - 2);
+        const rn = (r / minDim) * JITTER_FIELD;
+        const n = noise.gradient(Math.cos(theta) * rn + 5, Math.sin(theta) * rn - 2);
         r += n * spacing * jitter * 1.6;
       }
 
@@ -128,7 +146,9 @@ export const phyllotaxis: Generator = {
       const rad = clamp(spacing * 0.42 * dotScale * grow * (0.34 + 0.66 * q), minDim * 0.0008, minDim * 0.07);
 
       const tone = clamp(
-        colorSpread * (0.62 * (1 - depth) + 0.38 * (1 - t)) + (1 - colorSpread) * 0.35 + noise.value(x * 0.004, y * 0.004) * 0.07,
+        colorSpread * (0.62 * (1 - depth) + 0.38 * (1 - t)) +
+          (1 - colorSpread) * 0.35 +
+          noise.value((x / w) * COLOR_FIELD, (y / h) * COLOR_FIELD * aspect) * 0.07,
         0,
         1,
       );
@@ -137,7 +157,11 @@ export const phyllotaxis: Generator = {
 
       if (shape === 'ring') {
         (buckets[band] as string[]).push(
-          el('circle', { cx: num(x, 1), cy: num(y, 1), r: num(rad, 2), 'stroke-width': num(Math.max(0.35, rad * 0.42), 2), 'stroke-opacity': opacity }),
+          // The floor is relative, like the radius clamp above it. An absolute
+          // 0.35px put 100% of ring strokes on the floor at 108px and none at
+          // 1399px, so the thumbnail drew its rings about four times heavier
+          // than the export did.
+          el('circle', { cx: num(x, 1), cy: num(y, 1), r: num(rad, 2), 'stroke-width': num(Math.max(minDim * 0.0008, rad * 0.42), 2), 'stroke-opacity': opacity }),
         );
       } else if (shape === 'petal') {
         const deg = (theta * 180) / Math.PI;
