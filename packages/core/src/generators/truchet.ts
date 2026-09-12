@@ -11,7 +11,7 @@ A Truchet tile is a square with an asymmetric mark on it — Sébastien Truchet�
 
 Three tile sets are offered here and they behave quite differently. **Quarter arcs** join edge midpoints with two 90° curves centred on opposite corners, so every cell edge is a connection point and the marks meet: the result is a tangle of closed loops. The corner is the whole trick — two circles of a given radius pass through any pair of points, and centring these on the cell's middle instead produces marks that still meet at the edges but can never curl around a grid vertex, so no loop, half circle or full circle ever forms. **Diagonals** connect corners instead, which means paths meet at cell corners rather than edges and the tiling reads as a lattice of switchbacks rather than as loops. **Triangles** fill half of each cell, which turns the whole thing from line work into a mass of light and dark, and is by far the strongest option at low densities.
 
-Two controls decide how much the arcs behave like a single continuous system. **Open ends** drops marks, so paths stop rather than always continuing; a field with nothing dropped can only close into loops or run off the canvas, which reads as busier than it is. **Arc count** replaces each single quarter arc with a fan of concentric ones sharing the same corner. Because a neighbour's fan is centred on that same physical point whenever the rotations agree, every radius in the fan meets its opposite number across the edge and the marks become nested ribbons; where the rotations disagree, the lines simply stop. Both of the cell’s marks are fanned, and the two sets stay clear of each other because the radii stop where circles centred on opposite corners would touch; carried past that point they would cross, and the result is moiré rather than pattern.
+Two controls decide how much the arcs behave like a single continuous system. **Open ends** drops marks, so paths stop rather than always continuing; a field with nothing dropped can only close into loops or run off the canvas, which reads as busier than it is. **Divisions** replaces each single quarter arc with a fan of concentric ones sharing the same corner. Because a neighbour's fan is centred on that same physical point whenever the rotations agree, every radius in the fan meets its opposite number across the edge and the marks become nested ribbons; where the rotations disagree, the lines simply stop. Both of the cell’s marks are fanned, and the two sets stay clear of each other because the radii stop where circles centred on opposite corners would touch; carried past that point they would cross, and the result is moiré rather than pattern.
 
 On the diagonal set the same control does something structurally different, and something the arcs cannot quite manage. The single corner-to-corner line becomes a family of parallel chords spaced one cell width over the count — the only spacing that tiles, because it puts every crossing at a multiple of itself along each edge, and puts them there in both rotations. Where a fan only meets its neighbour when the two cells agree on a corner, every chord here finds its partner across every edge whichever way the cell beyond it happens to be turned, provided the two cells are the same size. Subdivision is the exception and a visible one: a quartered cell draws its family at half the spacing, so half of its crossings meet nothing and the finer patch is edged with stopped lines — which is a good part of why a subdivided passage reads as a patch rather than as more of the same weave. Past three or four the cells stop reading as cells at all and the grid becomes a woven field of chevrons and nested diamonds, which is a different pattern from the maze of switchbacks a count of one gives you.
 
@@ -352,7 +352,7 @@ export const truchet: Generator = {
 
       const a = rot % 2 === 0;
 
-      // Arc count means something here too: the single corner-to-corner
+      // Divisions means something here too: the single corner-to-corner
       // diagonal becomes a family of parallel chords at spacing s/n.
       //
       // The spacing is what makes it tile, and s/n is the only choice that
@@ -402,7 +402,7 @@ export const truchet: Generator = {
 
       // Drawn unconditionally so the count does not reorder the stream: a
       // decision taken here shifts every rotation and colour after it, and
-      // nudging Arc count would reshuffle the whole image rather than add to
+      // nudging Divisions would reshuffle the whole image rather than add to
       // it. The spur only survives on the single-line tile, where it is what
       // stops a plain lattice reading as graph paper; a family already has
       // that interest, and a stray mark across it at 45 degrees is the one
