@@ -47,6 +47,38 @@ test.describe('editor', () => {
     await expect(page.getByTestId('seed-input')).not.toHaveValue('a-deliberate-seed');
   });
 
+  // Two controls touched inside one debounce window. The commit used to keep
+  // only its newest argument, so the seed typed a moment earlier was dropped
+  // and the field, the render and the share link stopped agreeing with each
+  // other. Both of these have to interleave the two changes: doing either one
+  // alone passes against the bug, which is why the suite missed it.
+  test('a change to one control does not discard a pending change to another', async ({ page }) => {
+    await page.goto('/p/truchet');
+    await settled(page);
+
+    // Starts a 260ms debounce; the slider lands well inside it.
+    await page.getByTestId('seed-input').fill('mountain');
+    const slider = page.getByLabel('Grid density');
+    await slider.focus();
+    await page.keyboard.press('ArrowRight');
+    await settled(page);
+
+    await expect(page.getByTestId('seed-input')).toHaveValue('mountain');
+    expect(page.url()).toContain('s=mountain');
+  });
+
+  test('shuffling the seed is not undone by the one being typed', async ({ page }) => {
+    await page.goto('/p/truchet');
+    await settled(page);
+
+    await page.getByTestId('seed-input').fill('half-typed');
+    await page.getByTestId('shuffle-seed').click();
+    await settled(page);
+
+    await expect(page.getByTestId('seed-input')).not.toHaveValue('half-typed');
+    expect(page.url()).not.toContain('s=half-typed');
+  });
+
   test('the share URL round-trips to an identical render', async ({ page, context }) => {
     await page.goto('/p/ridgelines');
     await settled(page);

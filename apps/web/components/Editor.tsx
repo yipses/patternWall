@@ -69,6 +69,16 @@ export function Editor({ generatorId }: { generatorId: string }) {
     seed: initialConfig(generator.id).seed,
   }));
   const settleRef = useRef<number | null>(null);
+  // What the pending commit will apply when its timer fires. Held separately
+  // from the timer because a debounced commit must not throw away a change to a
+  // *different* field: settle() used to keep only its latest argument, so
+  // typing a seed and then touching a slider inside the seed's 260ms window
+  // committed the slider and silently dropped the seed. The render, the share
+  // link and Copy link then disagreed with the seed field on screen, and
+  // because `dirty` never cleared the preview stayed at draft resolution until
+  // the seed was touched again. Every commit path merges into this patch, so
+  // the last write to each field wins rather than the last write to any field.
+  const pendingRef = useRef<Partial<{ params: Record<string, ParamValue>; palette: Palette; seed: string }>>({});
 
   // `params` captured in a callback is the value from the render that created
   // that callback. Selects and switches fire onChange and onCommit in the same
@@ -78,31 +88,59 @@ export function Editor({ generatorId }: { generatorId: string }) {
   // change, so the commit always sees the newest params.
   const latestParams = useRef(params);
 
+  type Patch = Partial<{ params: Record<string, ParamValue>; palette: Palette; seed: string }>;
+
+  /** Drain the pending patch into `committed`. The only writer of committed state. */
+  const flush = useCallback(() => {
+    const patch = pendingRef.current;
+    pendingRef.current = {};
+    setCommitted((prev) => ({
+      params: patch.params ?? prev.params,
+      palette: patch.palette ?? prev.palette,
+      seed: patch.seed ?? prev.seed,
+    }));
+  }, []);
+
+  const settle = useCallback(
+    (next: Patch, delay: number) => {
+      pendingRef.current = { ...pendingRef.current, ...next };
+      if (settleRef.current !== null) window.clearTimeout(settleRef.current);
+      settleRef.current = window.setTimeout(() => {
+        settleRef.current = null;
+        flush();
+      }, delay);
+    },
+    [flush],
+  );
+
+  /**
+   * Commit without waiting. Shuffle, Reset and a decoded share link all want
+   * this, and all three used to call setCommitted directly — which left any
+   * pending patch alive to overwrite them a beat later. Shuffling the seed
+   * mid-type would take, then be replaced by the half-typed seed.
+   */
+  const commitNow = useCallback(
+    (next: Patch) => {
+      pendingRef.current = { ...pendingRef.current, ...next };
+      if (settleRef.current !== null) {
+        window.clearTimeout(settleRef.current);
+        settleRef.current = null;
+      }
+      flush();
+    },
+    [flush],
+  );
+
   useEffect(() => {
     const decoded = decodeConfig(generator.id, typeof window === 'undefined' ? '' : window.location.search);
     setSeed(decoded.config.seed);
     latestParams.current = decoded.config.params;
     setParams(decoded.config.params);
     setPalette(decoded.config.palette);
-    setCommitted({ params: decoded.config.params, palette: decoded.config.palette, seed: decoded.config.seed });
+    commitNow({ params: decoded.config.params, palette: decoded.config.palette, seed: decoded.config.seed });
     setNotes(decoded.notes);
     setCollectedCount(loadCollected().filter((c) => c.generatorId === generator.id).length);
   }, [generator.id]);
-
-  const settle = useCallback(
-    (next: { params?: Record<string, ParamValue>; palette?: Palette; seed?: string }, delay: number) => {
-      if (settleRef.current !== null) window.clearTimeout(settleRef.current);
-      settleRef.current = window.setTimeout(() => {
-        setCommitted((prev) => ({
-          params: next.params ?? prev.params,
-          palette: next.palette ?? prev.palette,
-          seed: next.seed ?? prev.seed,
-        }));
-        settleRef.current = null;
-      }, delay);
-    },
-    [],
-  );
 
   useEffect(() => () => {
     if (settleRef.current !== null) window.clearTimeout(settleRef.current);
@@ -264,7 +302,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
                 onClick={() => {
                   const v = randomSeed();
                   setSeed(v);
-                  setCommitted((prev) => ({ ...prev, seed: v }));
+                  commitNow({ seed: v });
                 }}
                 data-testid="shuffle-seed"
               >
@@ -338,7 +376,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
                   const next = defaultParams(generator);
                   latestParams.current = next;
                   setParams(next);
-                  setCommitted((prev) => ({ ...prev, params: next }));
+                  commitNow({ params: next });
                 }}
               >
                 Reset to defaults
