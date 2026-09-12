@@ -436,3 +436,9 @@ short config IDs and per-config iCloud shortcuts are the next phase.
 Known weak points are listed at the end of the README. The main ones: rendering
 is synchronous on the main thread, and PNG quantisation works on pixels rather
 than on the palette the generator used.
+
+One unresolved intermittent: `quality.spec.ts`'s "nothing is written to the
+console" test has twice failed with React error #418, a text hydration
+mismatch, and has not been reproducible since. The note on that test records
+what was ruled out. Both sightings were during unrelated work, so do not assume
+your change caused it — check the note before spending an afternoon on it.

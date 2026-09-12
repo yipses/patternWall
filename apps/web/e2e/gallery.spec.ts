@@ -52,6 +52,46 @@ test.describe('gallery', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(first.name);
   });
 
+  // Stored state is the one input this app takes that it did not write itself:
+  // an older schema, a hand-edited localStorage, a half-finished write. Both of
+  // these shapes used to replace the entire page with React's "Application
+  // error" screen, because the old filters checked one field and let everything
+  // else through. The assertion is deliberately about the *valid* item still
+  // being there — surviving the bad entry is the point, not merely not crashing.
+  test('a collected item with no palette does not take the page down', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.addInitScript(() => {
+      window.localStorage.setItem(
+        'patternwall.collected.v1',
+        JSON.stringify([
+          { id: 'wrecked', generatorId: 'truchet', seed: 'no-palette-here', savedAt: 2 },
+          { id: 'intact', generatorId: 'truchet', seed: 'still-here', params: {}, savedAt: 1, palette: { id: 'obsidian', name: 'Obsidian', background: '#0b0b0d', ink: '#f4f2ec', accents: ['#ff7a3d'], mode: 'dark', tags: [] } },
+        ]),
+      );
+    });
+    await page.goto('/collected');
+    await expect(page.getByRole('heading', { level: 1, name: 'Collected' })).toBeVisible();
+    await expect(page.getByText('still-here')).toBeVisible();
+    await expect(page.getByText('no-palette-here')).toBeVisible();
+    expect(errors, `page threw: ${errors.join(' | ')}`).toEqual([]);
+  });
+
+  test('a saved palette with no accents does not take the editor down', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.addInitScript(() => {
+      window.localStorage.setItem(
+        'patternwall.palettes.v1',
+        JSON.stringify([{ id: 'half-written', name: 'Half written', background: '#101014' }]),
+      );
+    });
+    await page.goto('/p/truchet');
+    await page.getByRole('tab', { name: 'Palette' }).click();
+    await expect(page.getByText('Half written')).toBeVisible();
+    expect(errors, `page threw: ${errors.join(' | ')}`).toEqual([]);
+  });
+
   test('the collected view starts empty and points somewhere', async ({ page }) => {
     await page.goto('/collected');
     await expect(page.getByText('Nothing collected yet.')).toBeVisible();
