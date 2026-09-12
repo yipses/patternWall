@@ -231,6 +231,25 @@ having to accommodate the stroke.
 however finely the palette is resolved into steps. Continuous colour needs the
 paint to vary across the canvas — a gradient — not more buckets.
 
+**`hashSeed` barely diffuses its last character, and truchet depends on it.**
+It is FNV-1a, which ends on a multiply, so two strings differing only in the
+final character land about 0.014 of the range apart. Truchet's `keep()` salts
+that string per mark, which reads like a per-mark decision and is not one: the
+two salts fall the same side of any threshold 98.8% of the time, so `openEnds`
+empties whole cells. That is the behaviour the tiling needs — a cell left with
+one mark covers two of its four edge midpoints, the scattered-arcs failure the
+two-mark design exists to avoid — so giving `hashSeed` a proper finalising mix,
+which would otherwise look like a clean improvement, would silently turn a
+working control into one that shreds cells. Either leave it, or make the
+whole-cell intent explicit in truchet first.
+
+**A comment can be the last surviving copy of a reverted design.** The arcs
+branch carried four layers of commentary from successive attempts, two of them
+describing code that had been reverted and contradicting the layer below. Each
+was true when written. Prose near a change is part of the change: when you
+revert, revert what explains it too, and when you read a comment as evidence,
+check it against the code.
+
 ---
 
 ## Truchet, as settled
