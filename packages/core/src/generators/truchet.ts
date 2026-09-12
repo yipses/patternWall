@@ -29,10 +29,12 @@ type TileKind = 'arcs' | 'diagonals' | 'triangles';
 const COLOR_FIELD = 1.6;
 
 /**
- * Triangles are laid down just short of opaque, so where two of them meet the
- * seam between the tiles reads as a change in the mass rather than as a hard
- * cut. It is a constant rather than a control: every value that was worth
- * having sat within a hair of this one.
+ * Triangles are laid down just short of opaque, so a mass of them keeps some of
+ * the background's depth rather than going flat. This is what the old
+ * expression settled on for a full-size tile in the unquieted part of the
+ * canvas, which was most of them; the two terms that moved it — the quiet-top
+ * factor and a subdivision depth bonus — both went with the controls that fed
+ * them, so there is nothing left for it to vary with.
  */
 const TRIANGLE_FILL_OPACITY = '0.9';
 
