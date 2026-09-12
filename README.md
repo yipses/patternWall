@@ -126,10 +126,13 @@ palette does not contain, which quietly replaces the chosen palette with a gradi
 ### Composition awareness
 
 `RenderContext` carries `safeZones` — the boxes iOS reserves for the clock, the widget row and the
-bottom controls — already offset for the export bleed. Every generator takes a `quietTop` parameter
-and multiplies its local density, weight or opacity by `quietFactor(...)`, so one honest control
-governs how far the pattern gets out of the clock's way. Detail and contrast are pushed into the
-lower canvas, where the app grid and dock live.
+bottom controls — already offset for the export bleed. A generator whose density varies across the
+canvas takes a `quietTop` parameter and multiplies its local density, weight or opacity by
+`quietFactor(...)`, so one honest control governs how far the pattern gets out of the clock's way.
+Detail and contrast are pushed into the lower canvas, where the app grid and dock live. Truchet is
+the exception and deliberately so: a tiling is uniform by construction, and dimming its upper third
+read as a horizontal seam rather than as breathing room, so the control was removed rather than
+tuned.
 
 ### Bleed
 
@@ -158,8 +161,10 @@ What the contract asks of you:
   and a 1496px export. Never gate a decision on an absolute pixel threshold — the thumbnail and the
   export would then be different pictures, and if the decision touches `ctx.rng` it desynchronises
   everything after it. `packages/core/test/determinism.test.ts` enforces this.
-- **Compose portrait-first.** Tune for 9:19.5. Take a `quietTop` number param and apply
-  `quietFactor(y, height, quietTop, ctx.safeZones)`.
+- **Compose portrait-first.** Tune for 9:19.5. Where the pattern's density is free to vary across
+  the canvas, take a `quietTop` number param and apply
+  `quietFactor(y, height, quietTop, ctx.safeZones)`. Where it is not — a uniform tiling, say — do
+  not fake it: a factor applied to a regular grid reads as a band, not as calm.
 - **Stay inside the vocabulary,** and emit numbers through `num()` so output stays byte-stable.
 - **Write the `description`.** Three to five paragraphs of plain-language prose explaining how the
   algorithm works and why the parameters are the ones they are. It is rendered on the pattern page

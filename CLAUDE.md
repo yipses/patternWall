@@ -99,8 +99,12 @@ Removing one is the same problem in reverse: everything after it shifts, so old
 links misread from that slot on. Removing `mixed` from a select was safe, since
 dropping the *last* option only makes a stale index fall back to the default;
 removing the `rowVariation` param was not, and every truchet link made before it
-now reads its values one slot out. If links ever need to survive, the encoding
-needs a version or named keys — it has neither today.
+now reads its values one slot out. Four more went the same way in one go —
+`gap`, `subdivide`, `quietTop`, `openEnds` — knowingly, because nothing outside
+this repo had links worth keeping yet. That window is closing: the moment
+someone bookmarks a configuration, this stops being a free operation. If links
+ever need to survive, the encoding needs a version or named keys — it has
+neither today.
 
 ---
 
@@ -282,6 +286,15 @@ below. Two plausible fixes changed nothing visible: sampling the factor per mark
 instead of per tile, and easing the curve with smoothstep. Both are better
 arithmetic; neither was the fault. The feather is now 30%.
 
+Truchet no longer carries the control at all, and that is the honest end of the
+story. A tiling is uniform by construction, so any factor keyed on height draws
+a horizontal band across a regular grid — a wider feather makes the band softer,
+not absent. The parameter survived three rounds of tuning because each round
+improved the arithmetic; it did not survive the question of whether the
+mechanism could produce the result. `quietFactor` stays, and the other three
+generators still use it: their density genuinely varies across the canvas, so
+thinning the top reads as composition rather than as a stripe.
+
 The trap either side of that was measurement. A per-row brightness profile of a
 tiling is dominated by the tiling's own periodic stripes, so its worst row-to-row
 step sat at 20-30x the mean whatever was done to the ramp, and it moved in the
@@ -293,17 +306,16 @@ disagree, believe the picture: crop the region and look at it.
 however finely the palette is resolved into steps. Continuous colour needs the
 paint to vary across the canvas — a gradient — not more buckets.
 
-**`hashSeed` barely diffuses its last character, and truchet depends on it.**
-It is FNV-1a, which ends on a multiply, so two strings differing only in the
-final character land about 0.014 of the range apart. Truchet's `keep()` salts
-that string per mark, which reads like a per-mark decision and is not one: the
-two salts fall the same side of any threshold 98.8% of the time, so `openEnds`
-empties whole cells. That is the behaviour the tiling needs — a cell left with
-one mark covers two of its four edge midpoints, the scattered-arcs failure the
-two-mark design exists to avoid — so giving `hashSeed` a proper finalising mix,
-which would otherwise look like a clean improvement, would silently turn a
-working control into one that shreds cells. Either leave it, or make the
-whole-cell intent explicit in truchet first.
+**`hashSeed` barely diffuses its last character.** It is FNV-1a, which ends on
+a multiply, so two strings differing only in the final character land about
+0.014 of the range apart. Salting one string per variant therefore does not give
+you independent decisions: the salts fall the same side of any threshold 98.8%
+of the time. Truchet's removed `openEnds` relied on exactly that accident — its
+`keep()` salted per mark and got a per-cell decision, which is what the tiling
+needed, so a proper finalising mix would have turned a working control into one
+that shreds cells. That coupling is gone with the control, and `hashSeed` is now
+free to be fixed; the general warning is not. If you want per-item decisions from
+it, vary more than the last character, or mix the result.
 
 **A comment can be the last surviving copy of a reverted design.** The arcs
 branch carried four layers of commentary from successive attempts, two of them
@@ -352,8 +364,10 @@ result. Each was arrived at by breaking it first.
   edge near the other, so same-rotation neighbours miss each other entirely
   below half width and 62% of crossings stop dead along the boundary. The
   extent is not free — it is fixed by the lattice that makes the family join.
-  Subdivision is the standing exception for both sets: a quartered cell has
-  half the spacing, so only every second crossing meets a full-size neighbour.
+  The one thing that used to break this was subdivision, whose quartered cells
+  drew at half the spacing so only every second crossing met a full-size
+  neighbour; with it gone every cell is the same size and the lattice holds
+  everywhere.
 
 - **Triangles divide on that same lattice.** Every rotation lists its
   right-angle corner first, so scaling about that vertex sweeps the hypotenuse
@@ -365,10 +379,15 @@ result. Each was arrived at by breaking it first.
   just reassembles the triangle. `weight` is still inert on this set — it has
   no stroke — which is the one remaining dead control in truchet.
 
-Controls: density, tileSet, weight (no effect on triangles), subdivide,
-colorSpread, quietTop, gap, openEnds, arcCount (labelled Divisions; governs all
-three tile sets), arcSpacing (spread; quarter arcs only), colorBlend. `mixed` and row weight variation were
-removed as not worth their slots.
+Controls: density, tileSet, weight (no effect on triangles), colorSpread,
+arcCount (labelled Divisions; governs all three tile sets), arcSpacing (spread;
+quarter arcs only), colorBlend. Removed as not worth their slots: `mixed`, row
+weight variation, `gap`, `subdivide`, `quietTop` and `openEnds`. The last four
+went together and each had the same shape of problem — a knob whose effect was
+either invisible (`gap`), a band across a uniform grid (`quietTop`), a patch
+that broke the lattice it sat in (`subdivide`), or an effect the tiling already
+produced structurally (`openEnds`). Every stroke is now one width and fully
+opaque, and the triangles fill at a flat 0.9.
 
 ---
 
