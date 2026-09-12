@@ -1,23 +1,20 @@
 import { accentAt, accentRamp } from '../palette.js';
 import { hexToOklch, mixOklch, oklchToHex } from '../color.js';
 import { createNoise2D } from '../noise.js';
-import { hashSeed } from '../rng.js';
-import { clamp, quietFactor, smoothstep } from '../geometry.js';
+import { clamp } from '../geometry.js';
 import { el, num, svgRoot } from '../svg.js';
-import { pBool, pNum, pStr, type Generator, type RenderContext } from '../types.js';
+import { pNum, pStr, type Generator, type RenderContext } from '../types.js';
 
 const description = `
 A Truchet tile is a square with an asymmetric mark on it — Sébastien Truchet’s original was a square split into two triangles — and a Truchet tiling is what you get when you fill a grid with copies of that square in random rotations. The remarkable thing is how little you have to specify. One tile, four rotations and a coin flip per cell produce paths that wander across the whole grid, close into loops, and look considered in a way that no part of the rule accounts for.
 
 Three tile sets are offered here and they behave quite differently. **Quarter arcs** join edge midpoints with two 90° curves centred on opposite corners, so every cell edge is a connection point and the marks meet: the result is a tangle of closed loops. The corner is the whole trick — two circles of a given radius pass through any pair of points, and centring these on the cell's middle instead produces marks that still meet at the edges but can never curl around a grid vertex, so no loop, half circle or full circle ever forms. **Diagonals** connect corners instead, which means paths meet at cell corners rather than edges and the tiling reads as a lattice of switchbacks rather than as loops. **Triangles** fill half of each cell, which turns the whole thing from line work into a mass of light and dark, and is by far the strongest option at low densities.
 
-Two controls decide how much the arcs behave like a single continuous system. **Open ends** drops marks, so paths stop rather than always continuing; a field with nothing dropped can only close into loops or run off the canvas, which reads as busier than it is. **Divisions** replaces each single quarter arc with a fan of concentric ones sharing the same corner. Because a neighbour's fan is centred on that same physical point whenever the rotations agree, every radius in the fan meets its opposite number across the edge and the marks become nested ribbons; where the rotations disagree, the lines simply stop. Both of the cell’s marks are fanned, and the two sets stay clear of each other because the radii stop where circles centred on opposite corners would touch; carried past that point they would cross, and the result is moiré rather than pattern.
+**Divisions** decides how much the arcs behave like a single continuous system. It replaces each single quarter arc with a fan of concentric ones sharing the same corner. Because a neighbour's fan is centred on that same physical point whenever the rotations agree, every radius in the fan meets its opposite number across the edge and the marks become nested ribbons; where the rotations disagree, the lines simply stop. Those stopped ends are the structure of the tiling rather than an effect applied to it — a rotation that faces away from its neighbour terminates a path, and no probability control is needed to produce one. Both of the cell’s marks are fanned, and the two sets stay clear of each other because the radii stop where circles centred on opposite corners would touch; carried past that point they would cross, and the result is moiré rather than pattern.
 
-On the diagonal set the same control does something structurally different, and something the arcs cannot quite manage. The single corner-to-corner line becomes a family of parallel chords spaced one cell width over the count — the only spacing that tiles, because it puts every crossing at a multiple of itself along each edge, and puts them there in both rotations. Where a fan only meets its neighbour when the two cells agree on a corner, every chord here finds its partner across every edge whichever way the cell beyond it happens to be turned, provided the two cells are the same size. Subdivision is the exception and a visible one: a quartered cell draws its family at half the spacing, so half of its crossings meet nothing and the finer patch is edged with stopped lines — which is a good part of why a subdivided passage reads as a patch rather than as more of the same weave. Past three or four the cells stop reading as cells at all and the grid becomes a woven field of chevrons and nested diamonds, which is a different pattern from the maze of switchbacks a count of one gives you.
+On the diagonal set the same control does something structurally different, and something the arcs cannot quite manage. The single corner-to-corner line becomes a family of parallel chords spaced one cell width over the count — the only spacing that tiles, because it puts every crossing at a multiple of itself along each edge, and puts them there in both rotations. Where a fan only meets its neighbour when the two cells agree on a corner, every chord here finds its partner across every edge whichever way the cell beyond it happens to be turned. Past three or four the cells stop reading as cells at all and the grid becomes a woven field of chevrons and nested diamonds, which is a different pattern from the maze of switchbacks a count of one gives you.
 
 The triangles divide too, and on that same lattice. Each rotation of the tile is a half cell with its right angle at one corner, so scaling it about that corner sweeps the hypotenuse across the cell and a slice at k/n lands exactly where the diagonal family crosses. Filling every other band turns the solid half-cell into ribbons, and because the band edges fall where a neighbour puts its own, the ribbons run on through the grid instead of stopping at it — which is why raising this makes the tile set agree with itself across edges more often than the solid version does, not less.
-
-Subdivision is where this implementation departs from the classical rule. A fraction of cells are replaced by a 2×2 block of quarter-size tiles, and that fraction rises toward the bottom of the canvas. A uniform grid has a uniform level of interest, which is exactly wrong for a wallpaper: the eye wants somewhere to rest and somewhere to look. Pushing the fine detail downward puts the busy passage where the app icons and the dock live, and leaves the clock sitting on something calm.
 
 Grid **density** interacts with everything. Below about six columns the tiles are large enough that you read each one individually and the tile set matters enormously; above about twenty you stop seeing tiles at all and start seeing a woven texture, at which point stroke weight matters more than which set you chose.
 `.trim();
@@ -30,6 +27,14 @@ type TileKind = 'arcs' | 'diagonals' | 'triangles';
  * spread across many cells instead of landing on a cell edge.
  */
 const COLOR_FIELD = 1.6;
+
+/**
+ * Triangles are laid down just short of opaque, so where two of them meet the
+ * seam between the tiles reads as a change in the mass rather than as a hard
+ * cut. It is a constant rather than a control: every value that was worth
+ * having sat within a hair of this one.
+ */
+const TRIANGLE_FILL_OPACITY = '0.9';
 
 export const truchet: Generator = {
   id: 'truchet',
@@ -52,31 +57,23 @@ export const truchet: Generator = {
       description: 'Arcs make continuous loops, diagonals make switchbacks, triangles make mass instead of line.',
     },
     { key: 'weight', label: 'Stroke weight', type: 'number', min: 0.02, max: 0.5, step: 0.01, default: 0.16, description: 'Line width as a fraction of the cell. Above about 0.4 the arcs start to touch and read as solid.' },
-    { key: 'subdivide', label: 'Subdivision', type: 'number', min: 0, max: 1, step: 0.02, default: 0.35, description: 'Chance that a cell becomes a 2x2 block of smaller tiles. Weighted toward the lower canvas.' },
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'How much of the colour comes from the drifting field rather than from height. At zero the palette runs top to bottom; at one it pools into regions that wander across the image.' },
-    { key: 'quietTop', label: 'Quiet top', type: 'number', min: 0, max: 1, step: 0.01, default: 0.55, description: 'Thins the strokes and suppresses subdivision where iOS draws the clock.' },
-    { key: 'gap', label: 'Cell gap', type: 'boolean', default: false, description: 'Inset every tile slightly so the grid itself becomes visible as white space.' },
-    { key: 'openEnds', label: 'Open ends', type: 'number', min: 0, max: 0.8, step: 0.02, default: 0, description: 'Chance a cell is left empty, breaking the surface up. A cell’s two marks go together, so this leaves a real hole rather than a half-covered cell — and the ends in the pattern come for free either way, wherever two neighbours face different corners.' },
     { key: 'arcCount', label: 'Divisions', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'How many parts each cell’s mark is divided into. Quarter arcs become concentric, added either side of the radius that joins the neighbouring cells, and how far they reach is Arc spread’s job rather than this one. A diagonal becomes a family of parallel chords across the cell. A triangle is sliced into bands parallel to its hypotenuse with every other one filled, so the solid mass becomes ribbons. All three divide on a spacing that puts each part’s edges where a cell of the same size puts its own, so raising this adds detail inside a mark that keeps its size, and any stroke thins to the gap it leaves.' },
     { key: 'arcSpacing', label: 'Arc spread', type: 'number', min: 0.15, max: 1, step: 0.05, default: 1, description: 'How much of the cell the rings reach across. The gap between them is worked out from that and the division count, so every arc you ask for fits, and the stroke thins if it has to rather than closing the rings into a solid block. Quarter arcs only: a family of diagonals has no say in how far it spreads, because the spacing that makes it meet its neighbours is the spacing that fills the cell.' },
     { key: 'colorBlend', label: 'Colour blend', type: 'number', min: 0, max: 1, step: 0.02, default: 1, description: 'How finely the palette is resolved between its accents. At zero only the accents themselves are used, so regions of colour meet at hard edges. Raise it and the steps between them are filled in, so one region eases into the next.' },
   ],
 
   render(ctx: RenderContext): string {
-    const { width: w, height: h, palette, params, rng, safeZones } = ctx;
+    const { width: w, height: h, palette, params, rng } = ctx;
     const noise = createNoise2D(rng);
 
     const cols = Math.max(2, Math.round(pNum(params, 'density', 8)));
     const tileSet = pStr(params, 'tileSet', 'arcs');
     const weight = pNum(params, 'weight', 0.16);
-    const subdivide = pNum(params, 'subdivide', 0.35);
     const colorSpread = pNum(params, 'colorSpread', 0.6);
     const colorBlend = pNum(params, 'colorBlend', 1);
-    const openEnds = pNum(params, 'openEnds', 0);
     const arcCount = Math.max(1, Math.round(pNum(params, 'arcCount', 1)));
     const arcSpacing = pNum(params, 'arcSpacing', 1);
-    const quietTop = pNum(params, 'quietTop', 0.55);
-    const gap = pBool(params, 'gap', false);
 
     const cell = w / cols;
     const rows = Math.ceil(h / cell) + 1;
@@ -145,29 +142,17 @@ export const truchet: Generator = {
       return Math.min(bands - 1, Math.floor(t * bands));
     };
 
-    const drawTile = (x: number, y: number, size: number, depth: number): void => {
+    const drawTile = (x: number, y: number, size: number): void => {
       const cy = y + size / 2;
-      // Quiet-top is read at each mark's own height, not once at the centre of
-      // the cell it sits in. quietFactor is smooth in y, but sampling it per
-      // tile quantises it to whole cell rows, and its feather is only 9% of the
-      // canvas — under two rows at nine columns — so the ramp it is supposed to
-      // draw lands as a step instead. Measured down a nine-column render, the
-      // largest row-to-row brightness change was 22.8 against a mean of 1.29,
-      // a hard horizontal seam 37% down the canvas exactly where the feather
-      // below the widget row should have been easing out.
-      //
-      // Every mark already computes a point for its colour — an arc's midpoint,
-      // a chord's midpoint, a band's centroid — so the same point sets its
-      // weight and opacity. Nothing here touches the seeded stream, so only the
-      // shading changes.
-      const qAt = (markY: number): number => quietFactor(markY, h, quietTop, safeZones);
-      const swAt = (markY: number): number => clamp(weight * s * (0.34 + 0.66 * qAt(markY)), s * 0.012, s * 0.62);
-      const opacityAt = (markY: number): string => num(clamp(0.16 + 0.84 * qAt(markY), 0.06, 1), 2);
-      const inset = gap ? size * 0.07 : 0;
-      const s = size - inset * 2;
-      const x0 = x + inset;
-      const y0 = y + inset;
+      const s = size;
+      const x0 = x;
+      const y0 = y;
       if (s <= 0.5) return;
+
+      // One stroke width for the whole tile. The lower bound keeps the lightest
+      // weight visible at small cell sizes; the upper one is only reachable by
+      // a fan thinning rule further down asking for more room than it has.
+      const sw = clamp(weight * s, s * 0.012, s * 0.62);
 
       const band = bandAt(x + size / 2, cy);
       const rot = rng.int(0, 3);
@@ -212,8 +197,6 @@ export const truchet: Generator = {
         const legA = tri[1] as [number, number];
         const legB = tri[2] as [number, number];
         const bands = Math.max(1, arcCount);
-        const fillOpacityAt = (markY: number): string =>
-          num(clamp(0.16 + 0.74 * qAt(markY) + depth * 0.08, 0.06, 1), 2);
 
         // t >= 1 returns the vertex itself rather than corner + (p - corner),
         // which is the same point in algebra and not always the same float. A
@@ -243,7 +226,7 @@ export const truchet: Generator = {
           (fillBuckets[bandIndex] as string[]).push(
             el('polygon', {
               points: ps.map((pt) => `${num(pt[0], 1)},${num(pt[1], 1)}`).join(' '),
-              'fill-opacity': fillOpacityAt(cy2 / ps.length),
+              'fill-opacity': TRIANGLE_FILL_OPACITY,
             }),
           );
         };
@@ -278,35 +261,6 @@ export const truchet: Generator = {
           return `M${num(x0 + rho, 1)} ${num(y0 + s, 1)}A${R} ${R} 0 0 0 ${num(x0, 1)} ${num(y0 + s - rho, 1)}`;
         };
 
-        // Whether a mark is kept is decided by hashing the tile's position
-        // rather than by drawing from the seeded stream. Two reasons: the
-        // decision has to be stable while the slider moves, so that opening the
-        // field up does not also reshuffle every rotation and colour
-        // underneath it; and a hash is independent per tile, where the value
-        // noise used elsewhere is smooth and would clear whole regions instead
-        // of scattering ends through the pattern.
-        // Indices in half-cells, never pixels. A pixel-keyed hash would drop
-        // different arcs in a 108px thumbnail than in a 1399px export, and the
-        // preview would stop being the thing you downloaded. Half-cells give
-        // whole numbers for both full tiles and the 2x2 subdivided ones.
-        const gx = Math.round((x / cell) * 2);
-        const gy = Math.round(((y - originY) / cell) * 2);
-        const gs = Math.round((size / cell) * 2);
-        //
-        // The salt is per mark but the decision is, in practice, per cell, and
-        // that is the behaviour to keep. hashSeed is FNV-1a, whose last step is
-        // a multiply: flipping the final character moves the result by about
-        // 0.014 of the range, so salts 1 and 2 fall the same side of any
-        // threshold 98.8% of the time and a cell almost always loses both marks
-        // or neither. That is what the tiling wants — a cell left with one mark
-        // covers two of its four edge midpoints, which is the scattered-arcs
-        // failure the two-mark design exists to avoid — so this is not a bug to
-        // fix here. It is worth knowing that giving hashSeed a proper
-        // finalising mix, which would otherwise look like a clean improvement,
-        // would silently turn Open ends into a control that shreds cells.
-        const keep = (salt: number): boolean =>
-          openEnds <= 0 || hashSeed(`${gx}:${gy}:${gs}:${salt}`) / 0x100000000 >= openEnds;
-
         // Two marks on opposite corners, the classical tile. One mark per cell
         // covers only two of the cell's four edge midpoints, so most edges have
         // nothing on the other side to meet and the tiling falls apart into
@@ -318,15 +272,13 @@ export const truchet: Generator = {
         // s/sqrt(2) is the ceiling because circles centred on opposite corners
         // meet once their radii sum past the diagonal, s*sqrt(2).
         //
-        // The radii are anchored on s/2 and grow in both directions from it,
-        // rather than nesting inward from the outer edge. An arc meets the
-        // shared edge at its own radius from the corner it is centred on, so
-        // two marks line up only when they are centred on the same end of that
-        // edge — except at s/2, which is equidistant from both and therefore
-        // joins whatever the neighbour's rotation is. A set that does not
-        // contain s/2 has no guaranteed connection anywhere, which is how
-        // filling the cell from the outside in silently disconnected the whole
-        // tiling.
+        // The radii are centred on s/2 and grow in both directions from it,
+        // rather than nesting inward from the outer edge — filling the cell from
+        // the outside in silently disconnected the whole tiling. What makes them
+        // join is that the set mirrors itself about s/2, which is derived where
+        // the set is built, below. (An earlier note here claimed the set had to
+        // *contain* s/2; it does not, and believing that shipped a round of
+        // bugs at even counts.)
         //
         // Every cell uses the same set, so a neighbour's arc is centred on the
         // same physical corner whenever the rotations agree and each arc meets
@@ -375,8 +327,7 @@ export const truchet: Generator = {
         // The stroke gives way to the gap rather than the other way round, so a
         // heavy weight thins to keep the rings readable instead of merging
         // them. A single arc has no neighbour to crowd and keeps its weight.
-        const fanSwAt = (markY: number): number =>
-          step > 0 ? Math.min(swAt(markY), step * 0.68) : swAt(markY);
+        const fanSw = step > 0 ? Math.min(sw, step * 0.68) : sw;
 
         // Each arc is coloured from the field at its own midpoint, not at the
         // tile's centre. Sampling once per tile and quantising the result gives
@@ -384,15 +335,14 @@ export const truchet: Generator = {
         // tiles can land on different steps and the whole cell boundary shows
         // as an edge.
         const corners: [0 | 1 | 2 | 3, 0 | 1 | 2 | 3] = rot % 2 === 0 ? [0, 2] : [1, 3];
-        corners.forEach((corner, markIndex) => {
-          if (!keep(markIndex + 1)) return;
+        corners.forEach((corner) => {
           for (const rho of radii) {
             if (rho < s * 0.015) continue;
             const k = rho * mid;
             const mx = corner === 1 || corner === 2 ? x0 + s - k : x0 + k;
             const my = corner === 2 || corner === 3 ? y0 + s - k : y0 + k;
             (strokeBuckets[bandAt(mx, my)] as string[]).push(
-              el('path', { d: arcPath(corner, rho), 'stroke-width': num(fanSwAt(my), 2), 'stroke-opacity': opacityAt(my) }),
+              el('path', { d: arcPath(corner, rho), 'stroke-width': num(fanSw, 2) }),
             );
           }
         });
@@ -415,11 +365,6 @@ export const truchet: Generator = {
       // unconditionally. Any other spacing crosses at points the neighbour has
       // nothing at, and the grid shows as a row of stopped lines.
       //
-      // Subdivision is the one exception, and it is not fixable from here: a
-      // quartered cell has half the cell width and therefore half the spacing,
-      // so only every second crossing lines up with a full-size neighbour. The
-      // arcs have the same seam for the same reason, and it is part of what
-      // makes a subdivided patch read as a patch.
       // Arc spread is deliberately not wired in here. Narrowing the family to
       // the chords nearest the diagonal looks like the obvious analogue of
       // what it does to the arcs, and it breaks the tiling: a cell crosses its
@@ -455,8 +400,7 @@ export const truchet: Generator = {
       // it. Thinning to `step` would still let a heavy stroke close the family
       // into a solid triangle.
       const perp = step * 0.70710678;
-      const lineSwAt = (markY: number): number =>
-        lines > 1 ? Math.min(swAt(markY), perp * 0.68) : swAt(markY);
+      const lineSw = lines > 1 ? Math.min(sw, perp * 0.68) : sw;
 
       // One path per chord, each coloured from the field at its own midpoint,
       // the way the arcs are. Colouring the whole cell from its centre was
@@ -481,35 +425,14 @@ export const truchet: Generator = {
         const my = (py + qy) / 2;
         const chordBand = lines === 1 ? band : bandAt((px + qx) / 2, my);
         (strokeBuckets[chordBand] as string[]).push(
-          el('path', { d: d + (k === kMax ? extra : ''), 'stroke-width': num(lineSwAt(my), 2), 'stroke-opacity': opacityAt(my) }),
+          el('path', { d: d + (k === kMax ? extra : ''), 'stroke-width': num(lineSw, 2) }),
         );
       }
     };
 
     for (let ry = 0; ry < rows; ry++) {
       for (let rx = 0; rx < cols; rx++) {
-        const x = rx * cell;
-        const y = originY + ry * cell;
-        const cy = y + cell / 2;
-        const q = quietFactor(cy, h, quietTop, safeZones);
-        // Subdivision is weighted downward: the busy passage belongs where the
-        // app grid is, not under the clock.
-        const bias = smoothstep(0.15, 1, (cy + cell) / h);
-        const chance = subdivide * (0.25 + 0.95 * bias) * (0.3 + 0.7 * q);
-        // The guard is on column count, not on pixels: a threshold in pixels
-        // would make a 108px thumbnail subdivide differently from a 1399px
-        // export, and since the decision consumes the random stream the two
-        // would stop being the same picture at all.
-        if (cols <= 18 && rng.bool(clamp(chance, 0, 0.95))) {
-          const half = cell / 2;
-          for (let sy = 0; sy < 2; sy++) {
-            for (let sx = 0; sx < 2; sx++) {
-              drawTile(x + sx * half, y + sy * half, half, 1);
-            }
-          }
-        } else {
-          drawTile(x, y, cell, 0);
-        }
+        drawTile(rx * cell, originY + ry * cell, cell);
       }
     }
 

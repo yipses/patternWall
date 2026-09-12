@@ -55,7 +55,7 @@ describe('truchet quarter arcs', () => {
    */
   it('spaces the concentric arcs evenly on both sides of the joining radius', () => {
     for (const arcCount of [3, 5, 7, 9, 12]) {
-      const svg = render({ density: 4, subdivide: 0, gap: false, arcCount }, 1200);
+      const svg = render({ density: 4, arcCount }, 1200);
       const radii = [...new Set([...svg.matchAll(/A([\d.]+) [\d.]+ 0 0 0/g)].map((m) => Number(m[1])))].sort(
         (a, b) => a - b,
       );
@@ -85,7 +85,7 @@ describe('truchet quarter arcs', () => {
   it('builds a radii set that mirrors itself about s/2, at odd and even counts', () => {
     const cell = 1200 / 4;
     for (const arcCount of [1, 2, 3, 4, 5, 6, 8, 11, 12]) {
-      const svg = render({ density: 4, subdivide: 0, gap: false, arcCount }, 1200);
+      const svg = render({ density: 4, arcCount }, 1200);
       const radii = [...new Set([...svg.matchAll(/A([\d.]+) [\d.]+ 0 0 0/g)].map((m) => Number(m[1])))];
       expect(radii.length).toBe(arcCount);
       const unmirrored = radii.filter((v) => !radii.some((w) => Math.abs(w - (cell - v)) < 0.6));
@@ -111,7 +111,7 @@ describe('truchet quarter arcs', () => {
     const originY = (SIZE - rows * cell) / 2;
 
     for (const arcCount of [1, 2, 3, 4, 7, 12]) {
-      const svg = render({ density: COLS, subdivide: 0, gap: false, openEnds: 0, arcCount }, SIZE);
+      const svg = render({ density: COLS, arcCount }, SIZE);
       const tally = new Map<string, number>();
       for (const m of svg.matchAll(/M([\d.-]+) ([\d.-]+)A[\d.]+ [\d.]+ 0 0 0 ([\d.-]+) ([\d.-]+)/g)) {
         for (const [x, y] of [
@@ -185,7 +185,7 @@ describe('truchet diagonals', () => {
     ]);
 
   const diagonals = (arcCount: number): string =>
-    render({ tileSet: 'diagonals', density: COLS, subdivide: 0, gap: false, arcCount }, SIZE);
+    render({ tileSet: 'diagonals', density: COLS, arcCount }, SIZE);
 
   /**
    * Raising the arc count on this tile set used to do nothing at all: the
@@ -251,7 +251,7 @@ describe('truchet triangles', () => {
   const COLS = 7;
 
   const triangles = (arcCount: number): string =>
-    render({ tileSet: 'triangles', density: COLS, subdivide: 0, gap: false, arcCount }, SIZE);
+    render({ tileSet: 'triangles', density: COLS, arcCount }, SIZE);
 
   const vertices = (svg: string): [number, number][] =>
     [...svg.matchAll(/<polygon points="([^"]+)"/g)].flatMap((m) =>
@@ -333,7 +333,7 @@ describe('truchet colour resolution', () => {
         width: SIZE,
         height: SIZE,
         palette,
-        params: { ...defaultParams(truchet), tileSet, density: COLS, subdivide: 0, arcCount: 6, colorBlend: 1 },
+        params: { ...defaultParams(truchet), tileSet, density: COLS, arcCount: 6, colorBlend: 1 },
         seed: 'colour-resolution',
         bleed: 0,
       });
