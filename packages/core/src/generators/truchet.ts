@@ -1,4 +1,4 @@
-import { accent, accentAt } from '../palette.js';
+import { accentAt, accentRamp } from '../palette.js';
 import { hexToOklch, mixOklch, oklchToHex } from '../color.js';
 import { createNoise2D } from '../noise.js';
 import { hashSeed } from '../rng.js';
@@ -52,6 +52,7 @@ export const truchet: Generator = {
     { key: 'openEnds', label: 'Open ends', type: 'number', min: 0, max: 0.8, step: 0.02, default: 0, description: 'Chance a cell is left empty, breaking the surface up. There is one mark per cell, so this leaves a real hole rather than a shortened path — the ends in the pattern come for free, wherever two neighbours face different corners.' },
     { key: 'arcCount', label: 'Arc count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'Concentric arcs per mark, nested inward from the cell edge. The outermost stays put, so raising this adds rings inside a mark the same size rather than shrinking it. Once they reach the corner, more has no effect.' },
     { key: 'arcSpacing', label: 'Arc spacing', type: 'number', min: 0.03, max: 0.2, step: 0.005, default: 0.09, description: 'Gap between concentric arcs, as a fraction of the cell. Tight values read as a single thick braid, wide ones as separate lines.' },
+    { key: 'colorBlend', label: 'Colour blend', type: 'number', min: 0, max: 1, step: 0.02, default: 1, description: 'At zero the accents stay separate and the tiling reads as flat areas of the colours you picked. Raise it and the steps between them are filled in, so the palette becomes a continuous ramp rather than a set of blocks.' },
   ],
 
   render(ctx: RenderContext): string {
@@ -64,6 +65,7 @@ export const truchet: Generator = {
     const rowVariation = pNum(params, 'rowVariation', 0.55);
     const subdivide = pNum(params, 'subdivide', 0.35);
     const colorSpread = pNum(params, 'colorSpread', 0.6);
+    const colorBlend = pNum(params, 'colorBlend', 1);
     const openEnds = pNum(params, 'openEnds', 0.22);
     const arcCount = Math.max(1, Math.round(pNum(params, 'arcCount', 1)));
     const arcSpacing = pNum(params, 'arcSpacing', 0.09);
@@ -94,7 +96,16 @@ export const truchet: Generator = {
     // large flat areas of each colour, and interpolated in-between hues would
     // quietly replace the palette the person chose with a gradient they did
     // not.
-    const bands = Math.max(1, Math.min(4, palette.accents.length));
+    // Tiles are bucketed by colour and each bucket emitted as one group, so
+    // the number of buckets is also the colour resolution. At zero blend there
+    // is one bucket per accent and the tiling reads as flat areas of exactly
+    // the colours in the palette; raising it interpolates intermediate steps
+    // along the ramp until the transitions stop being visible as edges. The
+    // ramp is sampled in OKLab, so a mid-point between two accents is the
+    // colour the eye expects rather than the one the hex arithmetic gives.
+    const flatBands = Math.max(1, Math.min(4, palette.accents.length));
+    const bands = Math.max(flatBands, Math.round(flatBands + (28 - flatBands) * clamp(colorBlend, 0, 1)));
+    const bandColors = accentRamp(palette, bands);
     const strokeBuckets: string[][] = Array.from({ length: bands }, () => []);
     const fillBuckets: string[][] = Array.from({ length: bands }, () => []);
 
@@ -289,7 +300,7 @@ export const truchet: Generator = {
     for (let b = 0; b < bands; b++) {
       const fills = fillBuckets[b] as string[];
       const strokes = strokeBuckets[b] as string[];
-      const color = accent(palette, b);
+      const color = bandColors[b] as string;
       if (fills.length > 0) body += el('g', { fill: color, stroke: 'none' }, fills.join(''));
       if (strokes.length > 0) {
         body += el('g', { fill: 'none', stroke: color, 'stroke-linecap': 'round' }, strokes.join(''));
