@@ -49,7 +49,7 @@ export const truchet: Generator = {
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'How much of the tile colour comes from noise rather than from height. At zero the accents run as a clean vertical ramp; at one they scatter.' },
     { key: 'quietTop', label: 'Quiet top', type: 'number', min: 0, max: 1, step: 0.01, default: 0.55, description: 'Thins the strokes and suppresses subdivision where iOS draws the clock.' },
     { key: 'gap', label: 'Cell gap', type: 'boolean', default: false, description: 'Inset every tile slightly so the grid itself becomes visible as white space.' },
-    { key: 'openEnds', label: 'Open ends', type: 'number', min: 0, max: 0.8, step: 0.02, default: 0.22, description: 'Chance a tile drops one of its two arcs. At zero every mark connects and the field can only close into loops; raise it and paths terminate.' },
+    { key: 'openEnds', label: 'Open ends', type: 'number', min: 0, max: 0.8, step: 0.02, default: 0.22, description: 'Chance a tile drops a mark. At zero everything connects and the field can only close into loops; raise it and paths terminate. A fan counts as one mark, so it is kept or dropped whole.' },
     { key: 'arcCount', label: 'Arc count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'Concentric arcs per mark. One is the classic tile; more turns every mark into a nested ribbon, and a closed loop into a bullseye.' },
     { key: 'arcSpacing', label: 'Arc spacing', type: 'number', min: 0.03, max: 0.2, step: 0.005, default: 0.09, description: 'Gap between concentric arcs, as a fraction of the cell. Tight values read as a single thick braid, wide ones as separate lines.' },
   ],
@@ -206,17 +206,21 @@ export const truchet: Generator = {
         const keep = (salt: number): boolean =>
           openEnds <= 0 || hashSeed(`${gx}:${gy}:${gs}:${salt}`) / 0x100000000 >= openEnds;
 
+        // The drop is per mark, never per radius. A fan is one mark — a ribbon
+        // of concentric arcs that reads as a single stroke — so dropping
+        // individual radii out of it does not make a path end, it shreds the
+        // ribbon into unrelated fragments.
         let d = '';
         if (arcCount <= 1) {
           const corners: [0 | 1 | 2 | 3, 0 | 1 | 2 | 3] = a ? [0, 2] : [1, 3];
           if (keep(1)) d += arcPath(corners[0], r);
           if (keep(2)) d += arcPath(corners[1], r);
-        } else {
+        } else if (keep(1)) {
           const corner = (rot % 4) as 0 | 1 | 2 | 3;
           for (let i = 0; i < arcCount; i++) {
             const rho = arcSpacing * s * (i + 1);
             if (rho > s * 0.995) break;
-            if (keep(i + 3)) d += arcPath(corner, rho);
+            d += arcPath(corner, rho);
           }
         }
         if (!d) return;
