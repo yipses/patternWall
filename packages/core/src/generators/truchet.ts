@@ -58,7 +58,7 @@ export const truchet: Generator = {
     { key: 'gap', label: 'Cell gap', type: 'boolean', default: false, description: 'Inset every tile slightly so the grid itself becomes visible as white space.' },
     { key: 'openEnds', label: 'Open ends', type: 'number', min: 0, max: 0.8, step: 0.02, default: 0, description: 'Chance a cell is left empty, breaking the surface up. There is one mark per cell, so this leaves a real hole rather than a shortened path — the ends in the pattern come for free, wherever two neighbours face different corners.' },
     { key: 'arcCount', label: 'Arc count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'Concentric arcs per mark, nested inward from the cell edge. The outermost stays put, so raising this adds rings inside a mark the same size rather than shrinking it. Once they reach the corner, more has no effect.' },
-    { key: 'arcSpacing', label: 'Arc spacing', type: 'number', min: 0.03, max: 0.2, step: 0.005, default: 0.09, description: 'Gap between concentric arcs, as a fraction of the cell. Tight values read as a single thick braid, wide ones as separate lines.' },
+    { key: 'arcSpacing', label: 'Arc spread', type: 'number', min: 0.15, max: 1, step: 0.05, default: 1, description: 'How much of the cell the rings reach across. The gap between them is worked out from that and the arc count, so every arc you ask for fits, and the stroke thins if it has to rather than closing the rings into a solid block.' },
     { key: 'colorBlend', label: 'Colour blend', type: 'number', min: 0, max: 1, step: 0.02, default: 1, description: 'How finely the palette is resolved between its accents. At zero only the accents themselves are used, so regions of colour meet at hard edges. Raise it and the steps between them are filled in, so one region eases into the next.' },
   ],
 
@@ -269,11 +269,6 @@ export const truchet: Generator = {
         // corners, which is how the classical tiling produces them too.
         if (!keep(1)) return;
 
-        // A fan drawn with the full stroke weight closes up into a solid block.
-        // Cap it against the gap so the lines stay separate whatever the
-        // weight slider says.
-        const fanSw = arcCount > 1 ? Math.min(sw, arcSpacing * s * 0.55) : sw;
-
         // Each arc is coloured from the field at its own midpoint, not at the
         // tile's centre. Sampling once per tile and quantising the result gives
         // every arc in the cell the same step of the ramp, so however smooth
@@ -302,17 +297,40 @@ export const truchet: Generator = {
         // side of it still reach out toward the cell edge and in toward the
         // corner, so the cell is filled rather than left three-fifths empty.
         const r = s / 2;
-        const step = arcSpacing * s;
+
+        // The gap is derived, not given. Asking for twelve arcs at a spacing
+        // that only fits eight used to silently drop four of them, and a stroke
+        // heavier than the gap closed the rings into a solid block — both of
+        // which make the two controls fight each other. Instead: work out how
+        // many steps are needed either side of the anchor, divide the room
+        // available by that, and every arc asked for fits by construction.
+        const outSteps = Math.ceil((arcCount - 1) / 2);
+        const inSteps = Math.floor((arcCount - 1) / 2);
+        const outRoom = s * 0.99 - r;
+        const inRoom = r - s * 0.02;
+        const fitStep = Math.min(
+          outSteps > 0 ? outRoom / outSteps : Number.POSITIVE_INFINITY,
+          inSteps > 0 ? inRoom / inSteps : Number.POSITIVE_INFINITY,
+        );
+        // Spread pulls the whole fan in toward the anchor; at one it uses the
+        // cell entirely.
+        const step = Number.isFinite(fitStep) ? fitStep * clamp(arcSpacing, 0.05, 1) : 0;
+
         const radii: number[] = [r];
-        for (let i = 1; radii.length < arcCount; i++) {
+        for (let i = 1; radii.length < arcCount && step > 0; i++) {
           const outward = r + i * step;
           const inward = r - i * step;
-          const canOut = outward < s * 0.99;
-          const canIn = inward > s * 0.02;
+          const canOut = outward < s * 0.995;
+          const canIn = inward > s * 0.01;
           if (!canOut && !canIn) break;
           if (canOut) radii.push(outward);
           if (canIn && radii.length < arcCount) radii.push(inward);
         }
+
+        // The stroke gives way to the gap rather than the other way round, so a
+        // heavy weight thins to keep the rings readable instead of merging
+        // them. A single arc has no neighbour to crowd and keeps its weight.
+        const fanSw = arcCount > 1 && step > 0 ? Math.min(sw, step * 0.68) : sw;
 
         for (const rho of radii) {
           const k = rho * mid;

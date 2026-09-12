@@ -204,6 +204,13 @@ corner, so raising it replaced a mark that reached the edge with a smaller one.
 A count control should add detail to a shape that keeps its size; anchor it at
 the outer edge and nest inward.
 
+**Two controls that fight.** Arc count and arc spacing were both free, so
+asking for twelve arcs at a spacing that fitted eight silently dropped four, and
+a stroke heavier than the spacing merged the rings into a block. Where one
+quantity is implied by the others, derive it: spacing now comes from the count
+and the room available, and the stroke thins to the gap rather than the gap
+having to accommodate the stroke.
+
 **Flat fills cannot blend.** A per-shape colour meets its neighbour at an edge
 however finely the palette is resolved into steps. Continuous colour needs the
 paint to vary across the canvas — a gradient — not more buckets.
