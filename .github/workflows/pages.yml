@@ -5,10 +5,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Allow one concurrent deployment, and let a new push supersede a running one.
+# One deployment at a time. A run in progress is allowed to finish rather than
+# being cancelled by the next push: cancelling mid-deploy leaves the Pages
+# environment holding a half-promoted artifact, and the next run has to sort it
+# out. Queued runs still collapse, so a burst of pushes deploys the last one.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -25,6 +28,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The gates run before the build, not after a green deploy. This workflow
+      # used to go straight from `npm ci` to `npm run build`, so a failing
+      # typecheck, lint or unit test still shipped — the only thing that could
+      # stop a deploy was a build that would not compile. e2e is deliberately
+      # left out: it builds the export itself and would double the run for a
+      # suite that is about the browser rather than about what gets published.
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
       # A project site is served from https://<user>.github.io/<repo>/, so the
       # asset URLs Next bakes into the HTML have to carry that prefix.
       - run: npm run build
