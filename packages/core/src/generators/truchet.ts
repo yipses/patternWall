@@ -49,8 +49,8 @@ export const truchet: Generator = {
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'How much of the tile colour comes from noise rather than from height. At zero the accents run as a clean vertical ramp; at one they scatter.' },
     { key: 'quietTop', label: 'Quiet top', type: 'number', min: 0, max: 1, step: 0.01, default: 0.55, description: 'Thins the strokes and suppresses subdivision where iOS draws the clock.' },
     { key: 'gap', label: 'Cell gap', type: 'boolean', default: false, description: 'Inset every tile slightly so the grid itself becomes visible as white space.' },
-    { key: 'openEnds', label: 'Open ends', type: 'number', min: 0, max: 0.8, step: 0.02, default: 0.22, description: 'Chance a tile drops one of its two arcs, so paths terminate instead of always closing into loops. Applies to the single-arc tile only: a fan needs every cell to carry the same radii or its arcs have nothing to meet across the edge, and ends there already come from neighbours facing different corners.' },
-    { key: 'arcCount', label: 'Arc count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'Concentric arcs per mark, nested inward. The outermost stays put, so raising this adds rings inside a mark the same size rather than shrinking it. Once the rings reach the corner, more has no effect.' },
+    { key: 'openEnds', label: 'Open ends', type: 'number', min: 0, max: 0.8, step: 0.02, default: 0, description: 'Chance a cell is left empty, breaking the surface up. There is one mark per cell, so this leaves a real hole rather than a shortened path — the ends in the pattern come for free, wherever two neighbours face different corners.' },
+    { key: 'arcCount', label: 'Arc count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'Concentric arcs per mark, nested inward from the cell edge. The outermost stays put, so raising this adds rings inside a mark the same size rather than shrinking it. Once they reach the corner, more has no effect.' },
     { key: 'arcSpacing', label: 'Arc spacing', type: 'number', min: 0.03, max: 0.2, step: 0.005, default: 0.09, description: 'Gap between concentric arcs, as a fraction of the cell. Tight values read as a single thick braid, wide ones as separate lines.' },
   ],
 
@@ -161,9 +161,13 @@ export const truchet: Generator = {
 
       const opacity = num(clamp(0.16 + 0.84 * q, 0.06, 1), 2);
       if (kind === 'arcs') {
-        const r = s / 2;
-        const a = rot % 2 === 0;
-        // Two quarter arcs joining opposite pairs of edge midpoints.
+        // One mark per cell, reaching the full cell rather than the edge
+        // midpoints. Two quarter discs of radius s/2 on opposite corners cover
+        // only 39% of a cell, so wherever neighbouring marks curve away from
+        // each other the gap between them is most of what you see. A single
+        // quarter disc of radius s covers 78%, which is why the classical
+        // drawings of this tiling read as a filled surface rather than as
+        // scattered motifs.
         // Sweep flag 0, not 1. With sweep 1 the renderer picks the other of the
         // two circles that fit these endpoints — the one centred on the cell
         // centre — so every arc bulged away from its corner. The marks still
@@ -206,37 +210,30 @@ export const truchet: Generator = {
         const keep = (salt: number): boolean =>
           openEnds <= 0 || hashSeed(`${gx}:${gy}:${gs}:${salt}`) / 0x100000000 >= openEnds;
 
-        // The drop is per mark, never per radius. A mark is a ribbon of
-        // concentric arcs that reads as a single stroke, so dropping radii out
-        // of it does not make a path end, it shreds the ribbon into unrelated
-        // fragments. Dropping a whole mark leaves the tile's other one, so the
-        // cell keeps something and the neighbour's arcs across that edge stop
-        // there — a real end rather than a hole.
+        // Arc count nests inward from that outer radius. The outermost arc
+        // stays where it is, so raising the count adds rings inside a mark
+        // that keeps its size rather than replacing it with a smaller one.
+        // Once the rings reach the corner they are centred on, more has no
+        // effect — an intuitive limit, at least: the ribbon has filled inward
+        // as far as it can go.
         //
-        // Arc count nests inward from the outer radius rather than growing
-        // outward from the corner. The outermost arc is always the one through
-        // the edge midpoints, so raising the count adds rings inside a mark
-        // that stays the same size, instead of replacing it with a smaller
-        // one. It also means the tile is the classic Truchet tile at every
-        // count — two marks on opposite corners — rather than switching shape
-        // at two.
-        //
-        // Capping the radii at r is what makes two opposing marks safe: circles
-        // centred on opposite corners of a square intersect only once their
-        // radii sum past the diagonal, s * sqrt(2), and two radii of at most
-        // s / 2 sum to at most s. Let a fan grow past r and the two marks cross,
-        // which is moire rather than pattern.
+        // Radii are shared by every cell, and a neighbour's mark is centred on
+        // the same physical corner whenever the rotations agree, so each arc
+        // meets its opposite number at the same point on the shared edge. Vary
+        // the set between cells and the arcs with no partner stop at the
+        // boundary, which reads as a broken grid rather than a pattern — so
+        // the set never varies. Ends come from neighbours facing different
+        // corners, which is how the classical tiling produces them too.
         let d = '';
-        const corners: [0 | 1 | 2 | 3, 0 | 1 | 2 | 3] = a ? [0, 2] : [1, 3];
-        corners.forEach((corner, markIndex) => {
-          if (!keep(markIndex + 1)) return;
+        if (keep(1)) {
+          const corner = (rot % 4) as 0 | 1 | 2 | 3;
+          const outer = s * 0.995;
           for (let i = 0; i < arcCount; i++) {
-            const rho = r - i * arcSpacing * s;
-            // Stop when the ribbon has reached the corner it is centred on.
+            const rho = outer - i * arcSpacing * s;
             if (rho < s * 0.02) break;
             d += arcPath(corner, rho);
           }
-        });
+        }
         if (!d) return;
         // A fan drawn with the full stroke weight closes up into a solid block.
         // Cap it against the gap so the lines stay separate whatever the
