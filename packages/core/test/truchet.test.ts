@@ -39,21 +39,36 @@ describe('truchet quarter arcs', () => {
 
 
   /**
-   * Colour blend decides how many steps the accents are resolved into, which
-   * is what turns hard edges between flat areas into a continuous ramp. Zero
-   * must stay faithful to the palette the person chose — exactly those hexes,
-   * no invented in-between hues — and one must clearly exceed them.
+   * A flat per-tile colour can never blend into its neighbour, however many
+   * intermediate hues the ramp is resolved into — the boundary between two
+   * tiles is an edge because each tile is one colour edge to edge. So above
+   * zero the paint itself has to vary across the canvas.
+   *
+   * Zero must still be faithful to the palette: exactly the hexes the person
+   * chose, no invented in-between hues.
    */
-  it('resolves the accents into a ramp only when blend is raised', () => {
-    const colorsIn = (svg: string): Set<string> =>
-      new Set([...svg.matchAll(/stroke="(#[0-9a-f]{6})"/gi)].map((m) => (m[1] as string).toLowerCase()));
+  it('paints with a canvas gradient once blend is raised, and flat accents at zero', () => {
+    const flat = render({ colorBlend: 0 });
+    const blended = render({ colorBlend: 1 });
 
-    const flat = colorsIn(render({ colorBlend: 0 }));
-    const blended = colorsIn(render({ colorBlend: 1 }));
+    const strokeHexes = (svg: string): Set<string> =>
+      new Set([...svg.matchAll(/stroke="(#[0-9a-f]{6})"/gi)].map((m) => (m[1] as string).toLowerCase()));
     const accents = new Set(palette.accents.map((a) => a.toLowerCase()));
 
-    // Every colour drawn at zero blend is one of the palette's own accents.
-    for (const c of flat) expect(accents.has(c)).toBe(true);
-    expect(blended.size).toBeGreaterThan(flat.size * 2);
+    // Flat: real hexes, all of them from the palette, no gradient paint.
+    const flatColors = strokeHexes(flat);
+    expect(flatColors.size).toBeGreaterThan(0);
+    for (const c of flatColors) expect(accents.has(c)).toBe(true);
+    expect(flat).not.toContain('url(#tr-ink)');
+
+    // Blended: the marks are painted by position, so no per-tile colour is
+    // left at all, and the gradient it uses actually exists.
+    expect(strokeHexes(blended).size).toBe(0);
+    expect(blended).toContain('stroke="url(#tr-ink)"');
+    expect(blended).toContain('id="tr-ink"');
+    // A gradient of one stop is not a blend.
+    const stops = [...blended.matchAll(/<linearGradient id="tr-ink"[\s\S]*?<\/linearGradient>/g)]
+      .flatMap((m) => [...(m[0] as string).matchAll(/<stop /g)]);
+    expect(stops.length).toBeGreaterThan(2);
   });
 });
