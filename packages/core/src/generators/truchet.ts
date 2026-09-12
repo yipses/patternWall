@@ -27,7 +27,7 @@ type TileKind = 'arcs' | 'diagonals' | 'triangles';
  * that a region is one accent and the next region another, with the transition
  * spread across many cells instead of landing on a cell edge.
  */
-const COLOR_FIELD = 3.4;
+const COLOR_FIELD = 1.6;
 
 export const truchet: Generator = {
   id: 'truchet',
@@ -283,10 +283,38 @@ export const truchet: Generator = {
         // boundary gradually, which is the point of having a field at all.
         const mid = 0.70710678; // the 45 degree point of a quarter arc
         const corner = (rot % 4) as 0 | 1 | 2 | 3;
-        const outer = s * 0.995;
-        for (let i = 0; i < arcCount; i++) {
-          const rho = outer - i * arcSpacing * s;
-          if (rho < s * 0.02) break;
+
+        // The radii are anchored on s/2 and grow outward and inward from it.
+        //
+        // That anchor is what makes the tiling join. An arc of radius rho meets
+        // the shared edge at rho from the corner it is centred on; the
+        // neighbour's mark is centred on one of its own corners, so the two
+        // land on the same point only when both are centred on the same end of
+        // the edge — or when rho is exactly half the cell, which is equidistant
+        // from both ends and therefore connects whatever the neighbour's
+        // rotation is. Filling the cell from the outside in, as this did
+        // before, contains no such radius at all: every arc then depends on the
+        // neighbour agreeing, and most of the time it does not, so the lines
+        // stop at the cell boundary.
+        //
+        // Anchoring on s/2 keeps one arc per mark always connected — a
+        // continuous skeleton through the whole tiling — while the rings either
+        // side of it still reach out toward the cell edge and in toward the
+        // corner, so the cell is filled rather than left three-fifths empty.
+        const r = s / 2;
+        const step = arcSpacing * s;
+        const radii: number[] = [r];
+        for (let i = 1; radii.length < arcCount; i++) {
+          const outward = r + i * step;
+          const inward = r - i * step;
+          const canOut = outward < s * 0.99;
+          const canIn = inward > s * 0.02;
+          if (!canOut && !canIn) break;
+          if (canOut) radii.push(outward);
+          if (canIn && radii.length < arcCount) radii.push(inward);
+        }
+
+        for (const rho of radii) {
           const k = rho * mid;
           const mx = corner === 1 || corner === 2 ? x0 + s - k : x0 + k;
           const my = corner === 2 || corner === 3 ? y0 + s - k : y0 + k;

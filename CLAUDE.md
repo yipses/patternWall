@@ -190,6 +190,15 @@ leaves arcs with no partner stopping at the cell boundary — a broken grid, not
 pattern. Before making something vary per cell, work out what the tiling relies
 on being the same everywhere.
 
+**The radius that guarantees the join is exactly s/2.** An arc meets the shared
+edge at its own radius from the corner it is centred on, so two marks line up
+only when they are centred on the same end of that edge — except at s/2, which
+is equidistant from both ends and therefore joins whatever the neighbour's
+rotation is. A radii set that does not contain s/2 has no guaranteed connection
+anywhere, which is how "fill the cell from the outside in" silently
+disconnected the whole tiling. Anchor the set on s/2 and grow it in both
+directions.
+
 **Growing a shape from the wrong anchor.** Arc count grew a fan outward from the
 corner, so raising it replaced a mark that reached the edge with a smaller one.
 A count control should add detail to a shape that keeps its size; anchor it at
