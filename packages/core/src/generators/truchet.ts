@@ -9,13 +9,11 @@ import { pBool, pNum, pStr, type Generator, type RenderContext } from '../types.
 const description = `
 A Truchet tile is a square with an asymmetric mark on it — Sébastien Truchet’s original was a square split into two triangles — and a Truchet tiling is what you get when you fill a grid with copies of that square in random rotations. The remarkable thing is how little you have to specify. One tile, four rotations and a coin flip per cell produce paths that wander across the whole grid, close into loops, and look considered in a way that no part of the rule accounts for.
 
-Three tile sets are offered here and they behave quite differently. **Quarter arcs** join edge midpoints with two 90° curves centred on opposite corners, so every cell edge is a connection point and the marks meet: the result is a tangle of closed loops. The corner is the whole trick — two circles of a given radius pass through any pair of points, and centring these on the cell's middle instead produces marks that still meet at the edges but can never curl around a grid vertex, so no loop, half circle or full circle ever forms. **Diagonals** connect corners instead, which means paths meet at cell corners rather than edges and the tiling reads as a lattice of switchbacks rather than as loops. **Triangles** fill half of each cell, which turns the whole thing from line work into a mass of light and dark, and is by far the strongest option at low densities. The mixed set chooses per cell, which sacrifices the single coherent logic for a texture that is more restless.
+Three tile sets are offered here and they behave quite differently. **Quarter arcs** join edge midpoints with two 90° curves centred on opposite corners, so every cell edge is a connection point and the marks meet: the result is a tangle of closed loops. The corner is the whole trick — two circles of a given radius pass through any pair of points, and centring these on the cell's middle instead produces marks that still meet at the edges but can never curl around a grid vertex, so no loop, half circle or full circle ever forms. **Diagonals** connect corners instead, which means paths meet at cell corners rather than edges and the tiling reads as a lattice of switchbacks rather than as loops. **Triangles** fill half of each cell, which turns the whole thing from line work into a mass of light and dark, and is by far the strongest option at low densities.
 
 Two controls decide how much the arcs behave like a single continuous system. **Open ends** drops marks, so paths stop rather than always continuing; a field with nothing dropped can only close into loops or run off the canvas, which reads as busier than it is. **Arc count** replaces each single quarter arc with a fan of concentric ones sharing the same corner. Because a neighbour's fan is centred on that same physical point whenever the rotations agree, every radius in the fan meets its opposite number across the edge and the marks become nested ribbons; where the rotations disagree, the lines simply stop. A fan is drawn on one corner rather than two, because circles centred on opposite corners of a square intersect as soon as their radii sum past the diagonal, and two opposing fans turn into moiré rather than pattern.
 
 Subdivision is where this implementation departs from the classical rule. A fraction of cells are replaced by a 2×2 block of quarter-size tiles, and that fraction rises toward the bottom of the canvas. A uniform grid has a uniform level of interest, which is exactly wrong for a wallpaper: the eye wants somewhere to rest and somewhere to look. Pushing the fine detail downward puts the busy passage where the app icons and the dock live, and leaves the clock sitting on something calm.
-
-**Row weight** does a similar job with a different lever. Stroke width increases as the grid descends, which reads as the pattern advancing toward you — a very cheap depth cue that costs one multiplication per row. At zero every line is the same width and the tiling flattens into a diagram, which is sometimes what you want.
 
 Grid **density** interacts with everything. Below about six columns the tiles are large enough that you read each one individually and the tile set matters enormously; above about twenty you stop seeing tiles at all and start seeing a woven texture, at which point stroke weight matters more than which set you chose.
 `.trim();
@@ -45,13 +43,11 @@ export const truchet: Generator = {
         { value: 'arcs', label: 'Quarter arcs' },
         { value: 'diagonals', label: 'Diagonals' },
         { value: 'triangles', label: 'Triangles' },
-        { value: 'mixed', label: 'Mixed' },
       ],
       default: 'arcs',
       description: 'Arcs make continuous loops, diagonals make switchbacks, triangles make mass instead of line.',
     },
     { key: 'weight', label: 'Stroke weight', type: 'number', min: 0.02, max: 0.5, step: 0.01, default: 0.16, description: 'Line width as a fraction of the cell. Above about 0.4 the arcs start to touch and read as solid.' },
-    { key: 'rowVariation', label: 'Row weight variation', type: 'number', min: 0, max: 1, step: 0.02, default: 0.55, description: 'How much heavier the strokes get toward the bottom. A cheap and effective depth cue.' },
     { key: 'subdivide', label: 'Subdivision', type: 'number', min: 0, max: 1, step: 0.02, default: 0.35, description: 'Chance that a cell becomes a 2x2 block of smaller tiles. Weighted toward the lower canvas.' },
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'How much of the colour comes from the drifting field rather than from height. At zero the palette runs top to bottom; at one it pools into regions that wander across the image.' },
     { key: 'quietTop', label: 'Quiet top', type: 'number', min: 0, max: 1, step: 0.01, default: 0.55, description: 'Thins the strokes and suppresses subdivision where iOS draws the clock.' },
@@ -69,7 +65,6 @@ export const truchet: Generator = {
     const cols = Math.max(2, Math.round(pNum(params, 'density', 8)));
     const tileSet = pStr(params, 'tileSet', 'arcs');
     const weight = pNum(params, 'weight', 0.16);
-    const rowVariation = pNum(params, 'rowVariation', 0.55);
     const subdivide = pNum(params, 'subdivide', 0.35);
     const colorSpread = pNum(params, 'colorSpread', 0.6);
     const colorBlend = pNum(params, 'colorBlend', 1);
@@ -146,28 +141,19 @@ export const truchet: Generator = {
       return Math.min(bands - 1, Math.floor(t * bands));
     };
 
-    const kindFor = (rx: number, ry: number): TileKind => {
-      if (tileSet === 'mixed') {
-        const v = noise.value(rx * 3.1 + 7, ry * 3.1 - 3);
-        return v < -0.2 ? 'diagonals' : v > 0.25 ? 'triangles' : 'arcs';
-      }
-      return tileSet as TileKind;
-    };
-
     const drawTile = (x: number, y: number, size: number, depth: number): void => {
       const cy = y + size / 2;
       const q = quietFactor(cy, h, quietTop, safeZones);
-      const rowT = clamp((cy - originY) / Math.max(1, h), 0, 1);
       const inset = gap ? size * 0.07 : 0;
       const s = size - inset * 2;
       const x0 = x + inset;
       const y0 = y + inset;
       if (s <= 0.5) return;
 
-      const sw = clamp(weight * s * (1 - rowVariation * 0.5 + rowVariation * rowT * 1.1) * (0.34 + 0.66 * q), s * 0.012, s * 0.62);
+      const sw = clamp(weight * s * (0.34 + 0.66 * q), s * 0.012, s * 0.62);
       const band = bandAt(x + size / 2, cy);
       const rot = rng.int(0, 3);
-      const kind = kindFor(x / Math.max(1, cell), y / Math.max(1, cell));
+      const kind = tileSet as TileKind;
 
       if (kind === 'triangles') {
         const pts: [number, number][][] = [
@@ -267,79 +253,62 @@ export const truchet: Generator = {
         // boundary, which reads as a broken grid rather than a pattern — so
         // the set never varies. Ends come from neighbours facing different
         // corners, which is how the classical tiling produces them too.
-        if (!keep(1)) return;
-
-        // Each arc is coloured from the field at its own midpoint, not at the
-        // tile's centre. Sampling once per tile and quantising the result gives
-        // every arc in the cell the same step of the ramp, so however smooth
-        // the field is, two neighbouring tiles can land on different steps and
-        // the whole cell boundary shows as an edge. Sampling per arc puts the
-        // rings of one fan on adjacent steps and carries the change across the
-        // boundary gradually, which is the point of having a field at all.
-        const mid = 0.70710678; // the 45 degree point of a quarter arc
-        const corner = (rot % 4) as 0 | 1 | 2 | 3;
-
-        // The radii are anchored on s/2 and grow outward and inward from it.
+        // Two marks on opposite corners, the classical tile. One mark per cell
+        // covers only two of the cell's four edge midpoints, so most edges have
+        // nothing on the other side to meet and the tiling falls apart into
+        // scattered arcs — which is what happened when this was changed to a
+        // single fan to fill the cell better. It does not need to be a choice:
+        // two quarter discs of radius s/sqrt(2) cover the same 78% of a cell as
+        // one of radius s, and cover all four midpoints while doing it.
         //
-        // That anchor is what makes the tiling join. An arc of radius rho meets
-        // the shared edge at rho from the corner it is centred on; the
-        // neighbour's mark is centred on one of its own corners, so the two
-        // land on the same point only when both are centred on the same end of
-        // the edge — or when rho is exactly half the cell, which is equidistant
-        // from both ends and therefore connects whatever the neighbour's
-        // rotation is. Filling the cell from the outside in, as this did
-        // before, contains no such radius at all: every arc then depends on the
-        // neighbour agreeing, and most of the time it does not, so the lines
-        // stop at the cell boundary.
-        //
-        // Anchoring on s/2 keeps one arc per mark always connected — a
-        // continuous skeleton through the whole tiling — while the rings either
-        // side of it still reach out toward the cell edge and in toward the
-        // corner, so the cell is filled rather than left three-fifths empty.
+        // s/sqrt(2) is the ceiling because circles centred on opposite corners
+        // meet once their radii sum past the diagonal, s*sqrt(2).
         const r = s / 2;
+        const mid = 0.70710678; // the 45 degree point of a quarter arc, and the outward ceiling
 
         // The gap is derived, not given. Asking for twelve arcs at a spacing
-        // that only fits eight used to silently drop four of them, and a stroke
-        // heavier than the gap closed the rings into a solid block — both of
-        // which make the two controls fight each other. Instead: work out how
-        // many steps are needed either side of the anchor, divide the room
-        // available by that, and every arc asked for fits by construction.
+        // that only fits eight used to drop four of them silently, and a stroke
+        // heavier than the gap closed the rings into a block. Instead: divide
+        // the room available by the steps needed, so every arc asked for fits.
+        //
+        // Outward and inward use their own step, because there is far less room
+        // above s/2 than below it and a single step would waste the larger
+        // side. The two sets are the same in every cell, which is all the
+        // tiling needs to keep joining.
         const outSteps = Math.ceil((arcCount - 1) / 2);
         const inSteps = Math.floor((arcCount - 1) / 2);
-        const outRoom = s * 0.99 - r;
-        const inRoom = r - s * 0.02;
-        const fitStep = Math.min(
-          outSteps > 0 ? outRoom / outSteps : Number.POSITIVE_INFINITY,
-          inSteps > 0 ? inRoom / inSteps : Number.POSITIVE_INFINITY,
-        );
-        // Spread pulls the whole fan in toward the anchor; at one it uses the
-        // cell entirely.
-        const step = Number.isFinite(fitStep) ? fitStep * clamp(arcSpacing, 0.05, 1) : 0;
+        const spread = clamp(arcSpacing, 0.05, 1);
+        const outStep = outSteps > 0 ? ((s * mid - r) / outSteps) * spread : 0;
+        const inStep = inSteps > 0 ? ((r - s * 0.02) / inSteps) * spread : 0;
 
         const radii: number[] = [r];
-        for (let i = 1; radii.length < arcCount && step > 0; i++) {
-          const outward = r + i * step;
-          const inward = r - i * step;
-          const canOut = outward < s * 0.995;
-          const canIn = inward > s * 0.01;
-          if (!canOut && !canIn) break;
-          if (canOut) radii.push(outward);
-          if (canIn && radii.length < arcCount) radii.push(inward);
-        }
+        for (let i = 1; i <= outSteps; i++) radii.push(r + i * outStep);
+        for (let i = 1; i <= inSteps; i++) radii.push(r - i * inStep);
 
         // The stroke gives way to the gap rather than the other way round, so a
         // heavy weight thins to keep the rings readable instead of merging
         // them. A single arc has no neighbour to crowd and keeps its weight.
-        const fanSw = arcCount > 1 && step > 0 ? Math.min(sw, step * 0.68) : sw;
+        const gaps = [outStep, inStep].filter((g) => g > 0);
+        const fanSw = gaps.length > 0 ? Math.min(sw, Math.min(...gaps) * 0.68) : sw;
 
-        for (const rho of radii) {
-          const k = rho * mid;
-          const mx = corner === 1 || corner === 2 ? x0 + s - k : x0 + k;
-          const my = corner === 2 || corner === 3 ? y0 + s - k : y0 + k;
-          (strokeBuckets[bandAt(mx, my)] as string[]).push(
-            el('path', { d: arcPath(corner, rho), 'stroke-width': num(fanSw, 2), 'stroke-opacity': opacity }),
-          );
-        }
+        // Each arc is coloured from the field at its own midpoint, not at the
+        // tile's centre. Sampling once per tile and quantising the result gives
+        // every arc in the cell the same step of the ramp, so two neighbouring
+        // tiles can land on different steps and the whole cell boundary shows
+        // as an edge.
+        const corners: [0 | 1 | 2 | 3, 0 | 1 | 2 | 3] = rot % 2 === 0 ? [0, 2] : [1, 3];
+        corners.forEach((corner, markIndex) => {
+          if (!keep(markIndex + 1)) return;
+          for (const rho of radii) {
+            if (rho < s * 0.015) continue;
+            const k = rho * mid;
+            const mx = corner === 1 || corner === 2 ? x0 + s - k : x0 + k;
+            const my = corner === 2 || corner === 3 ? y0 + s - k : y0 + k;
+            (strokeBuckets[bandAt(mx, my)] as string[]).push(
+              el('path', { d: arcPath(corner, rho), 'stroke-width': num(fanSw, 2), 'stroke-opacity': opacity }),
+            );
+          }
+        });
         return;
       }
 

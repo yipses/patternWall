@@ -190,9 +190,11 @@ test.describe('editor', () => {
       return { poly: (svg.match(/<polygon/g) ?? []).length, path: (svg.match(/<path/g) ?? []).length };
     };
     // Triangles are the only tile set drawn as polygons, so they are a clean
-    // fingerprint for "the render matches the control".
-    await select.selectOption('mixed');
-    await expect.poll(async () => (await marks()).poly > 0 && (await marks()).path > 0).toBe(true);
+    // fingerprint for "the render matches the control". Stepping through all
+    // three also pins their encoded order, which is what a share link stores.
+    await select.selectOption('diagonals');
+    await expect.poll(async () => (await marks()).poly).toBe(0);
+    await expect(page).toHaveURL(/q=[^&]*_1_/);
     await select.selectOption('triangles');
     await expect.poll(async () => (await marks()).path).toBe(0);
     expect((await marks()).poly).toBeGreaterThan(0);
