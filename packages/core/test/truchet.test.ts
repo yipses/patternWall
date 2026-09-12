@@ -308,3 +308,69 @@ describe('truchet triangles', () => {
     }
   });
 });
+
+describe('truchet colour resolution', () => {
+  const SIZE = 600;
+  const COLS = 6;
+
+  /**
+   * Colour is sampled from a field across the canvas, and where it is sampled
+   * decides whether the blend control does anything. Sampling once per tile
+   * gives every mark in that cell the same step of the ramp, so the colour can
+   * only change at a cell boundary and the grid reads as flat blocks — and
+   * raising the blend just gives each block a finer flat colour, which is what
+   * a broken blend looks like from the outside.
+   *
+   * The arcs were fixed for this long ago, per arc at its own midpoint. The
+   * diagonals and triangles kept sampling per tile, which was equivalent while
+   * a cell held one mark through its centre and became wrong the moment the
+   * division count filled the cell.
+   */
+  it('resolves colour within a cell, not just between cells', () => {
+    for (const tileSet of ['arcs', 'diagonals', 'triangles']) {
+      const svg = renderToSvg({
+        generator: truchet,
+        width: SIZE,
+        height: SIZE,
+        palette,
+        params: { ...defaultParams(truchet), tileSet, density: COLS, subdivide: 0, arcCount: 6, colorBlend: 1 },
+        seed: 'colour-resolution',
+        bleed: 0,
+      });
+      const cell = SIZE / COLS;
+      const perCell = new Map<string, Set<string>>();
+      const add = (x: number, y: number, colour: string): void => {
+        const key = `${Math.floor(x / cell)}:${Math.floor(y / cell)}`;
+        if (!perCell.has(key)) perCell.set(key, new Set());
+        (perCell.get(key) as Set<string>).add(colour);
+      };
+      for (const m of svg.matchAll(/<g [^>]*(?:stroke|fill)="(#[0-9a-f]{6})"[^>]*>(.*?)<\/g>/gi)) {
+        const colour = m[1] as string;
+        const body = m[2] as string;
+        // Key each mark on its own midpoint. Its endpoints sit on cell edges,
+        // and bucketing by those lands half of them in the neighbouring cell,
+        // which mixes two cells' colours together and scores a flat tiling as
+        // if it resolved — this test passed against the very bug it exists to
+        // catch until the midpoint went in.
+        for (const e of body.matchAll(/M([\d.-]+) ([\d.-]+)(?:L|A[\d.]+ [\d.]+ 0 0 0 )([\d.-]+) ([\d.-]+)/g)) {
+          add((Number(e[1]) + Number(e[3])) / 2, (Number(e[2]) + Number(e[4])) / 2, colour);
+        }
+        for (const e of body.matchAll(/points="([^"]+)"/g)) {
+          const pts = (e[1] as string).split(' ').map((q) => q.split(',').map(Number));
+          const cx = pts.reduce((acc, q) => acc + (q[0] as number), 0) / pts.length;
+          const cy2 = pts.reduce((acc, q) => acc + (q[1] as number), 0) / pts.length;
+          add(cx, cy2, colour);
+        }
+      }
+      const sizes = [...perCell.values()].map((c) => c.size);
+      const mean = sizes.reduce((a, b) => a + b, 0) / sizes.length;
+      const most = Math.max(...sizes);
+      // Thresholds taken from measurement, not taste. Per-tile colour scores a
+      // mean of 1.73 and never puts more than 2 colours in a cell — the stray
+      // second one is a mark whose midpoint rounds into a neighbour. Per-mark
+      // colour scores 2.9 to 4.4 with up to 10. An earlier version of this
+      // test asserted mean > 1.6 and so passed against the bug.
+      expect({ tileSet, mean: mean > 2.5, most: most >= 4 }).toEqual({ tileSet, mean: true, most: true });
+    }
+  });
+});

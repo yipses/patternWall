@@ -253,6 +253,26 @@ lopsided, ask which of the two properties a person actually sees before
 optimising the other. Evenness beats coverage here; the unused room near the
 corner costs nothing anyone can point at.
 
+**Where colour is sampled decides whether the blend control works, and adding
+marks to a cell can break it retroactively.** Colour comes from a field across
+the canvas, quantised into bands. Sample it once per tile and every mark in that
+cell gets the same band, so colour can only change at a cell boundary and the
+grid reads as flat blocks — and raising the blend just gives each block a finer
+flat colour, which from the outside looks exactly like a broken control. The
+arcs were fixed for this long ago, per arc at its own midpoint. The diagonals
+and triangles still sampled per tile, which was *equivalent* while a cell held
+one mark through its centre and became wrong the moment the division count
+filled the cell with a family. Adding marks to a tile means revisiting where its
+colour is sampled.
+
+**A threshold picked by eye can sit on the wrong side of the bug.** The test for
+the above first asserted a mean of more than 1.6 distinct colours per cell, and
+passed against the broken code, which scores 1.73. It also first bucketed marks
+by their endpoints, which lie on cell edges and land half of them in the
+neighbour, mixing two cells' colours and making a flat tiling look resolved.
+Key a mark on its own midpoint, and take the threshold from measuring both the
+broken and fixed cases rather than from what sounds reasonable.
+
 **Flat fills cannot blend.** A per-shape colour meets its neighbour at an edge
 however finely the palette is resolved into steps. Continuous colour needs the
 paint to vary across the canvas — a gradient — not more buckets.

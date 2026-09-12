@@ -207,8 +207,25 @@ export const truchet: Generator = {
         const at = (p: [number, number], t: number): [number, number] =>
           t >= 1 ? p : [corner[0] + t * (p[0] - corner[0]), corner[1] + t * (p[1] - corner[1])];
 
+        // Each band takes its colour from the field at its own centroid, the way
+        // the arcs and the diagonal chords do. Colouring every band from the
+        // cell's centre gives the whole tile one step of the ramp, so the colour
+        // can only change at a cell boundary and the grid shows as flat blocks
+        // however finely the blend resolves the palette.
+        //
+        // A single band is the whole triangle, and is left on the tile's own
+        // colour: sampling its centroid instead would be marginally more honest
+        // and would repaint every existing undivided render for no one's
+        // benefit.
         const emit = (ps: [number, number][]): void => {
-          (fillBuckets[band] as string[]).push(
+          let cx = 0;
+          let cy2 = 0;
+          for (const pt of ps) {
+            cx += pt[0];
+            cy2 += pt[1];
+          }
+          const bandIndex = bands === 1 ? band : bandAt(cx / ps.length, cy2 / ps.length);
+          (fillBuckets[bandIndex] as string[]).push(
             el('polygon', {
               points: ps.map((pt) => `${num(pt[0], 1)},${num(pt[1], 1)}`).join(' '),
               'fill-opacity': fillOpacity,
@@ -402,28 +419,14 @@ export const truchet: Generator = {
       const step = s / lines;
       const kMax = lines - 1;
 
-      let d = '';
-      for (let k = -kMax; k <= kMax; k++) {
-        const o = k * step;
-        // Each chord is written from its top-most end so that the single-line
-        // case emits exactly the string this generator has always emitted.
-        const [px, py, qx, qy] = a
-          ? k >= 0
-            ? [x0, y0 + o, x0 + s - o, y0 + s]
-            : [x0 - o, y0, x0 + s, y0 + s + o]
-          : k <= 0
-            ? [x0 + s + o, y0, x0, y0 + s + o]
-            : [x0 + s, y0 + o, x0 + o, y0 + s];
-        d += `M${num(px, 1)} ${num(py, 1)}L${num(qx, 1)} ${num(qy, 1)}`;
-      }
-
-      // Drawn unconditionally so the count does not reorder the stream: a
-      // decision taken here shifts every rotation and colour after it, and
-      // nudging Divisions would reshuffle the whole image rather than add to
-      // it. The spur only survives on the single-line tile, where it is what
-      // stops a plain lattice reading as graph paper; a family already has
-      // that interest, and a stray mark across it at 45 degrees is the one
-      // line in the cell that meets nothing.
+      // Drawn before the chords rather than after, which is the same position
+      // in the seeded stream because the loop below draws nothing from it. Move
+      // it past an rng call and every rotation and colour after it shifts.
+      //
+      // The spur only survives on the single-line tile, where it is what stops
+      // a plain lattice reading as graph paper; a family already has that
+      // interest, and a stray mark across it at 45 degrees is the one line in
+      // the cell that meets nothing.
       const spur = rng.bool(0.35);
       const extra =
         lines === 1 && spur
@@ -438,7 +441,32 @@ export const truchet: Generator = {
       // into a solid triangle.
       const perp = step * 0.70710678;
       const lineSw = lines > 1 ? Math.min(sw, perp * 0.68) : sw;
-      (strokeBuckets[band] as string[]).push(el('path', { d: d + extra, 'stroke-width': num(lineSw, 2), 'stroke-opacity': opacity }));
+
+      // One path per chord, each coloured from the field at its own midpoint,
+      // the way the arcs are. Colouring the whole cell from its centre was
+      // right when a cell held one line through that centre, and became wrong
+      // the moment the count filled the cell with a family: every chord got the
+      // one step of the ramp, so the colour changed only at cell boundaries and
+      // the grid read as blocks of flat colour. Raising the blend cannot help
+      // that — it only gives each block a finer flat colour — which is what
+      // "the colour blend is broken" looks like.
+      for (let k = -kMax; k <= kMax; k++) {
+        const o = k * step;
+        // Each chord is written from its top-most end so that the single-line
+        // case emits exactly the string this generator has always emitted.
+        const [px, py, qx, qy] = a
+          ? k >= 0
+            ? [x0, y0 + o, x0 + s - o, y0 + s]
+            : [x0 - o, y0, x0 + s, y0 + s + o]
+          : k <= 0
+            ? [x0 + s + o, y0, x0, y0 + s + o]
+            : [x0 + s, y0 + o, x0 + o, y0 + s];
+        const d = `M${num(px, 1)} ${num(py, 1)}L${num(qx, 1)} ${num(qy, 1)}`;
+        const chordBand = lines === 1 ? band : bandAt((px + qx) / 2, (py + qy) / 2);
+        (strokeBuckets[chordBand] as string[]).push(
+          el('path', { d: d + (k === kMax ? extra : ''), 'stroke-width': num(lineSw, 2), 'stroke-opacity': opacity }),
+        );
+      }
     };
 
     for (let ry = 0; ry < rows; ry++) {
