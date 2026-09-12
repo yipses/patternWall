@@ -39,36 +39,40 @@ describe('truchet quarter arcs', () => {
 
 
   /**
-   * A flat per-tile colour can never blend into its neighbour, however many
-   * intermediate hues the ramp is resolved into — the boundary between two
-   * tiles is an edge because each tile is one colour edge to edge. So above
-   * zero the paint itself has to vary across the canvas.
-   *
-   * Zero must still be faithful to the palette: exactly the hexes the person
-   * chose, no invented in-between hues.
+   * Colour is sampled from a field across the image, so neighbouring marks land
+   * on neighbouring steps of the ramp and a region of one accent eases into a
+   * region of another. Blend is the resolution of that ramp: at zero only the
+   * palette's own accents are used and the regions meet at hard edges.
    */
-  it('paints with a canvas gradient once blend is raised, and flat accents at zero', () => {
-    const flat = render({ colorBlend: 0 });
-    const blended = render({ colorBlend: 1 });
-
+  it('resolves the palette into a ramp only when blend is raised', () => {
     const strokeHexes = (svg: string): Set<string> =>
       new Set([...svg.matchAll(/stroke="(#[0-9a-f]{6})"/gi)].map((m) => (m[1] as string).toLowerCase()));
+
+    const flat = strokeHexes(render({ colorBlend: 0 }));
+    const blended = strokeHexes(render({ colorBlend: 1 }));
     const accents = new Set(palette.accents.map((a) => a.toLowerCase()));
 
-    // Flat: real hexes, all of them from the palette, no gradient paint.
-    const flatColors = strokeHexes(flat);
-    expect(flatColors.size).toBeGreaterThan(0);
-    for (const c of flatColors) expect(accents.has(c)).toBe(true);
-    expect(flat).not.toContain('url(#tr-ink)');
+    expect(flat.size).toBeGreaterThan(0);
+    for (const c of flat) expect(accents.has(c)).toBe(true);
+    expect(blended.size).toBeGreaterThan(flat.size * 2);
+  });
 
-    // Blended: the marks are painted by position, so no per-tile colour is
-    // left at all, and the gradient it uses actually exists.
-    expect(strokeHexes(blended).size).toBe(0);
-    expect(blended).toContain('stroke="url(#tr-ink)"');
-    expect(blended).toContain('id="tr-ink"');
-    // A gradient of one stop is not a blend.
-    const stops = [...blended.matchAll(/<linearGradient id="tr-ink"[\s\S]*?<\/linearGradient>/g)]
-      .flatMap((m) => [...(m[0] as string).matchAll(/<stop /g)]);
-    expect(stops.length).toBeGreaterThan(2);
+  /**
+   * The colour field is sampled in normalised canvas coordinates, never in
+   * pixels. Keyed on pixels, a 108px gallery thumbnail gets a far coarser field
+   * than a 1399px export and the two are coloured differently — so the preview
+   * stops being the thing you download, exactly as the geometry would if it
+   * measured in pixels.
+   */
+  it('colours the same configuration identically at any size', () => {
+    const paletteOf = (svg: string): string =>
+      [...new Set([...svg.matchAll(/stroke="(#[0-9a-f]{6})"/gi)].map((m) => (m[1] as string).toLowerCase()))]
+        .sort()
+        .join(',');
+
+    const small = paletteOf(render({}, 120));
+    const large = paletteOf(render({}, 1200));
+    expect(small).not.toBe('');
+    expect(small).toBe(large);
   });
 });

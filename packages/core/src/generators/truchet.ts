@@ -22,6 +22,13 @@ Grid **density** interacts with everything. Below about six columns the tiles ar
 
 type TileKind = 'arcs' | 'diagonals' | 'triangles';
 
+/**
+ * Swells of colour across the image, in cycles. Low on purpose: the point is
+ * that a region is one accent and the next region another, with the transition
+ * spread across many cells instead of landing on a cell edge.
+ */
+const COLOR_FIELD = 3.4;
+
 export const truchet: Generator = {
   id: 'truchet',
   name: 'Truchet',
@@ -46,13 +53,13 @@ export const truchet: Generator = {
     { key: 'weight', label: 'Stroke weight', type: 'number', min: 0.02, max: 0.5, step: 0.01, default: 0.16, description: 'Line width as a fraction of the cell. Above about 0.4 the arcs start to touch and read as solid.' },
     { key: 'rowVariation', label: 'Row weight variation', type: 'number', min: 0, max: 1, step: 0.02, default: 0.55, description: 'How much heavier the strokes get toward the bottom. A cheap and effective depth cue.' },
     { key: 'subdivide', label: 'Subdivision', type: 'number', min: 0, max: 1, step: 0.02, default: 0.35, description: 'Chance that a cell becomes a 2x2 block of smaller tiles. Weighted toward the lower canvas.' },
-    { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'How much of the tile colour comes from noise rather than from height. Only applies when colour blend is at zero — a gradient is painted by position, so there is no per-tile colour left to scatter.' },
+    { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'How much of the colour comes from the drifting field rather than from height. At zero the palette runs top to bottom; at one it pools into regions that wander across the image.' },
     { key: 'quietTop', label: 'Quiet top', type: 'number', min: 0, max: 1, step: 0.01, default: 0.55, description: 'Thins the strokes and suppresses subdivision where iOS draws the clock.' },
     { key: 'gap', label: 'Cell gap', type: 'boolean', default: false, description: 'Inset every tile slightly so the grid itself becomes visible as white space.' },
     { key: 'openEnds', label: 'Open ends', type: 'number', min: 0, max: 0.8, step: 0.02, default: 0, description: 'Chance a cell is left empty, breaking the surface up. There is one mark per cell, so this leaves a real hole rather than a shortened path — the ends in the pattern come for free, wherever two neighbours face different corners.' },
     { key: 'arcCount', label: 'Arc count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'Concentric arcs per mark, nested inward from the cell edge. The outermost stays put, so raising this adds rings inside a mark the same size rather than shrinking it. Once they reach the corner, more has no effect.' },
     { key: 'arcSpacing', label: 'Arc spacing', type: 'number', min: 0.03, max: 0.2, step: 0.005, default: 0.09, description: 'Gap between concentric arcs, as a fraction of the cell. Tight values read as a single thick braid, wide ones as separate lines.' },
-    { key: 'colorBlend', label: 'Colour blend', type: 'number', min: 0, max: 1, step: 0.02, default: 1, description: 'At zero every tile is one flat colour and the palette reads as blocks meeting at hard edges. Above zero the marks are painted with a gradient across the whole image instead, so the colour changes continuously and no edge is ever visible. The value sets how much of the palette that gradient runs through.' },
+    { key: 'colorBlend', label: 'Colour blend', type: 'number', min: 0, max: 1, step: 0.02, default: 1, description: 'How finely the palette is resolved between its accents. At zero only the accents themselves are used, so regions of colour meet at hard edges. Raise it and the steps between them are filled in, so one region eases into the next.' },
   ],
 
   render(ctx: RenderContext): string {
@@ -91,21 +98,6 @@ export const truchet: Generator = {
     // Blend sets how much of the accent ramp that gradient covers: a narrow
     // slice around the middle is a subtle wash, the full width runs the
     // palette end to end.
-    const blend = clamp(colorBlend, 0, 1);
-    const inkStops = (): string => {
-      const half = blend / 2;
-      const count = 7;
-      let out = '';
-      for (let i = 0; i < count; i++) {
-        const at = i / (count - 1);
-        out += el('stop', {
-          offset: num(at, 3),
-          'stop-color': accentAt(palette, clamp(0.5 - half + blend * at, 0, 1)),
-        });
-      }
-      return out;
-    };
-
     const defs = el(
       'defs',
       {},
@@ -113,10 +105,7 @@ export const truchet: Generator = {
         'linearGradient',
         { id: 'tr-bg', x1: '0', y1: '0', x2: '0', y2: '1' },
         el('stop', { offset: '0', 'stop-color': tintTop }) + el('stop', { offset: '1', 'stop-color': tintBottom }),
-      ) +
-        (blend > 0
-          ? el('linearGradient', { id: 'tr-ink', x1: '0', y1: '0', x2: '0.35', y2: '1' }, inkStops())
-          : ''),
+      ),
     );
 
     // Tiles are grouped by colour so the SVG carries one fill/stroke per group
@@ -133,10 +122,29 @@ export const truchet: Generator = {
     // ramp is sampled in OKLab, so a mid-point between two accents is the
     // colour the eye expects rather than the one the hex arithmetic gives.
     const flatBands = Math.max(1, Math.min(4, palette.accents.length));
-    const bands = Math.max(flatBands, Math.round(flatBands + (28 - flatBands) * clamp(colorBlend, 0, 1)));
+    const bands = Math.max(flatBands, Math.round(flatBands + (48 - flatBands) * clamp(colorBlend, 0, 1)));
     const bandColors = accentRamp(palette, bands);
     const strokeBuckets: string[][] = Array.from({ length: bands }, () => []);
     const fillBuckets: string[][] = Array.from({ length: bands }, () => []);
+
+    // Colour comes from a field sampled in normalised canvas coordinates, not
+    // in pixels. A pixel-keyed frequency would give a 108px thumbnail a much
+    // coarser colour field than a 1399px export, so the preview would not be
+    // the thing you downloaded — the same trap the geometry already avoids.
+    //
+    // The frequency is deliberately low: a couple of slow swells across the
+    // image, so one region settles on one accent and a neighbouring region on
+    // another, with the change spread over many cells rather than happening at
+    // a cell edge. Sampling per mark rather than per tile is what stops the
+    // grid from showing through as colour.
+    const aspect = h / Math.max(1, w);
+    const bandAt = (px: number, py: number): number => {
+      const u = px / Math.max(1, w);
+      const v = py / Math.max(1, h);
+      const n = noise.value(u * COLOR_FIELD + 3, v * COLOR_FIELD * aspect - 9) * 0.5 + 0.5;
+      const t = clamp(n * colorSpread + v * (1 - colorSpread) * 0.9, 0, 1);
+      return Math.min(bands - 1, Math.floor(t * bands));
+    };
 
     const kindFor = (rx: number, ry: number): TileKind => {
       if (tileSet === 'mixed') {
@@ -157,12 +165,7 @@ export const truchet: Generator = {
       if (s <= 0.5) return;
 
       const sw = clamp(weight * s * (1 - rowVariation * 0.5 + rowVariation * rowT * 1.1) * (0.34 + 0.66 * q), s * 0.012, s * 0.62);
-      const tone = clamp(
-        (noise.value(x * 0.015 + 3, y * 0.015 - 9) * 0.5 + 0.5) * colorSpread + rowT * (1 - colorSpread) * 0.9,
-        0,
-        1,
-      );
-      const band = Math.min(bands - 1, Math.floor(tone * bands));
+      const band = bandAt(x + size / 2, cy);
       const rot = rng.int(0, 3);
       const kind = kindFor(x / Math.max(1, cell), y / Math.max(1, cell));
 
@@ -326,24 +329,13 @@ export const truchet: Generator = {
 
     let body = defs + el('rect', { x: 0, y: 0, width: w, height: h, fill: 'url(#tr-bg)' });
 
-    if (blend > 0) {
-      // One group for everything: the gradient decides the colour by position,
-      // so there is nothing for the per-colour buckets to express.
-      const fills = fillBuckets.flat();
-      const strokes = strokeBuckets.flat();
-      if (fills.length > 0) body += el('g', { fill: 'url(#tr-ink)', stroke: 'none' }, fills.join(''));
+    for (let b = 0; b < bands; b++) {
+      const fills = fillBuckets[b] as string[];
+      const strokes = strokeBuckets[b] as string[];
+      const color = bandColors[b] as string;
+      if (fills.length > 0) body += el('g', { fill: color, stroke: 'none' }, fills.join(''));
       if (strokes.length > 0) {
-        body += el('g', { fill: 'none', stroke: 'url(#tr-ink)', 'stroke-linecap': 'round' }, strokes.join(''));
-      }
-    } else {
-      for (let b = 0; b < bands; b++) {
-        const fills = fillBuckets[b] as string[];
-        const strokes = strokeBuckets[b] as string[];
-        const color = bandColors[b] as string;
-        if (fills.length > 0) body += el('g', { fill: color, stroke: 'none' }, fills.join(''));
-        if (strokes.length > 0) {
-          body += el('g', { fill: 'none', stroke: color, 'stroke-linecap': 'round' }, strokes.join(''));
-        }
+        body += el('g', { fill: 'none', stroke: color, 'stroke-linecap': 'round' }, strokes.join(''));
       }
     }
 

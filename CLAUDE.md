@@ -30,6 +30,35 @@ reverting a source file without rebuilding proves nothing.
 
 ---
 
+## Verifying a visual change
+
+Passing tests is not evidence that a visual change did what was asked. Four
+consecutive fixes to the truchet arcs shipped green and wrong, because each was
+checked by rendering the new version and looking at it alone.
+
+**Render before and after, and compare them.** One image cannot tell you whether
+anything changed. The A/B takes seconds; `npm run samples <dir>` or a short
+script against `packages/core/dist` plus resvg will do it. Look at the PNGs.
+
+**Check the symptom described, not the mechanism you built.** A colour-blend
+control was added, verified to produce a smoother ramp, and shipped — while the
+hard edges it was meant to remove were still there, because they were between
+tiles rather than between accents. The right question is "is the thing they
+pointed at gone", not "does my change work".
+
+**Ask whether the structure can even produce the result.** Two quarter discs of
+radius s/2 cover 39% of a cell; one of radius s covers 78%. No parameter was
+ever going to close that gap. A minute of arithmetic beats three rounds of
+tuning.
+
+**A control that is inert in some mode is a smell.** It usually means the
+mechanism does not match the thing being asked for. Twice here a knob was added
+to manufacture an effect — path ends — that the tiling already produced
+structurally, and each version of it broke something else: empty cells, then
+unconnected edges.
+
+---
+
 ## Invariants
 
 Break these and the product stops being coherent, usually silently.
@@ -130,7 +159,7 @@ PNGs. A generator that renders muddy or empty at some palettes is not done.
 
 ## Bugs worth not repeating
 
-Four real ones from this repo, each of which looked like a design choice:
+Real ones from this repo, each of which looked like a design choice:
 
 **The SVG arc sweep flag.** Two circles of a given radius pass through any two
 points; the sweep flag picks which. Truchet's quarter arcs used sweep `1`, which
@@ -154,6 +183,21 @@ state variable settles the value the control just replaced. Params flow through
 seeded stream reorder every later draw, so nudging one slider changes the whole
 image. Where a control should modify a pattern rather than replace it, derive
 its decisions from a hash of position instead.
+
+**Varying what makes the tiling join.** In truchet the shared radii set is what
+lets a mark meet its neighbour across an edge. Trimming it, or dropping a mark,
+leaves arcs with no partner stopping at the cell boundary — a broken grid, not a
+pattern. Before making something vary per cell, work out what the tiling relies
+on being the same everywhere.
+
+**Growing a shape from the wrong anchor.** Arc count grew a fan outward from the
+corner, so raising it replaced a mark that reached the edge with a smaller one.
+A count control should add detail to a shape that keeps its size; anchor it at
+the outer edge and nest inward.
+
+**Flat fills cannot blend.** A per-shape colour meets its neighbour at an edge
+however finely the palette is resolved into steps. Continuous colour needs the
+paint to vary across the canvas — a gradient — not more buckets.
 
 ---
 
