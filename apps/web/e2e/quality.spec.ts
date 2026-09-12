@@ -120,4 +120,22 @@ test.describe('layout and accessibility', () => {
     // Chromium reports the 0.001ms override as "1e-06s".
     expect(Number.parseFloat(duration)).toBeLessThan(0.01);
   });
+
+  test('every page carries a build stamp', async ({ page }) => {
+    // The stamp exists so a reader can tell whether they are looking at the
+    // version that was just published. A green deploy is not proof the site
+    // changed, so the page has to be able to answer that itself.
+    for (const path of ['/', '/collected', '/setup', '/p/truchet']) {
+      await page.goto(path);
+      const stamp = page.getByTestId('build-stamp');
+      await expect(stamp).toBeVisible();
+      const iso = await stamp.locator('time').getAttribute('datetime');
+      expect(iso).toBeTruthy();
+      // A real, recent, parseable instant — not a placeholder.
+      const when = new Date(iso ?? '').getTime();
+      expect(Number.isNaN(when)).toBe(false);
+      expect(when).toBeGreaterThan(Date.now() - 1000 * 60 * 60 * 24);
+      expect(when).toBeLessThan(Date.now() + 1000 * 60 * 5);
+    }
+  });
 });

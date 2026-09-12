@@ -8,9 +8,21 @@
  */
 const basePath = process.env.PATTERNWALL_BASE_PATH?.replace(/\/$/, '') ?? '';
 
+/**
+ * Build stamp, baked in at build time so a published page can say which version
+ * of itself you are looking at. A green deploy is not proof the site changed —
+ * that gap cost real debugging time once — so the page carries the answer.
+ * GITHUB_SHA is set by Actions; locally there is no commit to name.
+ */
+const buildStamp = {
+  NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
+  NEXT_PUBLIC_BUILD_COMMIT: (process.env.GITHUB_SHA ?? '').slice(0, 7),
+};
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
+  env: buildStamp,
   reactStrictMode: true,
   images: { unoptimized: true },
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),

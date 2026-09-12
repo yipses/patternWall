@@ -1,0 +1,37 @@
+.footer {
+  border-top: 1px solid var(--line);
+  margin-top: 64px;
+  padding: 20px 0 40px;
+}
+
+.inner {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.name {
+  letter-spacing: 0.02em;
+}
+
+.build {
+  font-variant-numeric: tabular-nums;
+}
+
+.commit {
+  margin-left: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@media (max-width: 480px) {
+  .inner {
+    padding: 0 16px;
+  }
+}
