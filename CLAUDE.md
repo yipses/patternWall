@@ -277,9 +277,24 @@ result. Each was arrived at by breaking it first.
   not from a probability knob. Three attempts to manufacture them each broke
   something else.
 
+- **Diagonals tile at `s/n` and nothing else.** Arc count applies to this set
+  too: the corner-to-corner line becomes a family of parallel chords. A chord
+  offset by `k*(s/n)` crosses every edge at a multiple of `s/n` from the
+  corner, and both rotations put their crossings on that same lattice, so
+  every chord meets a partner across every edge — 0% of interior crossings go
+  unpartnered on a uniform grid, against 49% for the arcs. Spread is
+  deliberately *not* wired in: truncating the family to the chords nearest the
+  diagonal leaves a cell crossing its right edge near one corner and its left
+  edge near the other, so same-rotation neighbours miss each other entirely
+  below half width and 62% of crossings stop dead along the boundary. The
+  extent is not free — it is fixed by the lattice that makes the family join.
+  Subdivision is the standing exception for both sets: a quartered cell has
+  half the spacing, so only every second crossing meets a full-size neighbour.
+
 Controls: density, tileSet, weight, subdivide, colorSpread, quietTop, gap,
-openEnds, arcCount, arcSpacing (spread), colorBlend. `mixed` and row weight
-variation were removed as not worth their slots.
+openEnds, arcCount (labelled Line count; governs both tile sets), arcSpacing
+(spread; quarter arcs only), colorBlend. `mixed` and row weight variation were
+removed as not worth their slots.
 
 ---
 

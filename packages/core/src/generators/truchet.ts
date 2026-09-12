@@ -13,6 +13,8 @@ Three tile sets are offered here and they behave quite differently. **Quarter ar
 
 Two controls decide how much the arcs behave like a single continuous system. **Open ends** drops marks, so paths stop rather than always continuing; a field with nothing dropped can only close into loops or run off the canvas, which reads as busier than it is. **Arc count** replaces each single quarter arc with a fan of concentric ones sharing the same corner. Because a neighbour's fan is centred on that same physical point whenever the rotations agree, every radius in the fan meets its opposite number across the edge and the marks become nested ribbons; where the rotations disagree, the lines simply stop. Both of the cell’s marks are fanned, and the two sets stay clear of each other because the radii stop where circles centred on opposite corners would touch; carried past that point they would cross, and the result is moiré rather than pattern.
 
+On the diagonal set the same control does something structurally different, and something the arcs cannot quite manage. The single corner-to-corner line becomes a family of parallel chords spaced one cell width over the count — the only spacing that tiles, because it puts every crossing at a multiple of itself along each edge, and puts them there in both rotations. Where a fan only meets its neighbour when the two cells agree on a corner, every chord here finds its partner across every edge whichever way the cell beyond it happens to be turned, provided the two cells are the same size. Subdivision is the exception and a visible one: a quartered cell draws its family at half the spacing, so half of its crossings meet nothing and the finer patch is edged with stopped lines — which is a good part of why a subdivided passage reads as a patch rather than as more of the same weave. Past three or four the cells stop reading as cells at all and the grid becomes a woven field of chevrons and nested diamonds, which is a different pattern from the maze of switchbacks a count of one gives you.
+
 Subdivision is where this implementation departs from the classical rule. A fraction of cells are replaced by a 2×2 block of quarter-size tiles, and that fraction rises toward the bottom of the canvas. A uniform grid has a uniform level of interest, which is exactly wrong for a wallpaper: the eye wants somewhere to rest and somewhere to look. Pushing the fine detail downward puts the busy passage where the app icons and the dock live, and leaves the clock sitting on something calm.
 
 Grid **density** interacts with everything. Below about six columns the tiles are large enough that you read each one individually and the tile set matters enormously; above about twenty you stop seeing tiles at all and start seeing a woven texture, at which point stroke weight matters more than which set you chose.
@@ -53,8 +55,8 @@ export const truchet: Generator = {
     { key: 'quietTop', label: 'Quiet top', type: 'number', min: 0, max: 1, step: 0.01, default: 0.55, description: 'Thins the strokes and suppresses subdivision where iOS draws the clock.' },
     { key: 'gap', label: 'Cell gap', type: 'boolean', default: false, description: 'Inset every tile slightly so the grid itself becomes visible as white space.' },
     { key: 'openEnds', label: 'Open ends', type: 'number', min: 0, max: 0.8, step: 0.02, default: 0, description: 'Chance a cell is left empty, breaking the surface up. A cell’s two marks go together, so this leaves a real hole rather than a half-covered cell — and the ends in the pattern come for free either way, wherever two neighbours face different corners.' },
-    { key: 'arcCount', label: 'Arc count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'Concentric arcs per mark. They are added either side of the radius that joins the neighbouring cells, reaching out toward the point where opposite corners would touch and in toward the corner itself. How far they reach is Arc spread’s job, not this one, so raising the count divides the same ribbon more finely rather than growing or shrinking the mark.' },
-    { key: 'arcSpacing', label: 'Arc spread', type: 'number', min: 0.15, max: 1, step: 0.05, default: 1, description: 'How much of the cell the rings reach across. The gap between them is worked out from that and the arc count, so every arc you ask for fits, and the stroke thins if it has to rather than closing the rings into a solid block.' },
+    { key: 'arcCount', label: 'Line count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'How many lines each mark is drawn with. On quarter arcs they are concentric, added either side of the radius that joins the neighbouring cells, and how far they reach is Arc spread’s job rather than this one. On diagonals the single corner-to-corner line becomes a family of parallel chords across the cell. Either way the spacing is chosen so that every line meets a partner across the cell edge from a cell of its own size, so raising this divides the same cell more finely instead of resizing the mark, and the stroke thins to the gap it leaves.' },
+    { key: 'arcSpacing', label: 'Arc spread', type: 'number', min: 0.15, max: 1, step: 0.05, default: 1, description: 'How much of the cell the rings reach across. The gap between them is worked out from that and the line count, so every arc you ask for fits, and the stroke thins if it has to rather than closing the rings into a solid block. Quarter arcs only: a family of diagonals has no say in how far it spreads, because the spacing that makes it meet its neighbours is the spacing that fills the cell.' },
     { key: 'colorBlend', label: 'Colour blend', type: 'number', min: 0, max: 1, step: 0.02, default: 1, description: 'How finely the palette is resolved between its accents. At zero only the accents themselves are used, so regions of colour meet at hard edges. Raise it and the steps between them are filled in, so one region eases into the next.' },
   ],
 
@@ -309,15 +311,77 @@ export const truchet: Generator = {
       }
 
       const a = rot % 2 === 0;
-      const d = a
-        ? `M${num(x0, 1)} ${num(y0, 1)}L${num(x0 + s, 1)} ${num(y0 + s, 1)}`
-        : `M${num(x0 + s, 1)} ${num(y0, 1)}L${num(x0, 1)} ${num(y0 + s, 1)}`;
-      const extra = rng.bool(0.35)
-        ? a
-          ? `M${num(x0 + s, 1)} ${num(y0, 1)}L${num(x0 + s * 0.6, 1)} ${num(y0 + s * 0.4, 1)}`
-          : `M${num(x0, 1)} ${num(y0, 1)}L${num(x0 + s * 0.4, 1)} ${num(y0 + s * 0.4, 1)}`
-        : '';
-      (strokeBuckets[band] as string[]).push(el('path', { d: d + extra, 'stroke-width': num(sw, 2), 'stroke-opacity': opacity }));
+
+      // Arc count means something here too: the single corner-to-corner
+      // diagonal becomes a family of parallel chords at spacing s/n.
+      //
+      // The spacing is what makes it tile, and s/n is the only choice that
+      // does. A chord offset from the diagonal by k*(s/n) crosses each cell
+      // edge at a multiple of s/n from the corner, and it does so in both
+      // rotations: the main-diagonal family and the anti-diagonal family put
+      // their crossings on the identical lattice, mirrored onto itself. So
+      // every line meets a partner across every edge whatever the neighbour
+      // rolled — measured on a uniform grid, 0% of interior crossings are left
+      // unpartnered here against 49% for the arcs, where only s/2 joins
+      // unconditionally. Any other spacing crosses at points the neighbour has
+      // nothing at, and the grid shows as a row of stopped lines.
+      //
+      // Subdivision is the one exception, and it is not fixable from here: a
+      // quartered cell has half the cell width and therefore half the spacing,
+      // so only every second crossing lines up with a full-size neighbour. The
+      // arcs have the same seam for the same reason, and it is part of what
+      // makes a subdivided patch read as a patch.
+      // Arc spread is deliberately not wired in here. Narrowing the family to
+      // the chords nearest the diagonal looks like the obvious analogue of
+      // what it does to the arcs, and it breaks the tiling: a cell crosses its
+      // right edge in the band nearest the bottom corner and its left edge in
+      // the band nearest the top one, so two neighbours of the same rotation
+      // only overlap once the family is at least half width. Below that the
+      // lines stop dead along the cell boundary and the grid reads straight
+      // through the pattern. The extent is not a free choice — it is fixed by
+      // the same lattice that makes the family join at all — so the count owns
+      // it, the way the count owns arc spacing on the other tile set.
+      const lines = Math.max(1, arcCount);
+      const step = s / lines;
+      const kMax = lines - 1;
+
+      let d = '';
+      for (let k = -kMax; k <= kMax; k++) {
+        const o = k * step;
+        // Each chord is written from its top-most end so that the single-line
+        // case emits exactly the string this generator has always emitted.
+        const [px, py, qx, qy] = a
+          ? k >= 0
+            ? [x0, y0 + o, x0 + s - o, y0 + s]
+            : [x0 - o, y0, x0 + s, y0 + s + o]
+          : k <= 0
+            ? [x0 + s + o, y0, x0, y0 + s + o]
+            : [x0 + s, y0 + o, x0 + o, y0 + s];
+        d += `M${num(px, 1)} ${num(py, 1)}L${num(qx, 1)} ${num(qy, 1)}`;
+      }
+
+      // Drawn unconditionally so the count does not reorder the stream: a
+      // decision taken here shifts every rotation and colour after it, and
+      // nudging Arc count would reshuffle the whole image rather than add to
+      // it. The spur only survives on the single-line tile, where it is what
+      // stops a plain lattice reading as graph paper; a family already has
+      // that interest, and a stray mark across it at 45 degrees is the one
+      // line in the cell that meets nothing.
+      const spur = rng.bool(0.35);
+      const extra =
+        lines === 1 && spur
+          ? a
+            ? `M${num(x0 + s, 1)} ${num(y0, 1)}L${num(x0 + s * 0.6, 1)} ${num(y0 + s * 0.4, 1)}`
+            : `M${num(x0, 1)} ${num(y0, 1)}L${num(x0 + s * 0.4, 1)} ${num(y0 + s * 0.4, 1)}`
+          : '';
+
+      // Neighbouring chords sit step/sqrt(2) apart measured perpendicular, not
+      // step — the offset is along an axis and the line runs at 45 degrees to
+      // it. Thinning to `step` would still let a heavy stroke close the family
+      // into a solid triangle.
+      const perp = step * 0.70710678;
+      const lineSw = lines > 1 ? Math.min(sw, perp * 0.68) : sw;
+      (strokeBuckets[band] as string[]).push(el('path', { d: d + extra, 'stroke-width': num(lineSw, 2), 'stroke-opacity': opacity }));
     };
 
     for (let ry = 0; ry < rows; ry++) {

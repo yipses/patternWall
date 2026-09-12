@@ -76,3 +76,75 @@ describe('truchet quarter arcs', () => {
     expect(small).toBe(large);
   });
 });
+
+describe('truchet diagonals', () => {
+  const SIZE = 420;
+  const COLS = 7;
+
+  const segments = (svg: string): [number, number][][] =>
+    [...svg.matchAll(/M([\d.-]+) ([\d.-]+)L([\d.-]+) ([\d.-]+)/g)].map((m) => [
+      [Number(m[1]), Number(m[2])],
+      [Number(m[3]), Number(m[4])],
+    ]);
+
+  const diagonals = (arcCount: number): string =>
+    render({ tileSet: 'diagonals', density: COLS, subdivide: 0, gap: false, arcCount }, SIZE);
+
+  /**
+   * Raising the arc count on this tile set used to do nothing at all: the
+   * control belonged to the arcs branch and the diagonals branch drew its one
+   * corner-to-corner line whatever the count said.
+   */
+  it('draws 2n-1 parallel chords per cell rather than ignoring the count', () => {
+    const counts = [1, 2, 3, 6].map((n) => segments(diagonals(n)).length);
+    expect(new Set(counts).size).toBe(counts.length);
+    // 2n-1 chords per cell, against the same cell count each time. The single
+    // chord case also carries the spur, so compare the multi-chord cases.
+    const cells = counts[1]! / 3;
+    expect(counts[2]).toBe(cells * 5);
+    expect(counts[3]).toBe(cells * 11);
+  });
+
+  /**
+   * The spacing is what makes the family tile, and s/n is the only choice that
+   * does: a chord offset by k*(s/n) crosses every cell edge at a multiple of
+   * s/n from the corner, in both rotations, so each one meets a partner across
+   * the edge whatever the neighbour rolled.
+   *
+   * Any other extent breaks it, and not obviously — narrowing the family to
+   * the chords nearest the diagonal, which is what Arc spread would do if it
+   * were wired in here, leaves a cell crossing its right edge near the bottom
+   * corner and its left edge near the top one. Two neighbours of the same
+   * rotation then overlap only when the family is at least half width, and
+   * below that 62% of crossings have nothing on the other side: the lines stop
+   * dead along the boundary and the grid reads straight through the pattern.
+   * This test fails at exactly that rate if the truncation is reintroduced.
+   */
+  it('gives every interior edge crossing a partner, at any arc count', () => {
+    const cell = SIZE / COLS;
+    const rows = Math.ceil(SIZE / cell) + 1;
+    const originY = (SIZE - rows * cell) / 2;
+
+    for (const arcCount of [2, 3, 4, 8, 12]) {
+      const tally = new Map<string, number>();
+      for (const seg of segments(diagonals(arcCount))) {
+        for (const [x, y] of seg) {
+          // Only endpoints landing on an interior vertical cell edge, and not
+          // on a grid vertex — a chord ending on a vertex meets the cell
+          // diagonally opposite, which is the tile set's own kind of end.
+          const col = x / cell;
+          if (Math.abs(col - Math.round(col)) > 1e-6) continue;
+          if (Math.round(col) <= 0 || Math.round(col) >= COLS) continue;
+          const ry = (y - originY) / cell;
+          if (Math.abs(ry - Math.round(ry)) < 1e-6) continue;
+          if (y < originY + cell || y > originY + (rows - 1) * cell) continue;
+          const key = `${x.toFixed(1)},${y.toFixed(1)}`;
+          tally.set(key, (tally.get(key) ?? 0) + 1);
+        }
+      }
+      const lonely = [...tally.values()].filter((v) => v < 2).length;
+      expect(tally.size).toBeGreaterThan(20);
+      expect({ arcCount, lonely }).toEqual({ arcCount, lonely: 0 });
+    }
+  });
+});
