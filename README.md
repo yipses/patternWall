@@ -7,6 +7,9 @@ phone's exact pixel size.
 Everything runs in the browser. There is no server, no database and no account: a wallpaper is
 fully described by a pattern id, a seed, a parameter set and a palette, all of which live in the URL.
 
+If you are picking this repo up to work on it, read [CLAUDE.md](CLAUDE.md) as well — it records the
+invariants, the deployment traps and the bugs worth not repeating.
+
 ---
 
 ## Running it
@@ -175,7 +178,7 @@ a non-blank canvas on six palettes, share-link round-tripping, and browser/Node 
   instructions were verified.
 - **The `/setup` instructions are partially verified.** The machine this was built on could not
   reach `support.apple.com` directly, so Apple's guide was consulted through search results quoting
-  it. Labels confirmed against Apple's own wording are marked as such on the page; two toggle names
+  it. Labels confirmed against Apple's own wording are marked as such on the page; three toggle names
   that only community sources attest to are flagged as needing checking on your device.
 - **Rendering is synchronous on the main thread.** A dense `flow-dots` configuration emits tens of
   thousands of circles, and while the preview is debounced and drops to a lower resolution during a
