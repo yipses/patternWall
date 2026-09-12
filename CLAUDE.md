@@ -95,6 +95,13 @@ this across many generators later is miserable.
 in the middle silently reinterprets every existing link. Old links with fewer
 values decode correctly and surface a note.
 
+Removing one is the same problem in reverse: everything after it shifts, so old
+links misread from that slot on. Removing `mixed` from a select was safe, since
+dropping the *last* option only makes a stale index fall back to the default;
+removing the `rowVariation` param was not, and every truchet link made before it
+now reads its values one slot out. If links ever need to survive, the encoding
+needs a version or named keys — it has neither today.
+
 ---
 
 ## Deployment
@@ -199,6 +206,15 @@ anywhere, which is how "fill the cell from the outside in" silently
 disconnected the whole tiling. Anchor the set on s/2 and grow it in both
 directions.
 
+**One mark per cell cannot tile.** A cell's mark touches only the edges it is
+drawn against, so a single mark covers two of the four edge midpoints and the
+other two have nothing on the far side to meet. The default render falls apart
+into scattered arcs. This looked like the price of filling the cell better, and
+it was not a price at all: two quarter discs of radius s/sqrt(2) cover the same
+78% of a cell as one of radius s and cover all four midpoints doing it.
+s/sqrt(2) is the ceiling because circles centred on opposite corners meet once
+their radii sum past the diagonal.
+
 **Growing a shape from the wrong anchor.** Arc count grew a fan outward from the
 corner, so raising it replaced a mark that reached the edge with a smaller one.
 A count control should add detail to a shape that keeps its size; anchor it at
@@ -214,6 +230,37 @@ having to accommodate the stroke.
 **Flat fills cannot blend.** A per-shape colour meets its neighbour at an edge
 however finely the palette is resolved into steps. Continuous colour needs the
 paint to vary across the canvas — a gradient — not more buckets.
+
+---
+
+## Truchet, as settled
+
+Most of this session went into this one generator, and the rules below are the
+result. Each was arrived at by breaking it first.
+
+- **Two marks per cell**, on opposite corners, chosen by rotation parity. Not
+  one: see the coverage note above.
+- **Radii anchored on `s/2`** — the one radius that joins whatever the
+  neighbour's rotation is — growing outward to a ceiling of `s/sqrt(2)` and
+  inward toward the corner.
+- **Outward and inward take their own step**, because there is far less room
+  above `s/2` than below it and one step wastes the larger side. Both sets are
+  identical in every cell, which is all the joining needs.
+- **Spacing is derived**, not set: the room available divided by the steps
+  needed, so every arc the count asks for fits. The stroke thins to the gap
+  rather than the gap accommodating the stroke.
+- **Sweep flag 0** on every arc, so each is centred on its corner.
+- **Colour comes from a noise field** in normalised canvas coordinates
+  (`COLOR_FIELD` cycles across the image), sampled **per arc at its own
+  midpoint** — per tile gives every arc in a cell one step of the ramp and the
+  cell boundary shows as an edge. `colorBlend` is the ramp's resolution.
+- **Ends are structural.** They come from neighbours facing different corners,
+  not from a probability knob. Three attempts to manufacture them each broke
+  something else.
+
+Controls: density, tileSet, weight, subdivide, colorSpread, quietTop, gap,
+openEnds, arcCount, arcSpacing (spread), colorBlend. `mixed` and row weight
+variation were removed as not worth their slots.
 
 ---
 
@@ -238,6 +285,8 @@ from this build environment. Do not quietly upgrade a guess to a fact.
 
 Four generators: `flow-dots`, `truchet`, `phyllotaxis`, `ridgelines`. Three
 taxonomy tags — `isometric`, `distortion`, `physics` — have no patterns yet.
+Truchet is by far the most worked over; the other three have had almost no
+iteration and should be assumed rougher rather than better.
 Client-only: no server rendering, no database, no accounts. The render service,
 short config IDs and per-config iCloud shortcuts are the next phase.
 
