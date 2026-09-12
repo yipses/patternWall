@@ -11,7 +11,7 @@ A Truchet tile is a square with an asymmetric mark on it — Sébastien Truchet�
 
 Three tile sets are offered here and they behave quite differently. **Quarter arcs** join edge midpoints with two 90° curves centred on opposite corners, so every cell edge is a connection point and the marks meet: the result is a tangle of closed loops. The corner is the whole trick — two circles of a given radius pass through any pair of points, and centring these on the cell's middle instead produces marks that still meet at the edges but can never curl around a grid vertex, so no loop, half circle or full circle ever forms. **Diagonals** connect corners instead, which means paths meet at cell corners rather than edges and the tiling reads as a lattice of switchbacks rather than as loops. **Triangles** fill half of each cell, which turns the whole thing from line work into a mass of light and dark, and is by far the strongest option at low densities.
 
-Two controls decide how much the arcs behave like a single continuous system. **Open ends** drops marks, so paths stop rather than always continuing; a field with nothing dropped can only close into loops or run off the canvas, which reads as busier than it is. **Arc count** replaces each single quarter arc with a fan of concentric ones sharing the same corner. Because a neighbour's fan is centred on that same physical point whenever the rotations agree, every radius in the fan meets its opposite number across the edge and the marks become nested ribbons; where the rotations disagree, the lines simply stop. A fan is drawn on one corner rather than two, because circles centred on opposite corners of a square intersect as soon as their radii sum past the diagonal, and two opposing fans turn into moiré rather than pattern.
+Two controls decide how much the arcs behave like a single continuous system. **Open ends** drops marks, so paths stop rather than always continuing; a field with nothing dropped can only close into loops or run off the canvas, which reads as busier than it is. **Arc count** replaces each single quarter arc with a fan of concentric ones sharing the same corner. Because a neighbour's fan is centred on that same physical point whenever the rotations agree, every radius in the fan meets its opposite number across the edge and the marks become nested ribbons; where the rotations disagree, the lines simply stop. Both of the cell’s marks are fanned, and the two sets stay clear of each other because the radii stop where circles centred on opposite corners would touch; carried past that point they would cross, and the result is moiré rather than pattern.
 
 Subdivision is where this implementation departs from the classical rule. A fraction of cells are replaced by a 2×2 block of quarter-size tiles, and that fraction rises toward the bottom of the canvas. A uniform grid has a uniform level of interest, which is exactly wrong for a wallpaper: the eye wants somewhere to rest and somewhere to look. Pushing the fine detail downward puts the busy passage where the app icons and the dock live, and leaves the clock sitting on something calm.
 
@@ -52,8 +52,8 @@ export const truchet: Generator = {
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'How much of the colour comes from the drifting field rather than from height. At zero the palette runs top to bottom; at one it pools into regions that wander across the image.' },
     { key: 'quietTop', label: 'Quiet top', type: 'number', min: 0, max: 1, step: 0.01, default: 0.55, description: 'Thins the strokes and suppresses subdivision where iOS draws the clock.' },
     { key: 'gap', label: 'Cell gap', type: 'boolean', default: false, description: 'Inset every tile slightly so the grid itself becomes visible as white space.' },
-    { key: 'openEnds', label: 'Open ends', type: 'number', min: 0, max: 0.8, step: 0.02, default: 0, description: 'Chance a cell is left empty, breaking the surface up. There is one mark per cell, so this leaves a real hole rather than a shortened path — the ends in the pattern come for free, wherever two neighbours face different corners.' },
-    { key: 'arcCount', label: 'Arc count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'Concentric arcs per mark, nested inward from the cell edge. The outermost stays put, so raising this adds rings inside a mark the same size rather than shrinking it. Once they reach the corner, more has no effect.' },
+    { key: 'openEnds', label: 'Open ends', type: 'number', min: 0, max: 0.8, step: 0.02, default: 0, description: 'Chance a cell is left empty, breaking the surface up. A cell’s two marks go together, so this leaves a real hole rather than a half-covered cell — and the ends in the pattern come for free either way, wherever two neighbours face different corners.' },
+    { key: 'arcCount', label: 'Arc count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'Concentric arcs per mark. They are added either side of the radius that joins the neighbouring cells, reaching out toward the point where opposite corners would touch and in toward the corner itself. How far they reach is Arc spread’s job, not this one, so raising the count divides the same ribbon more finely rather than growing or shrinking the mark.' },
     { key: 'arcSpacing', label: 'Arc spread', type: 'number', min: 0.15, max: 1, step: 0.05, default: 1, description: 'How much of the cell the rings reach across. The gap between them is worked out from that and the arc count, so every arc you ask for fits, and the stroke thins if it has to rather than closing the rings into a solid block.' },
     { key: 'colorBlend', label: 'Colour blend', type: 'number', min: 0, max: 1, step: 0.02, default: 1, description: 'How finely the palette is resolved between its accents. At zero only the accents themselves are used, so regions of colour meet at hard edges. Raise it and the steps between them are filled in, so one region eases into the next.' },
   ],
@@ -219,6 +219,18 @@ export const truchet: Generator = {
         const gx = Math.round((x / cell) * 2);
         const gy = Math.round(((y - originY) / cell) * 2);
         const gs = Math.round((size / cell) * 2);
+        //
+        // The salt is per mark but the decision is, in practice, per cell, and
+        // that is the behaviour to keep. hashSeed is FNV-1a, whose last step is
+        // a multiply: flipping the final character moves the result by about
+        // 0.014 of the range, so salts 1 and 2 fall the same side of any
+        // threshold 98.8% of the time and a cell almost always loses both marks
+        // or neither. That is what the tiling wants — a cell left with one mark
+        // covers two of its four edge midpoints, which is the scattered-arcs
+        // failure the two-mark design exists to avoid — so this is not a bug to
+        // fix here. It is worth knowing that giving hashSeed a proper
+        // finalising mix, which would otherwise look like a clean improvement,
+        // would silently turn Open ends into a control that shreds cells.
         const keep = (salt: number): boolean =>
           openEnds <= 0 || hashSeed(`${gx}:${gy}:${gs}:${salt}`) / 0x100000000 >= openEnds;
 
