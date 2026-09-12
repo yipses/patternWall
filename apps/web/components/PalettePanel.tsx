@@ -86,14 +86,43 @@ function ColourSlot({
     setBad(false);
   }, [hex]);
 
-  const commit = (value: string) => {
+  const apply = (value: string): boolean => {
     const v = value.startsWith('#') ? value : `#${value}`;
-    if (isHex(v)) {
-      setBad(false);
-      onChange(oklchToHex(hexToOklch(v)));
-    } else {
-      setBad(true);
-    }
+    if (!isHex(v)) return false;
+    setBad(false);
+    onChange(oklchToHex(hexToOklch(v)));
+    return true;
+  };
+
+  /**
+   * Committing on every keystroke made a six-digit hex impossible to type.
+   * `isHex` accepts the three-digit shorthand, so `#1a2` committed the moment
+   * it was typed, the parent normalised it to `#11aa22`, and the effect above
+   * replaced the draft mid-word — typing `#1a2b3c` one character at a time left
+   * `#11aa22b3c` in the field, flagged invalid.
+   *
+   * So the live commit waits for a length that cannot be a prefix of something
+   * longer: six digits, or eight with alpha. The shorthand still works, on
+   * blur or Enter, which is also where anything unparseable reverts. Nothing is
+   * marked invalid while it is still being typed — an incomplete colour is not
+   * a wrong one.
+   */
+  const commitWhileTyping = (value: string) => {
+    const digits = (value.startsWith('#') ? value.slice(1) : value).trim();
+    // Flagged only for something that cannot become a colour however much more
+    // is typed: a character outside the hex alphabet, or more than eight
+    // digits. A half-typed value is incomplete, not wrong, and marking it red
+    // on the way past three characters is what the old commit-per-keystroke
+    // did. This keeps the invalid state meaningful rather than leaving it
+    // permanently off.
+    setBad(digits.length > 8 || !/^[0-9a-fA-F]*$/.test(digits));
+    if (digits.length === 6 || digits.length === 8) apply(value);
+  };
+
+  const commitFinal = () => {
+    if (apply(draft)) return;
+    setDraft(hex);
+    setBad(false);
   };
 
   return (
@@ -115,14 +144,12 @@ function ColourSlot({
           aria-invalid={bad || undefined}
           onChange={(e) => {
             setDraft(e.target.value);
-            commit(e.target.value);
+            commitWhileTyping(e.target.value);
           }}
-          onBlur={() => {
-            if (bad) {
-              setDraft(hex);
-              setBad(false);
-            }
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
           }}
+          onBlur={commitFinal}
         />
         {onRemove ? (
           <Button variant="ghost" size="small" onClick={onRemove} aria-label={`Remove ${label}`}>

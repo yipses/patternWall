@@ -79,6 +79,23 @@ test.describe('editor', () => {
     expect(page.url()).not.toContain('s=half-typed');
   });
 
+  // Typed one character at a time, which is the only way to catch this: the
+  // three-digit shorthand is valid, so `#1a2` used to commit mid-word, the
+  // parent normalised it to `#11aa22`, and the effect that syncs the field
+  // replaced the draft under the cursor. fill() sets the whole string in one
+  // event and never sees it.
+  test('a six-digit hex can be typed one character at a time', async ({ page }) => {
+    await page.goto('/p/truchet');
+    await page.getByRole('tab', { name: 'Palette' }).click();
+    await page.getByRole('tab', { name: 'Colours' }).click();
+    const field = page.getByLabel('Background hex value');
+    await field.click();
+    await field.press('Control+a');
+    await page.keyboard.type('#1a2b3c', { delay: 80 });
+    await expect(field).toHaveValue('#1a2b3c');
+    await expect(field).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
   test('the share URL round-trips to an identical render', async ({ page, context }) => {
     await page.goto('/p/ridgelines');
     await settled(page);
