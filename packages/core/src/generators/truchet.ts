@@ -267,24 +267,33 @@ export const truchet: Generator = {
         // boundary, which reads as a broken grid rather than a pattern — so
         // the set never varies. Ends come from neighbours facing different
         // corners, which is how the classical tiling produces them too.
-        let d = '';
-        if (keep(1)) {
-          const corner = (rot % 4) as 0 | 1 | 2 | 3;
-          const outer = s * 0.995;
-          for (let i = 0; i < arcCount; i++) {
-            const rho = outer - i * arcSpacing * s;
-            if (rho < s * 0.02) break;
-            d += arcPath(corner, rho);
-          }
-        }
-        if (!d) return;
+        if (!keep(1)) return;
+
         // A fan drawn with the full stroke weight closes up into a solid block.
         // Cap it against the gap so the lines stay separate whatever the
         // weight slider says.
         const fanSw = arcCount > 1 ? Math.min(sw, arcSpacing * s * 0.55) : sw;
-        (strokeBuckets[band] as string[]).push(
-          el('path', { d, 'stroke-width': num(fanSw, 2), 'stroke-opacity': opacity }),
-        );
+
+        // Each arc is coloured from the field at its own midpoint, not at the
+        // tile's centre. Sampling once per tile and quantising the result gives
+        // every arc in the cell the same step of the ramp, so however smooth
+        // the field is, two neighbouring tiles can land on different steps and
+        // the whole cell boundary shows as an edge. Sampling per arc puts the
+        // rings of one fan on adjacent steps and carries the change across the
+        // boundary gradually, which is the point of having a field at all.
+        const mid = 0.70710678; // the 45 degree point of a quarter arc
+        const corner = (rot % 4) as 0 | 1 | 2 | 3;
+        const outer = s * 0.995;
+        for (let i = 0; i < arcCount; i++) {
+          const rho = outer - i * arcSpacing * s;
+          if (rho < s * 0.02) break;
+          const k = rho * mid;
+          const mx = corner === 1 || corner === 2 ? x0 + s - k : x0 + k;
+          const my = corner === 2 || corner === 3 ? y0 + s - k : y0 + k;
+          (strokeBuckets[bandAt(mx, my)] as string[]).push(
+            el('path', { d: arcPath(corner, rho), 'stroke-width': num(fanSw, 2), 'stroke-opacity': opacity }),
+          );
+        }
         return;
       }
 
