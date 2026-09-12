@@ -14,6 +14,7 @@ import {
   rampBetween,
   relativeLuminance,
   safeZonesFor,
+  seedToInt,
   visibleRect,
   type Palette,
 } from '../src/index.js';
@@ -178,6 +179,39 @@ describe('rng', () => {
     expect(seen.size).toBe(2000);
     expect(hashSeed('abc')).toBe(hashSeed('abc'));
     expect(hashSeed('')).toBeGreaterThanOrEqual(0);
+  });
+
+  // The behavioural test for the finalising mix, not a test that some
+  // particular constant is present. Salting one key per item is the natural way
+  // to ask a hash for several independent decisions, and bare FNV-1a does not
+  // answer: it ends on a multiply, so the last character barely moves the
+  // result. Both thresholds are set from measuring the two implementations
+  // rather than from what sounds reasonable — unmixed scores 0.987 and 0.014,
+  // mixed scores 0.522 and 0.319, and a fair coin would score 0.5 and 1/3.
+  it('decorrelates keys that differ only in their last character', () => {
+    const PAIRS = 2000;
+    let sameSide = 0;
+    let spread = 0;
+    for (let i = 0; i < PAIRS; i++) {
+      const a = hashSeed(`cell:${i}:1`) / 0x100000000;
+      const b = hashSeed(`cell:${i}:2`) / 0x100000000;
+      if (a >= 0.5 === b >= 0.5) sameSide += 1;
+      spread += Math.abs(a - b);
+    }
+    expect(sameSide / PAIRS).toBeLessThan(0.6);
+    expect(spread / PAIRS).toBeGreaterThan(0.25);
+  });
+
+  // The seeding hash is deliberately *not* the mixed one, and these numbers are
+  // why it cannot quietly become it: they are the identity of every saved
+  // wallpaper. Routing seedToInt through hashSeed repaints all of them, so this
+  // fails rather than letting that happen by accident.
+  it('pins the seeding hash so saved configurations keep their picture', () => {
+    expect(seedToInt('bergamot', 'truchet')).toBe(635128179);
+    expect(seedToInt('sample-1', 'flow-dots')).toBe(3559565924);
+    expect(seedToInt('zz', 'ridgelines')).toBe(3283354683);
+    // Numeric seeds go through the same path as their decimal string.
+    expect(seedToInt(42, 'truchet')).toBe(seedToInt('42', 'truchet'));
   });
 });
 

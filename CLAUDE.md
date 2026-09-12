@@ -306,16 +306,32 @@ disagree, believe the picture: crop the region and look at it.
 however finely the palette is resolved into steps. Continuous colour needs the
 paint to vary across the canvas — a gradient — not more buckets.
 
-**`hashSeed` barely diffuses its last character.** It is FNV-1a, which ends on
-a multiply, so two strings differing only in the final character land about
-0.014 of the range apart. Salting one string per variant therefore does not give
-you independent decisions: the salts fall the same side of any threshold 98.8%
-of the time. Truchet's removed `openEnds` relied on exactly that accident — its
-`keep()` salted per mark and got a per-cell decision, which is what the tiling
-needed, so a proper finalising mix would have turned a working control into one
-that shreds cells. That coupling is gone with the control, and `hashSeed` is now
-free to be fixed; the general warning is not. If you want per-item decisions from
-it, vary more than the last character, or mix the result.
+**One hash cannot be both an identity and a value — `hashSeed` was.** FNV-1a
+ends on a multiply, so two strings differing only in their final character land
+0.014 of the range apart and fall the same side of any threshold 98.7% of the
+time. Salting one key per item is the obvious way to ask a hash for several
+independent decisions, and it silently returns one decision for the group.
+Truchet's removed `openEnds` relied on that accident without knowing it.
+
+The same function also seeded every render, via `seedToInt`, which is the
+identity of every saved wallpaper. So fixing it looked like it meant repainting
+everything. It did not, and the measurement is the reason: mulberry32 avalanches
+its own seed, so the clustering does not survive into the stream — across 2000
+last-character pairs the first `next()` from each lands 0.337 apart, against
+0.331 for unrelated seeds and 1/3 for uniform ones. The flaw was invisible in
+the job that could not change and fatal in the job that had no callers.
+
+They are now two functions. `seedHash` is bare FNV-1a, frozen, one caller
+(`seedToInt`), named for what it is rather than for what to use. `hashSeed` is
+that plus murmur3's finalising mix, for bits you read directly — the same pairs
+now split 52.2%. Renders are byte-identical. Routing `seedToInt` back through
+`hashSeed` fails a test that pins three known seeds, and takes a phyllotaxis
+scale-invariance test and a truchet colour test down with it, which is roughly
+the blast radius you would expect from changing every seed in the app.
+
+The general lesson is the reusable part: before judging a hash, ask which of its
+uses reads the bits and which only seeds with them. Those want different things,
+and one function cannot be frozen and improvable at once.
 
 **A comment can be the last surviving copy of a reverted design.** The arcs
 branch carried four layers of commentary from successive attempts, two of them
