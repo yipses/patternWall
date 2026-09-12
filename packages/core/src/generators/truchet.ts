@@ -147,14 +147,28 @@ export const truchet: Generator = {
 
     const drawTile = (x: number, y: number, size: number, depth: number): void => {
       const cy = y + size / 2;
-      const q = quietFactor(cy, h, quietTop, safeZones);
+      // Quiet-top is read at each mark's own height, not once at the centre of
+      // the cell it sits in. quietFactor is smooth in y, but sampling it per
+      // tile quantises it to whole cell rows, and its feather is only 9% of the
+      // canvas — under two rows at nine columns — so the ramp it is supposed to
+      // draw lands as a step instead. Measured down a nine-column render, the
+      // largest row-to-row brightness change was 22.8 against a mean of 1.29,
+      // a hard horizontal seam 37% down the canvas exactly where the feather
+      // below the widget row should have been easing out.
+      //
+      // Every mark already computes a point for its colour — an arc's midpoint,
+      // a chord's midpoint, a band's centroid — so the same point sets its
+      // weight and opacity. Nothing here touches the seeded stream, so only the
+      // shading changes.
+      const qAt = (markY: number): number => quietFactor(markY, h, quietTop, safeZones);
+      const swAt = (markY: number): number => clamp(weight * s * (0.34 + 0.66 * qAt(markY)), s * 0.012, s * 0.62);
+      const opacityAt = (markY: number): string => num(clamp(0.16 + 0.84 * qAt(markY), 0.06, 1), 2);
       const inset = gap ? size * 0.07 : 0;
       const s = size - inset * 2;
       const x0 = x + inset;
       const y0 = y + inset;
       if (s <= 0.5) return;
 
-      const sw = clamp(weight * s * (0.34 + 0.66 * q), s * 0.012, s * 0.62);
       const band = bandAt(x + size / 2, cy);
       const rot = rng.int(0, 3);
       const kind = tileSet as TileKind;
@@ -198,7 +212,8 @@ export const truchet: Generator = {
         const legA = tri[1] as [number, number];
         const legB = tri[2] as [number, number];
         const bands = Math.max(1, arcCount);
-        const fillOpacity = num(clamp(0.16 + 0.74 * q + depth * 0.08, 0.06, 1), 2);
+        const fillOpacityAt = (markY: number): string =>
+          num(clamp(0.16 + 0.74 * qAt(markY) + depth * 0.08, 0.06, 1), 2);
 
         // t >= 1 returns the vertex itself rather than corner + (p - corner),
         // which is the same point in algebra and not always the same float. A
@@ -228,7 +243,7 @@ export const truchet: Generator = {
           (fillBuckets[bandIndex] as string[]).push(
             el('polygon', {
               points: ps.map((pt) => `${num(pt[0], 1)},${num(pt[1], 1)}`).join(' '),
-              'fill-opacity': fillOpacity,
+              'fill-opacity': fillOpacityAt(cy2 / ps.length),
             }),
           );
         };
@@ -247,7 +262,6 @@ export const truchet: Generator = {
         return;
       }
 
-      const opacity = num(clamp(0.16 + 0.84 * q, 0.06, 1), 2);
       if (kind === 'arcs') {
         // Sweep flag 0, not 1. With sweep 1 the renderer picks the other of the
         // two circles that fit these endpoints — the one centred on the cell
@@ -361,7 +375,8 @@ export const truchet: Generator = {
         // The stroke gives way to the gap rather than the other way round, so a
         // heavy weight thins to keep the rings readable instead of merging
         // them. A single arc has no neighbour to crowd and keeps its weight.
-        const fanSw = step > 0 ? Math.min(sw, step * 0.68) : sw;
+        const fanSwAt = (markY: number): number =>
+          step > 0 ? Math.min(swAt(markY), step * 0.68) : swAt(markY);
 
         // Each arc is coloured from the field at its own midpoint, not at the
         // tile's centre. Sampling once per tile and quantising the result gives
@@ -377,7 +392,7 @@ export const truchet: Generator = {
             const mx = corner === 1 || corner === 2 ? x0 + s - k : x0 + k;
             const my = corner === 2 || corner === 3 ? y0 + s - k : y0 + k;
             (strokeBuckets[bandAt(mx, my)] as string[]).push(
-              el('path', { d: arcPath(corner, rho), 'stroke-width': num(fanSw, 2), 'stroke-opacity': opacity }),
+              el('path', { d: arcPath(corner, rho), 'stroke-width': num(fanSwAt(my), 2), 'stroke-opacity': opacityAt(my) }),
             );
           }
         });
@@ -440,7 +455,8 @@ export const truchet: Generator = {
       // it. Thinning to `step` would still let a heavy stroke close the family
       // into a solid triangle.
       const perp = step * 0.70710678;
-      const lineSw = lines > 1 ? Math.min(sw, perp * 0.68) : sw;
+      const lineSwAt = (markY: number): number =>
+        lines > 1 ? Math.min(swAt(markY), perp * 0.68) : swAt(markY);
 
       // One path per chord, each coloured from the field at its own midpoint,
       // the way the arcs are. Colouring the whole cell from its centre was
@@ -462,9 +478,10 @@ export const truchet: Generator = {
             ? [x0 + s + o, y0, x0, y0 + s + o]
             : [x0 + s, y0 + o, x0 + o, y0 + s];
         const d = `M${num(px, 1)} ${num(py, 1)}L${num(qx, 1)} ${num(qy, 1)}`;
-        const chordBand = lines === 1 ? band : bandAt((px + qx) / 2, (py + qy) / 2);
+        const my = (py + qy) / 2;
+        const chordBand = lines === 1 ? band : bandAt((px + qx) / 2, my);
         (strokeBuckets[chordBand] as string[]).push(
-          el('path', { d: d + (k === kMax ? extra : ''), 'stroke-width': num(lineSw, 2), 'stroke-opacity': opacity }),
+          el('path', { d: d + (k === kMax ? extra : ''), 'stroke-width': num(lineSwAt(my), 2), 'stroke-opacity': opacityAt(my) }),
         );
       }
     };

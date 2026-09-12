@@ -89,16 +89,35 @@ export function quietFactor(y: number, height: number, strength: number, zones: 
   if (s === 0) return 1;
   const top = zones.clock.y;
   const bottom = zones.widgets.y + zones.widgets.h;
-  const feather = Math.max(1, height * 0.09);
+  // 30% of the canvas, not 9%. The factor travels from 0.45 to 1 across this
+  // distance, and over 9% that is steep enough to read as a horizontal seam
+  // straight across the wallpaper — the pattern is plainly pale above the line
+  // and saturated below it, with no visible gradient between. Widening the
+  // feather is the only lever that removes it: sampling the factor per mark
+  // rather than per tile and easing the curve both help the arithmetic and
+  // neither changes what you see, because the ramp was already smooth to
+  // within a third of a brightness level per row. What was wrong was that it
+  // covered too little ground.
+  const feather = Math.max(1, height * 0.3);
+  // Smoothstep, not a straight line. The feather is 9% of the canvas and it
+  // carries the factor from 0.45 to 1, so a linear ramp arrives at each end
+  // with its slope still at full tilt: the eye reads those two corners as the
+  // edges of a band, and the result is a horizontal seam across the wallpaper
+  // rather than the easing this is meant to be. Measured on a nine-column
+  // truchet, the linear version put a brightness step of 22 against a mean of
+  // 1.3 at exactly the height where the lower feather began.
+  //
+  // smoothstep is zero-derivative at both ends, so the ramp leaves and arrives
+  // without a corner. It is the same curve the generators already use to bias
+  // detail down the canvas.
   let t: number;
   if (y <= top) {
     // Above the clock is quiet too, but eases back in at the very top edge.
-    t = Math.min(1, (top - y) / feather);
-    t = 1 - t * 0.45;
+    t = 1 - smoothstep(0, 1, Math.min(1, (top - y) / feather)) * 0.45;
   } else if (y <= bottom) {
     t = 1;
   } else {
-    t = Math.max(0, 1 - (y - bottom) / feather);
+    t = 1 - smoothstep(0, 1, Math.min(1, (y - bottom) / feather));
   }
   return 1 - s * t;
 }

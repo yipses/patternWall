@@ -273,6 +273,22 @@ neighbour, mixing two cells' colours and making a flat tiling look resolved.
 Key a mark on its own midpoint, and take the threshold from measuring both the
 broken and fixed cases rather than from what sounds reasonable.
 
+**A seam can be a ramp that is simply too short.** quietTop carries its factor
+from 0.45 to 1, and it did that across a feather of 9% of the canvas. Nothing
+about the curve was discontinuous — measured with the tiling's own stripes
+averaged out, the ramp moved by a third of a brightness level per row — and it
+still read as a hard horizontal line with the pattern pale above and saturated
+below. Two plausible fixes changed nothing visible: sampling the factor per mark
+instead of per tile, and easing the curve with smoothstep. Both are better
+arithmetic; neither was the fault. The feather is now 30%.
+
+The trap either side of that was measurement. A per-row brightness profile of a
+tiling is dominated by the tiling's own periodic stripes, so its worst row-to-row
+step sat at 20-30x the mean whatever was done to the ramp, and it moved in the
+wrong direction for smoothstep, which deliberately steepens the middle. Average
+over one cell before reading a profile, and when a metric and the picture
+disagree, believe the picture: crop the region and look at it.
+
 **Flat fills cannot blend.** A per-shape colour meets its neighbour at an edge
 however finely the palette is resolved into steps. Continuous colour needs the
 paint to vary across the canvas — a gradient — not more buckets.
