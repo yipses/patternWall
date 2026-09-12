@@ -310,24 +310,34 @@ export const truchet: Generator = {
         // heavier than the gap closed the rings into a block. Instead: divide
         // the room available by the steps needed, so every arc asked for fits.
         //
-        // Outward and inward use their own step, because there is far less room
-        // above s/2 than below it and a single step would waste the larger
-        // side.
+        // One step, used in both directions. Giving each side its own step is
+        // the obvious way to use all the room — there is 0.207s above s/2 and
+        // 0.480s below it — and it is what this did, which made the inward gaps
+        // 2.32x the outward ones at every count. The rings bunched against the
+        // cell edge and sprawled toward the corner, and unevenly spaced
+        // concentric rings is the one fault you cannot help seeing.
+        //
+        // So the step is whichever side is tighter, which is the outward one
+        // whenever any arcs go outward at all. The ribbon is then symmetric
+        // about s/2 and reaches the s/sqrt(2) ceiling at full spread; what it
+        // gives up is the room near the corner, which was only ever filled by
+        // stretching the inner gaps to cover it.
         const outSteps = Math.ceil((arcCount - 1) / 2);
         const inSteps = Math.floor((arcCount - 1) / 2);
         const spread = clamp(arcSpacing, 0.05, 1);
-        const outStep = outSteps > 0 ? ((s * mid - r) / outSteps) * spread : 0;
-        const inStep = inSteps > 0 ? ((r - s * 0.02) / inSteps) * spread : 0;
+        const outRoom = s * mid - r;
+        const inRoom = r - s * 0.02;
+        const step =
+          Math.min(outSteps > 0 ? outRoom / outSteps : Infinity, inSteps > 0 ? inRoom / inSteps : Infinity) * spread;
 
         const radii: number[] = [r];
-        for (let i = 1; i <= outSteps; i++) radii.push(r + i * outStep);
-        for (let i = 1; i <= inSteps; i++) radii.push(r - i * inStep);
+        for (let i = 1; i <= outSteps; i++) radii.push(r + i * step);
+        for (let i = 1; i <= inSteps; i++) radii.push(r - i * step);
 
         // The stroke gives way to the gap rather than the other way round, so a
         // heavy weight thins to keep the rings readable instead of merging
         // them. A single arc has no neighbour to crowd and keeps its weight.
-        const gaps = [outStep, inStep].filter((g) => g > 0);
-        const fanSw = gaps.length > 0 ? Math.min(sw, Math.min(...gaps) * 0.68) : sw;
+        const fanSw = Number.isFinite(step) ? Math.min(sw, step * 0.68) : sw;
 
         // Each arc is coloured from the field at its own midpoint, not at the
         // tile's centre. Sampling once per tile and quantising the result gives

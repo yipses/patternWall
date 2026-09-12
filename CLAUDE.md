@@ -227,6 +227,17 @@ quantity is implied by the others, derive it: spacing now comes from the count
 and the room available, and the stroke thins to the gap rather than the gap
 having to accommodate the stroke.
 
+**Using all the room is not the same as spacing evenly, and only one of them
+is visible.** The arc radii divided each side of `s/2` by its own step count, so
+that the 0.207s above it and the 0.480s below it were both filled. The
+arithmetic is sound and the result is wrong: every gap inward was 2.32x every
+gap outward, at every count, so the rings bunched against the cell edge and
+sprawled toward the corner. It shipped, and it was reported as "the divisions
+don't distribute evenly" — which is exactly what it was. When a quantity is
+lopsided, ask which of the two properties a person actually sees before
+optimising the other. Evenness beats coverage here; the unused room near the
+corner costs nothing anyone can point at.
+
 **Flat fills cannot blend.** A per-shape colour meets its neighbour at an edge
 however finely the palette is resolved into steps. Continuous colour needs the
 paint to vary across the canvas — a gradient — not more buckets.
@@ -262,9 +273,12 @@ result. Each was arrived at by breaking it first.
 - **Radii anchored on `s/2`** — the one radius that joins whatever the
   neighbour's rotation is — growing outward to a ceiling of `s/sqrt(2)` and
   inward toward the corner.
-- **Outward and inward take their own step**, because there is far less room
-  above `s/2` than below it and one step wastes the larger side. Both sets are
-  identical in every cell, which is all the joining needs.
+- **One step, in both directions**, taken from whichever side is tighter — in
+  practice the outward one. Giving each side its own step uses all the room and
+  makes the inward gaps 2.32x the outward ones, which ships as visibly bunched
+  rings; see the note below. The ribbon is symmetric about `s/2` and reaches the
+  ceiling at full spread, and the room near the corner goes unused. Both sets
+  are identical in every cell, which is all the joining needs.
 - **Spacing is derived**, not set: the room available divided by the steps
   needed, so every arc the count asks for fits. The stroke thins to the gap
   rather than the gap accommodating the stroke.

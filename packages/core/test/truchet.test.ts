@@ -39,6 +39,53 @@ describe('truchet quarter arcs', () => {
 
 
   /**
+   * Concentric rings that are not evenly spaced is the one fault in this mark
+   * you cannot help seeing, and it shipped: each side of s/2 used to divide its
+   * own room by its own step count, so the inward gaps came out 2.32x the
+   * outward ones at every single count. The rings bunched against the cell edge
+   * and sprawled toward the corner.
+   *
+   * The room is genuinely lopsided — 0.207s above s/2 against 0.480s below it —
+   * so using all of it and spacing evenly are not both available. Even spacing
+   * wins: one step, taken from whichever side is tighter.
+   *
+   * Measured on a large cell so that rounding coordinates to one decimal does
+   * not show up as unevenness; the same render at a 100px cell sits at 1.03x on
+   * rounding alone.
+   */
+  it('spaces the concentric arcs evenly on both sides of the joining radius', () => {
+    for (const arcCount of [3, 5, 7, 9, 12]) {
+      const svg = render({ density: 4, subdivide: 0, gap: false, arcCount }, 1200);
+      const radii = [...new Set([...svg.matchAll(/A([\d.]+) [\d.]+ 0 0 0/g)].map((m) => Number(m[1])))].sort(
+        (a, b) => a - b,
+      );
+      expect(radii.length).toBe(arcCount);
+      const gaps = radii.slice(1).map((v, i) => v - (radii[i] as number));
+      const spread = Math.max(...gaps) / Math.min(...gaps);
+      expect({ arcCount, even: spread < 1.05 }).toEqual({ arcCount, even: true });
+    }
+  });
+
+  /**
+   * s/2 is the only radius that meets its neighbour whichever way that cell is
+   * turned, so it has to survive every change to how the set is built. Evening
+   * out the spacing must not quietly shift the whole ribbon off it.
+   */
+  it('always keeps the joining radius and reaches the outward ceiling', () => {
+    const cell = 1200 / 4;
+    for (const arcCount of [1, 2, 3, 6, 11]) {
+      const svg = render({ density: 4, subdivide: 0, gap: false, arcCount }, 1200);
+      const radii = [...new Set([...svg.matchAll(/A([\d.]+) [\d.]+ 0 0 0/g)].map((m) => Number(m[1])))];
+      const hasJoin = radii.some((v) => Math.abs(v - cell / 2) < 0.5);
+      expect({ arcCount, hasJoin }).toEqual({ arcCount, hasJoin: true });
+      if (arcCount > 1) {
+        const reach = Math.max(...radii) / (cell * 0.70710678);
+        expect({ arcCount, reachesCeiling: reach > 0.99 }).toEqual({ arcCount, reachesCeiling: true });
+      }
+    }
+  });
+
+  /**
    * Colour is sampled from a field across the image, so neighbouring marks land
    * on neighbouring steps of the ramp and a region of one accent eases into a
    * region of another. Blend is the resolution of that ramp: at zero only the
