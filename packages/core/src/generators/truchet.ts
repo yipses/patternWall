@@ -190,13 +190,6 @@ export const truchet: Generator = {
 
       const opacity = num(clamp(0.16 + 0.84 * q, 0.06, 1), 2);
       if (kind === 'arcs') {
-        // One mark per cell, reaching the full cell rather than the edge
-        // midpoints. Two quarter discs of radius s/2 on opposite corners cover
-        // only 39% of a cell, so wherever neighbouring marks curve away from
-        // each other the gap between them is most of what you see. A single
-        // quarter disc of radius s covers 78%, which is why the classical
-        // drawings of this tiling read as a filled surface rather than as
-        // scattered motifs.
         // Sweep flag 0, not 1. With sweep 1 the renderer picks the other of the
         // two circles that fit these endpoints — the one centred on the cell
         // centre — so every arc bulged away from its corner. The marks still
@@ -204,16 +197,6 @@ export const truchet: Generator = {
         // was ever centred on a grid vertex and the loops, half circles and
         // full circles that make a Truchet tiling worth looking at could not
         // form at all. Sweep 0 centres each quarter arc on its corner.
-        // A fan is centred on one corner and a neighbour's fan is centred on
-        // the same physical point when their rotations agree, so every radius
-        // meets its opposite number across the edge. Where they disagree the
-        // lines simply stop, which is where the open ends come from.
-        //
-        // One arc per mark is the classic tile: two quarter arcs on opposite
-        // corners, both through the edge midpoints. More than one switches to a
-        // single fan per cell. Two opposing fans would cross — circles centred
-        // on opposite corners intersect once their radii sum past the diagonal
-        // — and the result is moire rather than pattern.
         const arcPath = (corner: 0 | 1 | 2 | 3, rho: number): string => {
           const R = num(rho, 1);
           if (corner === 0) return `M${num(x0, 1)} ${num(y0 + rho, 1)}A${R} ${R} 0 0 0 ${num(x0 + rho, 1)} ${num(y0, 1)}`;
@@ -239,20 +222,6 @@ export const truchet: Generator = {
         const keep = (salt: number): boolean =>
           openEnds <= 0 || hashSeed(`${gx}:${gy}:${gs}:${salt}`) / 0x100000000 >= openEnds;
 
-        // Arc count nests inward from that outer radius. The outermost arc
-        // stays where it is, so raising the count adds rings inside a mark
-        // that keeps its size rather than replacing it with a smaller one.
-        // Once the rings reach the corner they are centred on, more has no
-        // effect — an intuitive limit, at least: the ribbon has filled inward
-        // as far as it can go.
-        //
-        // Radii are shared by every cell, and a neighbour's mark is centred on
-        // the same physical corner whenever the rotations agree, so each arc
-        // meets its opposite number at the same point on the shared edge. Vary
-        // the set between cells and the arcs with no partner stop at the
-        // boundary, which reads as a broken grid rather than a pattern — so
-        // the set never varies. Ends come from neighbours facing different
-        // corners, which is how the classical tiling produces them too.
         // Two marks on opposite corners, the classical tile. One mark per cell
         // covers only two of the cell's four edge midpoints, so most edges have
         // nothing on the other side to meet and the tiling falls apart into
@@ -263,6 +232,22 @@ export const truchet: Generator = {
         //
         // s/sqrt(2) is the ceiling because circles centred on opposite corners
         // meet once their radii sum past the diagonal, s*sqrt(2).
+        //
+        // The radii are anchored on s/2 and grow in both directions from it,
+        // rather than nesting inward from the outer edge. An arc meets the
+        // shared edge at its own radius from the corner it is centred on, so
+        // two marks line up only when they are centred on the same end of that
+        // edge — except at s/2, which is equidistant from both and therefore
+        // joins whatever the neighbour's rotation is. A set that does not
+        // contain s/2 has no guaranteed connection anywhere, which is how
+        // filling the cell from the outside in silently disconnected the whole
+        // tiling.
+        //
+        // Every cell uses the same set, so a neighbour's arc is centred on the
+        // same physical corner whenever the rotations agree and each arc meets
+        // its opposite number on the shared edge. Where the rotations disagree
+        // the lines simply stop: the ends in the pattern are structural, not
+        // something a knob manufactures.
         const r = s / 2;
         const mid = 0.70710678; // the 45 degree point of a quarter arc, and the outward ceiling
 
@@ -273,8 +258,7 @@ export const truchet: Generator = {
         //
         // Outward and inward use their own step, because there is far less room
         // above s/2 than below it and a single step would waste the larger
-        // side. The two sets are the same in every cell, which is all the
-        // tiling needs to keep joining.
+        // side.
         const outSteps = Math.ceil((arcCount - 1) / 2);
         const inSteps = Math.floor((arcCount - 1) / 2);
         const spread = clamp(arcSpacing, 0.05, 1);
