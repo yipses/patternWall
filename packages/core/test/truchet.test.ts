@@ -148,3 +148,66 @@ describe('truchet diagonals', () => {
     }
   });
 });
+
+describe('truchet triangles', () => {
+  const SIZE = 420;
+  const COLS = 7;
+
+  const triangles = (arcCount: number): string =>
+    render({ tileSet: 'triangles', density: COLS, subdivide: 0, gap: false, arcCount }, SIZE);
+
+  const vertices = (svg: string): [number, number][] =>
+    [...svg.matchAll(/<polygon points="([^"]+)"/g)].flatMap((m) =>
+      (m[1] as string).split(' ').map((pair) => {
+        const [x, y] = pair.split(',');
+        return [Number(x), Number(y)] as [number, number];
+      }),
+    );
+
+  /**
+   * The count was wired into the arcs and then the diagonals, and left the
+   * triangles alone, so raising it on this set did nothing whatever. A solid
+   * half-cell has no lines to count, which is what made it look like the
+   * control simply did not apply.
+   */
+  it('slices the tile into bands rather than ignoring the count', () => {
+    const counts = [1, 3, 6].map((n) => (triangles(n).match(/<polygon/g) ?? []).length);
+    expect(new Set(counts).size).toBe(counts.length);
+    expect(counts[1]!).toBeGreaterThan(counts[0]!);
+  });
+
+  /**
+   * Every rotation of this tile lists its right-angle corner first, so scaling
+   * about that vertex sweeps the hypotenuse across the cell and a slice at k/n
+   * lands on the chord k*(s/n). That is the same lattice the diagonal family
+   * crosses its edges on, and it is the whole reason a band can meet the band
+   * in the cell beyond it: a neighbour puts its own band edges at multiples of
+   * s/n too, whichever way it is turned.
+   *
+   * Slice anywhere else — s/(n+0.5), say — and every interior band edge lands
+   * where the neighbour has nothing, so the bands butt against the cell
+   * boundary instead of continuing through it.
+   */
+  it('puts every band edge on the shared s/n lattice', () => {
+    const cell = SIZE / COLS;
+    const rows = Math.ceil(SIZE / cell) + 1;
+    const originY = (SIZE - rows * cell) / 2;
+
+    for (const arcCount of [2, 3, 4, 8]) {
+      const step = cell / arcCount;
+      const isMultiple = (v: number, of: number): boolean => Math.abs(v / of - Math.round(v / of)) < 0.02;
+      const offGrid = vertices(triangles(arcCount)).filter(([x, y]) => {
+        const lx = x - Math.floor(x / cell + 1e-6) * cell;
+        const ly = y - originY - Math.floor((y - originY) / cell + 1e-6) * cell;
+        // Bands are trapezoids whose corners ride the two legs of the triangle,
+        // and the legs are cell edges — so each vertex sits on an edge, a
+        // whole number of steps from the corner it was scaled about.
+        const onVertical = (isMultiple(lx, cell) && isMultiple(ly, step));
+        const onHorizontal = (isMultiple(ly, cell) && isMultiple(lx, step));
+        return !(onVertical || onHorizontal);
+      });
+      expect(vertices(triangles(arcCount)).length).toBeGreaterThan(50);
+      expect({ arcCount, offGrid: offGrid.length }).toEqual({ arcCount, offGrid: 0 });
+    }
+  });
+});

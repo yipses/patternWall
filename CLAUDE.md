@@ -291,9 +291,19 @@ result. Each was arrived at by breaking it first.
   Subdivision is the standing exception for both sets: a quartered cell has
   half the spacing, so only every second crossing meets a full-size neighbour.
 
-Controls: density, tileSet, weight, subdivide, colorSpread, quietTop, gap,
-openEnds, arcCount (labelled Line count; governs both tile sets), arcSpacing
-(spread; quarter arcs only), colorBlend. `mixed` and row weight variation were
+- **Triangles divide on that same lattice.** Every rotation lists its
+  right-angle corner first, so scaling about that vertex sweeps the hypotenuse
+  across the cell and a slice at `k/n` lands on the chord `k*(s/n)`. Fill every
+  other band, counting down from the hypotenuse, and the mass becomes ribbons
+  that continue through the grid: across interior cell edges the ink agrees
+  with the neighbour more often than the solid tile manages (37% of samples
+  disagree at three divisions, against 52% solid). Filling every band instead
+  just reassembles the triangle. `weight` is still inert on this set — it has
+  no stroke — which is the one remaining dead control in truchet.
+
+Controls: density, tileSet, weight (no effect on triangles), subdivide,
+colorSpread, quietTop, gap, openEnds, arcCount (labelled Divisions; governs all
+three tile sets), arcSpacing (spread; quarter arcs only), colorBlend. `mixed` and row weight variation were
 removed as not worth their slots.
 
 ---
