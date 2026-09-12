@@ -67,21 +67,71 @@ describe('truchet quarter arcs', () => {
   });
 
   /**
-   * s/2 is the only radius that meets its neighbour whichever way that cell is
-   * turned, so it has to survive every change to how the set is built. Evening
-   * out the spacing must not quietly shift the whole ribbon off it.
+   * What decides whether the marks line up is that the radii set is a mirror of
+   * itself about s/2 — not that it contains s/2, which is what an earlier
+   * version of this test asserted and what the comments in the generator used
+   * to claim.
+   *
+   * Two cells share an edge. Where their rotations differ they measure arc ends
+   * from the same corner of it and every radius meets its twin whatever the set
+   * is. Where the rotations agree — half of all edges — one measures from the
+   * top and the other from the bottom, so an arc at p can only meet an arc at
+   * s - p. A set without that mirror strands ends on half the edges in the
+   * grid, which is exactly what shipped: giving the inward and outward sides
+   * their own step left about two thirds of arc ends stopping dead, and sharing
+   * one step still stranded the outermost ring at every even count, because a
+   * set centred on s/2 that contains s/2 must have an odd number of members.
    */
-  it('always keeps the joining radius and reaches the outward ceiling', () => {
+  it('builds a radii set that mirrors itself about s/2, at odd and even counts', () => {
     const cell = 1200 / 4;
-    for (const arcCount of [1, 2, 3, 6, 11]) {
+    for (const arcCount of [1, 2, 3, 4, 5, 6, 8, 11, 12]) {
       const svg = render({ density: 4, subdivide: 0, gap: false, arcCount }, 1200);
       const radii = [...new Set([...svg.matchAll(/A([\d.]+) [\d.]+ 0 0 0/g)].map((m) => Number(m[1])))];
-      const hasJoin = radii.some((v) => Math.abs(v - cell / 2) < 0.5);
-      expect({ arcCount, hasJoin }).toEqual({ arcCount, hasJoin: true });
-      if (arcCount > 1) {
-        const reach = Math.max(...radii) / (cell * 0.70710678);
-        expect({ arcCount, reachesCeiling: reach > 0.99 }).toEqual({ arcCount, reachesCeiling: true });
+      expect(radii.length).toBe(arcCount);
+      const unmirrored = radii.filter((v) => !radii.some((w) => Math.abs(w - (cell - v)) < 0.6));
+      expect({ arcCount, unmirrored: unmirrored.length }).toEqual({ arcCount, unmirrored: 0 });
+      // and the ribbon still reaches the ceiling that keeps opposite corners apart
+      const reach = Math.max(...radii) / (cell * 0.70710678);
+      expect({ arcCount, reachesCeiling: arcCount === 1 || reach > 0.99 }).toEqual({ arcCount, reachesCeiling: true });
+      expect(Math.max(...radii)).toBeLessThanOrEqual(cell * 0.70710678 + 0.6);
+    }
+  });
+
+  /**
+   * The property behind all of that, measured where it shows: an arc end that
+   * lands on an interior cell edge should have another arc ending on the same
+   * point. This is the test that would have caught the original fault, and it
+   * fails at 57% for three arcs against the two-step radii that shipped.
+   */
+  it('leaves no arc end unpartnered on an interior cell edge', () => {
+    const SIZE = 600;
+    const COLS = 6;
+    const cell = SIZE / COLS;
+    const rows = Math.ceil(SIZE / cell) + 1;
+    const originY = (SIZE - rows * cell) / 2;
+
+    for (const arcCount of [1, 2, 3, 4, 7, 12]) {
+      const svg = render({ density: COLS, subdivide: 0, gap: false, openEnds: 0, arcCount }, SIZE);
+      const tally = new Map<string, number>();
+      for (const m of svg.matchAll(/M([\d.-]+) ([\d.-]+)A[\d.]+ [\d.]+ 0 0 0 ([\d.-]+) ([\d.-]+)/g)) {
+        for (const [x, y] of [
+          [Number(m[1]), Number(m[2])],
+          [Number(m[3]), Number(m[4])],
+        ]) {
+          const col = (x as number) / cell;
+          const onV = Math.abs(col - Math.round(col)) < 1e-6;
+          const ry = ((y as number) - originY) / cell;
+          const onH = Math.abs(ry - Math.round(ry)) < 1e-6;
+          if (!onV && !onH) continue;
+          if (onV && (Math.round(col) <= 0 || Math.round(col) >= COLS)) continue;
+          if (!onV && ((y as number) < originY + cell || (y as number) > originY + (rows - 1) * cell)) continue;
+          const key = `${(x as number).toFixed(1)},${(y as number).toFixed(1)}`;
+          tally.set(key, (tally.get(key) ?? 0) + 1);
+        }
       }
+      const lonely = [...tally.values()].filter((v) => v < 2).length;
+      expect(tally.size).toBeGreaterThan(30);
+      expect({ arcCount, lonely }).toEqual({ arcCount, lonely: 0 });
     }
   });
 

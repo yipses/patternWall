@@ -197,14 +197,29 @@ leaves arcs with no partner stopping at the cell boundary — a broken grid, not
 pattern. Before making something vary per cell, work out what the tiling relies
 on being the same everywhere.
 
-**The radius that guarantees the join is exactly s/2.** An arc meets the shared
-edge at its own radius from the corner it is centred on, so two marks line up
-only when they are centred on the same end of that edge — except at s/2, which
-is equidistant from both ends and therefore joins whatever the neighbour's
-rotation is. A radii set that does not contain s/2 has no guaranteed connection
-anywhere, which is how "fill the cell from the outside in" silently
-disconnected the whole tiling. Anchor the set on s/2 and grow it in both
-directions.
+**What joins the arcs is that the radii set mirrors itself about s/2 — not that
+it contains s/2.** This entry used to say the latter, and that cost a round of
+shipped bugs, so here is the derivation. An arc meets the shared edge at its own
+radius from the corner it is centred on. A cell with marks on corners 0 and 2
+meets its right edge measuring from the bottom of that edge; a cell with marks
+on 1 and 3 measures from the top. Where two neighbours disagree on rotation they
+measure from the same end and every radius meets its twin whatever the set is.
+Where they agree — half of all edges — one measures from each end, so an arc at
+p can only meet an arc at s - p. Hence the mirror.
+
+s/2 is merely the radius that is its own mirror, which is why anchoring on it
+looked sufficient and is not. A set anchored on s/2 but asymmetric around it
+(separate inward and outward steps) strands about two thirds of its arc ends;
+one sharing a single step is symmetric only at odd counts, and strands its
+outermost ring at every even one, because a set centred on s/2 that contains
+s/2 must have an odd number of members. The set now used is n radii evenly
+spaced and centred on s/2 without being anchored to it: `r + (j - (n-1)/2) *
+step`. Odd counts include s/2, even counts straddle it, and both mirror
+perfectly. Measured across a uniform grid, unpartnered arc ends go from 67% to
+0%.
+
+The test to keep is the behavioural one — no arc end left alone on an interior
+cell edge — not a test that some particular radius is present.
 
 **One mark per cell cannot tile.** A cell's mark touches only the edges it is
 drawn against, so a single mark covers two of the four edge midpoints and the
@@ -270,15 +285,14 @@ result. Each was arrived at by breaking it first.
 
 - **Two marks per cell**, on opposite corners, chosen by rotation parity. Not
   one: see the coverage note above.
-- **Radii anchored on `s/2`** — the one radius that joins whatever the
-  neighbour's rotation is — growing outward to a ceiling of `s/sqrt(2)` and
-  inward toward the corner.
-- **One step, in both directions**, taken from whichever side is tighter — in
-  practice the outward one. Giving each side its own step uses all the room and
-  makes the inward gaps 2.32x the outward ones, which ships as visibly bunched
-  rings; see the note below. The ribbon is symmetric about `s/2` and reaches the
-  ceiling at full spread, and the room near the corner goes unused. Both sets
-  are identical in every cell, which is all the joining needs.
+- **Radii centred on `s/2`**, reaching a ceiling of `s/sqrt(2)` outward and the
+  same distance inward. Not anchored on `s/2`: see the mirror rule below.
+- **`n` radii, evenly spaced, centred on `s/2` and reaching the ceiling** —
+  `r + (j - (n-1)/2) * step`, with `step` set by the outward room. Even spacing
+  because unevenly spaced concentric rings is the one fault nobody can miss;
+  centred rather than anchored because the mirror about `s/2` is what makes them
+  join, and only a centred set mirrors at even counts too. Both sets are
+  identical in every cell, which is the rest of what the joining needs.
 - **Spacing is derived**, not set: the room available divided by the steps
   needed, so every arc the count asks for fits. The stroke thins to the gap
   rather than the gap accommodating the stroke.

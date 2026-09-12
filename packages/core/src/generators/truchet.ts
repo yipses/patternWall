@@ -310,34 +310,41 @@ export const truchet: Generator = {
         // heavier than the gap closed the rings into a block. Instead: divide
         // the room available by the steps needed, so every arc asked for fits.
         //
-        // One step, used in both directions. Giving each side its own step is
-        // the obvious way to use all the room — there is 0.207s above s/2 and
-        // 0.480s below it — and it is what this did, which made the inward gaps
-        // 2.32x the outward ones at every count. The rings bunched against the
-        // cell edge and sprawled toward the corner, and unevenly spaced
-        // concentric rings is the one fault you cannot help seeing.
+        // The set has to be a mirror of itself about s/2, and that is what
+        // decides whether the marks line up — not, as the old note here had it,
+        // whether s/2 is in the set.
         //
-        // So the step is whichever side is tighter, which is the outward one
-        // whenever any arcs go outward at all. The ribbon is then symmetric
-        // about s/2 and reaches the s/sqrt(2) ceiling at full spread; what it
-        // gives up is the room near the corner, which was only ever filled by
-        // stretching the inner gaps to cover it.
-        const outSteps = Math.ceil((arcCount - 1) / 2);
-        const inSteps = Math.floor((arcCount - 1) / 2);
+        // Two cells share an edge. A cell whose marks sit on corners 0 and 2
+        // meets its right edge from the bottom corner of that edge; one with
+        // marks on 1 and 3 meets it from the top. Where the rotations differ,
+        // both measure from the same corner and every radius meets its twin
+        // whatever the set is. Where they agree — half of all edges — one
+        // measures from the top and the other from the bottom, so an arc at
+        // radius p meets an arc at s - p, and only a set containing both joins
+        // at all.
+        //
+        // Giving the inward and outward sides their own step broke that at
+        // every count: p mirrored to s - p, which the other step size never
+        // landed on, so about two thirds of arc ends stopped dead on a cell
+        // boundary. Sharing one step fixed the odd counts by accident and left
+        // the even ones stranding their outermost ring, because a set centred
+        // on s/2 that contains s/2 has to have an odd number of members.
+        //
+        // So: n radii, evenly spaced, centred on s/2 rather than anchored to
+        // it. Odd counts still include s/2; even counts straddle it, which
+        // costs nothing — s/2 was never the thing doing the work.
         const spread = clamp(arcSpacing, 0.05, 1);
         const outRoom = s * mid - r;
-        const inRoom = r - s * 0.02;
-        const step =
-          Math.min(outSteps > 0 ? outRoom / outSteps : Infinity, inSteps > 0 ? inRoom / inSteps : Infinity) * spread;
+        const half = (arcCount - 1) / 2;
+        const step = half > 0 ? (outRoom / half) * spread : 0;
 
-        const radii: number[] = [r];
-        for (let i = 1; i <= outSteps; i++) radii.push(r + i * step);
-        for (let i = 1; i <= inSteps; i++) radii.push(r - i * step);
+        const radii: number[] = [];
+        for (let j = 0; j < arcCount; j++) radii.push(r + (j - half) * step);
 
         // The stroke gives way to the gap rather than the other way round, so a
         // heavy weight thins to keep the rings readable instead of merging
         // them. A single arc has no neighbour to crowd and keeps its weight.
-        const fanSw = Number.isFinite(step) ? Math.min(sw, step * 0.68) : sw;
+        const fanSw = step > 0 ? Math.min(sw, step * 0.68) : sw;
 
         // Each arc is coloured from the field at its own midpoint, not at the
         // tile's centre. Sampling once per tile and quantising the result gives
