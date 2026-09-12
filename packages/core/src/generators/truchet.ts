@@ -50,7 +50,7 @@ export const truchet: Generator = {
     { key: 'quietTop', label: 'Quiet top', type: 'number', min: 0, max: 1, step: 0.01, default: 0.55, description: 'Thins the strokes and suppresses subdivision where iOS draws the clock.' },
     { key: 'gap', label: 'Cell gap', type: 'boolean', default: false, description: 'Inset every tile slightly so the grid itself becomes visible as white space.' },
     { key: 'openEnds', label: 'Open ends', type: 'number', min: 0, max: 0.8, step: 0.02, default: 0.22, description: 'Chance a tile drops one of its two arcs, so paths terminate instead of always closing into loops. Applies to the single-arc tile only: a fan needs every cell to carry the same radii or its arcs have nothing to meet across the edge, and ends there already come from neighbours facing different corners.' },
-    { key: 'arcCount', label: 'Arc count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'Concentric arcs per mark. One is the classic tile; more turns every mark into a nested ribbon, and a closed loop into a bullseye.' },
+    { key: 'arcCount', label: 'Arc count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'Concentric arcs per mark, nested inward. The outermost stays put, so raising this adds rings inside a mark the same size rather than shrinking it. Once the rings reach the corner, more has no effect.' },
     { key: 'arcSpacing', label: 'Arc spacing', type: 'number', min: 0.03, max: 0.2, step: 0.005, default: 0.09, description: 'Gap between concentric arcs, as a fraction of the cell. Tight values read as a single thick braid, wide ones as separate lines.' },
   ],
 
@@ -206,35 +206,37 @@ export const truchet: Generator = {
         const keep = (salt: number): boolean =>
           openEnds <= 0 || hashSeed(`${gx}:${gy}:${gs}:${salt}`) / 0x100000000 >= openEnds;
 
-        // The drop is per mark, never per radius. A fan is one mark — a ribbon
-        // of concentric arcs that reads as a single stroke — so dropping
-        // individual radii out of it does not make a path end, it shreds the
-        // ribbon into unrelated fragments.
+        // The drop is per mark, never per radius. A mark is a ribbon of
+        // concentric arcs that reads as a single stroke, so dropping radii out
+        // of it does not make a path end, it shreds the ribbon into unrelated
+        // fragments. Dropping a whole mark leaves the tile's other one, so the
+        // cell keeps something and the neighbour's arcs across that edge stop
+        // there — a real end rather than a hole.
+        //
+        // Arc count nests inward from the outer radius rather than growing
+        // outward from the corner. The outermost arc is always the one through
+        // the edge midpoints, so raising the count adds rings inside a mark
+        // that stays the same size, instead of replacing it with a smaller
+        // one. It also means the tile is the classic Truchet tile at every
+        // count — two marks on opposite corners — rather than switching shape
+        // at two.
+        //
+        // Capping the radii at r is what makes two opposing marks safe: circles
+        // centred on opposite corners of a square intersect only once their
+        // radii sum past the diagonal, s * sqrt(2), and two radii of at most
+        // s / 2 sum to at most s. Let a fan grow past r and the two marks cross,
+        // which is moire rather than pattern.
         let d = '';
-        if (arcCount <= 1) {
-          const corners: [0 | 1 | 2 | 3, 0 | 1 | 2 | 3] = a ? [0, 2] : [1, 3];
-          if (keep(1)) d += arcPath(corners[0], r);
-          if (keep(2)) d += arcPath(corners[1], r);
-        } else {
-          // Every cell carries the whole fan. The radii set is what makes the
-          // marks connect: a neighbour's fan is centred on the same physical
-          // corner, so an arc at radius rho meets its opposite number at the
-          // same point on the shared edge. Vary the set between cells — trim
-          // it, or drop a fan outright — and the arcs with no partner simply
-          // stop at the cell boundary, which reads as a broken grid rather
-          // than as a pattern.
-          //
-          // So in fan mode there is no knob for ends, and there should not be:
-          // ends already occur wherever two neighbours are centred on
-          // different corners, which is the same way the classical tiling
-          // produces them.
-          const corner = (rot % 4) as 0 | 1 | 2 | 3;
+        const corners: [0 | 1 | 2 | 3, 0 | 1 | 2 | 3] = a ? [0, 2] : [1, 3];
+        corners.forEach((corner, markIndex) => {
+          if (!keep(markIndex + 1)) return;
           for (let i = 0; i < arcCount; i++) {
-            const rho = arcSpacing * s * (i + 1);
-            if (rho > s * 0.995) break;
+            const rho = r - i * arcSpacing * s;
+            // Stop when the ribbon has reached the corner it is centred on.
+            if (rho < s * 0.02) break;
             d += arcPath(corner, rho);
           }
-        }
+        });
         if (!d) return;
         // A fan drawn with the full stroke weight closes up into a solid block.
         // Cap it against the gap so the lines stay separate whatever the
