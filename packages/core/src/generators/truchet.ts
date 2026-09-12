@@ -49,7 +49,7 @@ export const truchet: Generator = {
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'How much of the tile colour comes from noise rather than from height. At zero the accents run as a clean vertical ramp; at one they scatter.' },
     { key: 'quietTop', label: 'Quiet top', type: 'number', min: 0, max: 1, step: 0.01, default: 0.55, description: 'Thins the strokes and suppresses subdivision where iOS draws the clock.' },
     { key: 'gap', label: 'Cell gap', type: 'boolean', default: false, description: 'Inset every tile slightly so the grid itself becomes visible as white space.' },
-    { key: 'openEnds', label: 'Open ends', type: 'number', min: 0, max: 0.8, step: 0.02, default: 0.22, description: 'Chance a tile drops a mark. At zero everything connects and the field can only close into loops; raise it and paths terminate. A fan counts as one mark, so it is kept or dropped whole.' },
+    { key: 'openEnds', label: 'Open ends', type: 'number', min: 0, max: 0.8, step: 0.02, default: 0.22, description: 'How much marks vary in size. With one arc per mark a tile can drop one, so paths terminate. With a fan, it is trimmed from the outside in instead — never emptied — so ribbons vary in width and the outer arcs stop where a neighbour has fewer.' },
     { key: 'arcCount', label: 'Arc count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'Concentric arcs per mark. One is the classic tile; more turns every mark into a nested ribbon, and a closed loop into a bullseye.' },
     { key: 'arcSpacing', label: 'Arc spacing', type: 'number', min: 0.03, max: 0.2, step: 0.005, default: 0.09, description: 'Gap between concentric arcs, as a fraction of the cell. Tight values read as a single thick braid, wide ones as separate lines.' },
   ],
@@ -215,9 +215,19 @@ export const truchet: Generator = {
           const corners: [0 | 1 | 2 | 3, 0 | 1 | 2 | 3] = a ? [0, 2] : [1, 3];
           if (keep(1)) d += arcPath(corners[0], r);
           if (keep(2)) d += arcPath(corners[1], r);
-        } else if (keep(1)) {
+        } else {
+          // A fan is never dropped outright. Removing it leaves an empty cell,
+          // which reads as a hole in the tiling rather than as a path that
+          // ended — and holes are not what the pattern wants. Instead the fan
+          // is trimmed from the outside in: radii are shared with the
+          // neighbours, so the inner arcs still meet theirs across the edge and
+          // the ones beyond the neighbour's count simply stop there. The result
+          // is ribbons of varying width with real ends, and every cell still
+          // carrying a mark.
           const corner = (rot % 4) as 0 | 1 | 2 | 3;
-          for (let i = 0; i < arcCount; i++) {
+          const trim = hashSeed(`${gx}:${gy}:${gs}:1`) / 0x100000000;
+          const kept = Math.max(1, Math.round(arcCount * (1 - openEnds * trim)));
+          for (let i = 0; i < kept; i++) {
             const rho = arcSpacing * s * (i + 1);
             if (rho > s * 0.995) break;
             d += arcPath(corner, rho);
