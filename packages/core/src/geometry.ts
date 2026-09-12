@@ -99,8 +99,8 @@ export function quietFactor(y: number, height: number, strength: number, zones: 
   // within a third of a brightness level per row. What was wrong was that it
   // covered too little ground.
   const feather = Math.max(1, height * 0.3);
-  // Smoothstep, not a straight line. The feather is 9% of the canvas and it
-  // carries the factor from 0.45 to 1, so a linear ramp arrives at each end
+  // Smoothstep, not a straight line. The feather carries the factor from 0.45
+  // to 1, so a linear ramp arrives at each end
   // with its slope still at full tilt: the eye reads those two corners as the
   // edges of a band, and the result is a horizontal seam across the wallpaper
   // rather than the easing this is meant to be. Measured on a nine-column

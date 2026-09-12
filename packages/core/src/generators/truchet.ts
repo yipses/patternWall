@@ -339,7 +339,6 @@ export const truchet: Generator = {
         const corners: [0 | 1 | 2 | 3, 0 | 1 | 2 | 3] = rot % 2 === 0 ? [0, 2] : [1, 3];
         corners.forEach((corner) => {
           for (const rho of radii) {
-            if (rho < s * 0.015) continue;
             const k = rho * mid;
             const mx = corner === 1 || corner === 2 ? x0 + s - k : x0 + k;
             const my = corner === 2 || corner === 3 ? y0 + s - k : y0 + k;

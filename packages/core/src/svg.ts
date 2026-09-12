@@ -60,8 +60,11 @@ export function validateSvgVocabulary(svg: string): VocabularyViolation[] {
   TAG_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = TAG_RE.exec(svg)) !== null) {
+    // No closing-tag guard: TAG_RE requires a letter or underscore straight
+    // after the `<`, so `</circle>` never matches in the first place. The guard
+    // that used to sit here read as if closing tags were being filtered out,
+    // which is a misleading thing for the next person to reason from.
     const name = m[1] as string;
-    if (name.startsWith('/')) continue;
     if (!allowed.has(name)) {
       out.push({ kind: 'element', name, detail: `<${name}> is outside the allowed vocabulary` });
     }

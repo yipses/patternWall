@@ -48,13 +48,3 @@ const utf8ToBase64 = (s: string): string => {
 export function svgToDataUrl(svg: string): string {
   return `data:image/svg+xml;base64,${utf8ToBase64(svg)}`;
 }
-
-/** Aspect ratio used for every on-screen preview: iPhone 9:19.5. */
-export const PREVIEW_ASPECT = 19.5 / 9;
-
-/** Preview render size. Small enough to stay responsive, big enough to judge. */
-export function previewSize(cssWidth: number, quality: 'draft' | 'full' = 'full'): { width: number; height: number } {
-  const base = quality === 'draft' ? 240 : 460;
-  const w = Math.max(160, Math.min(base, Math.round(cssWidth)));
-  return { width: w, height: Math.round(w * PREVIEW_ASPECT) };
-}

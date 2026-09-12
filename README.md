@@ -38,7 +38,7 @@ The Playwright suite expects a Chromium binary at `/opt/pw-browsers/chromium`; o
 
 ## Deploying
 
-The build is a static export — 40 files, no server, no database, no API. `apps/web/out`
+The build is a static export — 44 files, no server, no database, no API. `apps/web/out`
 can be dropped onto any static host as-is.
 
 GitHub Pages is wired up in `.github/workflows/pages.yml`. Enable it once under
