@@ -514,10 +514,16 @@ from this build environment. Do not quietly upgrade a guess to a fact.
 
 ## Current state
 
-Five generators: `flow-dots`, `truchet`, `phyllotaxis`, `ridgelines`,
-`contours`. Three taxonomy tags — `isometric`, `distortion`, `physics` — have
-no patterns yet. Truchet is by far the most worked over; the rest have had
-little iteration and should be assumed rougher rather than better.
+Six generators: `flow-dots`, `truchet`, `phyllotaxis`, `ridgelines`,
+`contours`, `chevron-blocks`. Two taxonomy tags — `distortion` and `physics` —
+have no patterns yet. Truchet and contours are by far the most worked over; the
+rest have had little iteration and should be assumed rougher rather than better.
+
+`chevron-blocks` is the only one that covers the canvas completely, which is
+worth knowing before reasoning about its colour: a full-bleed field of accent
+is a bright wallpaper whatever the palette says its background is, so its
+blocks are anchored a fixed lightness distance from the paper rather than
+painted at accent strength.
 
 Two of the five now compose uniformly across the canvas rather than holding the
 clock zone back, and for different reasons. Truchet never could: a tiling is

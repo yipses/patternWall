@@ -21,12 +21,30 @@ test.describe('gallery', () => {
   });
 
   test('filters by tag and offers a way out of an empty result', async ({ page }) => {
+    // Both the count and the second tag come from the registry rather than
+    // being written down. This test used to assert that filtering on `grid`
+    // left exactly Truchet, which was true until a second grid pattern was
+    // added and then failed for no reason anyone would want to hear about.
+    // What it is actually about is that a filter narrows to the patterns
+    // carrying the tag, and that an impossible combination says so and offers
+    // a way back.
+    const withGrid = generators.filter((g) => g.tags.includes('grid'));
+    expect(withGrid.length, 'no grid patterns to filter for').toBeGreaterThan(0);
+
+    // Only tags some pattern carries get a button, so the impossible second
+    // tag has to be one of those.
+    const offered = new Set(generators.flatMap((g) => g.tags));
+    const impossible = [...offered].find((t) => t !== 'grid' && !withGrid.some((g) => g.tags.includes(t)));
+    expect(impossible, 'every offered tag pairs with grid, so no empty result is reachable').toBeTruthy();
+
     await page.goto('/');
     await page.getByRole('button', { name: 'grid', exact: true }).click();
-    await expect(page.getByRole('listitem')).toHaveCount(1);
-    await expect(page.getByRole('listitem').first()).toContainText('Truchet');
+    await expect(page.getByRole('listitem')).toHaveCount(withGrid.length);
+    for (const g of withGrid) {
+      await expect(page.getByRole('listitem').filter({ hasText: g.name })).toBeVisible();
+    }
 
-    await page.getByRole('button', { name: 'organic', exact: true }).click();
+    await page.getByRole('button', { name: impossible as string, exact: true }).click();
     await expect(page.getByRole('listitem')).toHaveCount(0);
     await expect(page.getByText(/Nothing matches all of those tags/)).toBeVisible();
 
