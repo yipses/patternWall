@@ -21,6 +21,15 @@
   container-type: inline-size;
 }
 
+/* The screen inside the exported image: the frame minus the bleed margin.
+   Positioned inline from the spec's bleed. Every descendant's percentages are
+   therefore percentages of the screen, which is what iOS's own proportions
+   are. */
+.screen {
+  position: absolute;
+  z-index: 2;
+}
+
 .pattern {
   position: absolute;
   inset: 0;

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { curatedPalettes, defaultParams, generators, renderToSvg } from '@patternwall/core';
+import { DEFAULT_BLEED, curatedPalettes, defaultParams, generators, renderToSvg, safeZonesForCanvas } from '@patternwall/core';
 import { previewSrc, settled } from './helpers';
 
 test.describe('editor', () => {
@@ -94,6 +94,41 @@ test.describe('editor', () => {
     await page.keyboard.type('#1a2b3c', { delay: 80 });
     await expect(field).toHaveValue('#1a2b3c');
     await expect(field).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  /**
+   * The overlay has to point at the band the generator actually quieted.
+   *
+   * It did not: the zones were positioned as fractions of the whole preview,
+   * while generators compose against safeZonesForCanvas, which insets by the
+   * bleed first. At the default 8% that put the clock outline 5.7% of the
+   * canvas height above the real one -- the single feature whose job is to show
+   * where the furniture lands, pointing at the wrong place.
+   *
+   * Measured against the DOM rather than against the formula, so this fails if
+   * the overlay drifts for any reason, not only this one.
+   */
+  test('the safe-zone overlay lands where the generator quiets', async ({ page }) => {
+    await page.goto('/p/truchet');
+    await settled(page);
+    await page.getByRole('switch', { name: 'Show the iOS safe zone outlines' }).click();
+
+    const phone = await page.locator('[class*="phone"]').first().boundingBox();
+    const clock = await page.getByTestId('zone-clock').boundingBox();
+    expect(phone, 'no phone frame').toBeTruthy();
+    expect(clock, 'no clock zone -- is the overlay switch on?').toBeTruthy();
+
+    // Where the overlay draws it, as a fraction of the exported image.
+    const drawnTop = (clock!.y - phone!.y) / phone!.height;
+    const drawnBottom = (clock!.y + clock!.height - phone!.y) / phone!.height;
+
+    // Where a generator asking for the same canvas is told the clock sits.
+    const zones = safeZonesForCanvas(1000, 2000, DEFAULT_BLEED);
+    const realTop = zones.clock.y / 2000;
+    const realBottom = (zones.clock.y + zones.clock.h) / 2000;
+
+    expect(drawnTop, `overlay top ${(drawnTop * 100).toFixed(1)}% vs generator ${(realTop * 100).toFixed(1)}%`).toBeCloseTo(realTop, 2);
+    expect(drawnBottom, `overlay bottom ${(drawnBottom * 100).toFixed(1)}% vs generator ${(realBottom * 100).toFixed(1)}%`).toBeCloseTo(realBottom, 2);
   });
 
   test('the share URL round-trips to an identical render', async ({ page, context }) => {
