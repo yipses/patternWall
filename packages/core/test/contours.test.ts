@@ -111,7 +111,7 @@ describe('contours', () => {
    */
   it.each([
     ['ordinary country', { resolution: 60, levels: 18 }],
-    ['rough country, where saddles occur', { resolution: 200, levels: 60, detail: 5, scale: 6, grain: 1, incision: 0.8 }],
+    ['rough country, where saddles occur', { resolution: 200, levels: 60, detail: 5, scale: 4, grain: 0.25, incision: 0.2 }],
   ])('leaves no contour stopping in the middle of the map: %s', (_label, over) => {
     const SIZE = 600;
     // Supplementary lines are contours as well — traced from the same
@@ -320,8 +320,18 @@ describe('contours', () => {
     expect(pointingOut, `${pointingOut} of ${ticks} ticks point out of their ring instead of into it`).toBe(0);
     expect(hills, `${hills} ticked rings have the next contour up inside them, so they are summits`).toBe(0);
     expect(hollows, 'no ticked ring could be confirmed as a hollow').toBeGreaterThan(0);
-    // Measured both ways: with the ring vote in place the emptiest ticked ring
-    // fills 0.74 of its slots, and without it a stray ring appears at 0.23.
+    // A ticked ring carries a row of ticks all the way round, not a speck.
+    //
+    // This assertion used to be the only coverage of the per-ring vote: with
+    // the vote in place the emptiest ticked ring filled 0.74 of its slots, and
+    // without it a stray ring appeared at 0.23. That is no longer what it
+    // catches. The generator now enforces the row directly — a ring whose ticks
+    // mostly fail their own downhill and inward checks is dropped rather than
+    // half-drawn — and measured with the vote deleted, across five seeds at two
+    // settings, the emitted ticks are identical. So this guards the row rule,
+    // and the vote is an optimisation that no test distinguishes. Said plainly
+    // here because the previous wording would send the next person looking for
+    // a guarantee that has moved.
     expect(sparsest, `the emptiest ticked ring is barely ticked at all — ${sparsestAt}`).toBeGreaterThan(0.5);
   });
 
@@ -435,13 +445,23 @@ describe('contours', () => {
     expect(many.worst, `the worst window at sixty levels is ${(many.worst * 100).toFixed(0)}% ink`).toBeLessThan(0.4);
     expect(many.mean, `sixty levels averages ${many.mean.toFixed(3)} ink`).toBeLessThan(0.14);
 
-    // Sixty levels at maximum weight: the thinning case. Decimation alone
-    // leaves this at 0.229 mean and 0.686 worst; with both it is 0.110 and
-    // 0.433. A fat pen cannot be answered by dropping lines, because the lines
-    // that remain are still too fat for the gap.
-    const heavy = ink({ levels: 60, weight: 3 });
-    expect(heavy.mean, `sixty levels at weight 3 averages ${heavy.mean.toFixed(3)} ink`).toBeLessThan(0.17);
-    expect(heavy.worst, `its worst window is ${(heavy.worst * 100).toFixed(0)}% ink`).toBeLessThan(0.55);
+    // Sixty levels at maximum weight: the thinning case. A fat pen cannot be
+    // answered by dropping lines, because the lines that remain are still too
+    // fat for the gap.
+    //
+    // These bounds were recalibrated when the weight slider's maximum came down
+    // from 3 to 2, and the recalibration is the point. The old pair — 0.17 mean
+    // and 0.55 worst — was measured at weight 3, where the thinner takes 0.229
+    // to 0.110 and a bound between the two is easy. At weight 2 the same
+    // mechanism only takes 0.165 to 0.116, and both of those sit under the old
+    // bounds: the assertion went on passing with the thinner deleted entirely.
+    // Lowering a slider's maximum can disarm a test calibrated at the old one
+    // without touching a line of the test, so the numbers below come from
+    // measuring the fixed and broken cases at weight 2 rather than from
+    // narrowing the old ones by eye.
+    const heavy = ink({ levels: 60, weight: 2 });
+    expect(heavy.mean, `sixty levels at weight 2 averages ${heavy.mean.toFixed(3)} ink`).toBeLessThan(0.14);
+    expect(heavy.worst, `its worst window is ${(heavy.worst * 100).toFixed(0)}% ink`).toBeLessThan(0.4);
 
     // And none of it touches a render that has room: at the default fourteen
     // levels nothing is dropped and nothing is thinned.
@@ -491,50 +511,4 @@ describe('contours', () => {
     for (const g of groupsOf(svg, 'contour')) expect(g).not.toMatch(/stroke-dasharray/);
   });
 
-  /**
-   * Relief is a composition claim: the upper canvas is meant to be calm ground
-   * for the clock, with the dense contours in the lower half. It flattens the
-   * field rather than dimming the ink, so the test is about how much line there
-   * is up there, not how bright it is.
-   *
-   * The two ends are compared against each other on one seed rather than
-   * against fixed numbers, because the measure is strongly seed-dependent: over
-   * four seeds, relief 0 gives a top-to-bottom ratio anywhere from 0.68 to
-   * 1.70, and relief 1 from 0.07 to 0.25. A constant bound calibrated on one
-   * seed sits right on the line for another — this test failed at 0.2539
-   * against a 0.25 bound the first time the defaults moved, which is the
-   * threshold-picked-by-eye trap in CLAUDE.md arriving on schedule. The ratio
-   * between the two ends is stable where the ends themselves are not: it never
-   * exceeds 0.30, so a bound of half is clear of every seed measured, and the
-   * bug this guards against — relief ignored entirely — puts it at 1.
-   */
-  it('empties the top of the canvas as relief rises, and not at zero', () => {
-    const SIZE = 600;
-    // Counted as points on the drawn curves: the contours are cubics now, so
-    // there are no segments to take midpoints of, and how many points a band
-    // of the canvas holds tracks how much contour runs through it.
-    const topShare = (relief: number): number => {
-      const ink = lines(render({ relief, resolution: 60 }, SIZE));
-      let top = 0;
-      let bottom = 0;
-      for (const d of ink.matchAll(/ d="([^"]+)"/g)) {
-        const nums = ((d[1] as string).match(/-?[\d.]+/g) ?? []).map(Number);
-        for (let i = 1; i < nums.length; i += 2) {
-          const y = nums[i] as number;
-          if (y < SIZE * 0.25) top += 1;
-          else if (y > SIZE * 0.75) bottom += 1;
-        }
-      }
-      expect(bottom, 'no contours in the lower canvas to compare against').toBeGreaterThan(50);
-      return top / bottom;
-    };
-
-    const flat = topShare(0);
-    const relieved = topShare(1);
-    expect(flat, `at relief 0 the country should be equally rugged everywhere, got ${flat.toFixed(3)}`).toBeGreaterThan(0.4);
-    expect(
-      relieved,
-      `relief 1 left ${relieved.toFixed(3)} of the lower canvas's contours up top, against ${flat.toFixed(3)} at relief 0`,
-    ).toBeLessThan(flat * 0.5);
-  });
 });

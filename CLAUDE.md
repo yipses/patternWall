@@ -101,10 +101,29 @@ dropping the *last* option only makes a stale index fall back to the default;
 removing the `rowVariation` param was not, and every truchet link made before it
 now reads its values one slot out. Four more went the same way in one go —
 `gap`, `subdivide`, `quietTop`, `openEnds` — knowingly, because nothing outside
-this repo had links worth keeping yet. That window is closing: the moment
-someone bookmarks a configuration, this stops being a free operation. If links
-ever need to survive, the encoding needs a version or named keys — it has
-neither today.
+this repo had links worth keeping yet. Contours' `relief` then went the same way
+for the same reason, shifting the seven params after it. That window is closing:
+the moment someone bookmarks a configuration, this stops being a free operation.
+If links ever need to survive, the encoding needs a version or named keys — it
+has neither today.
+
+**Narrowing a param's range is the quiet version of the same thing, and it can
+also disarm a test.** Lowering a maximum does not shift any slot, so links keep
+decoding — but `coerceParams` clamps, so every stored value above the new
+ceiling silently becomes the ceiling, and any default above it has to move with
+it. Contours' `grain` and `incision` defaults both sat above their new maxima
+and were pinned down to them.
+
+The part worth remembering is what it did to a test. The crowding test asserts
+that a heavy pen thins rather than blots, and it was calibrated at `weight` 3,
+where the thinner takes mean ink from 0.229 to 0.110 and a bound between those
+is comfortable. Clamping the slider to 2 moved the same test onto a case where
+the mechanism only takes 0.165 to 0.116 — both under the old bounds of 0.17 and
+0.55 — so the assertion went on passing with the thinner deleted outright. No
+line of the test changed; its extreme did. When you narrow a range, re-run every
+test that was calibrated at the old end of it against the bug it was written to
+catch, because a test whose extreme has moved is a test that may no longer have
+one.
 
 ---
 
@@ -514,6 +533,27 @@ worth knowing before reasoning about its colour: a full-bleed field of accent
 is a bright wallpaper whatever the palette says its background is, so its
 blocks are anchored a fixed lightness distance from the paper rather than
 painted at accent strength.
+
+Two of the six now compose uniformly across the canvas rather than holding the
+clock zone back, and for different reasons. Truchet never could: a tiling is
+uniform by construction and any factor keyed on height draws a band across it.
+Contours could and no longer does — its `relief` param flattened the field
+toward the top so that fewer heights were crossed up there, which worked, and
+was removed on request because the range above its default did little. The
+consequence is plain in an A/B and worth knowing before anyone calls it a bug:
+the top third now carries the same contour density as the bottom.
+
+So the repo now holds the clock zone back three different ways and, in contours,
+not at all. `quietFactor` dims what is drawn, which is right where density
+varies and wrong on a uniform tiling. The other two are structural — they change
+how much there is to draw up there rather than how it is painted — and that is
+the family contours' `relief` belonged to: chevron-blocks' `skyline` is the
+surviving example, growing its stacks toward the bottom and flattening them
+toward the top. If contours ever wants its quiet top back, that is the shape of
+the answer, and reinstating its old `relief` beats inventing something new.
+Mind the collision when reading either file: chevron-blocks has a param of its
+own called `relief`, and it means the height spread between stacks, which is a
+different thing entirely.
 
 `contours` and `ridgelines` are the same idea seen from two directions, and the
 distinction is worth keeping straight: ridgelines is terrain in elevation, a
