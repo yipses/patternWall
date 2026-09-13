@@ -11,157 +11,232 @@ function render(over: Record<string, number | string | boolean> = {}): string {
     width: SIZE,
     height: SIZE,
     palette: TEST_PALETTES[0]!,
-    params: { ...baseParams(stringArt), nailsVisible: false, ...over },
+    params: { ...baseParams(stringArt), ...over },
     seed: 'thread',
     bleed: 0,
   });
 }
 
-/** A grid that is dark in the middle, or dark at the rim. */
-function blob(inverted: boolean): string {
+/** How big the board is on the canvas, as a fraction of it. Mirrors `scale`. */
+const BOARD = 0.94;
+
+/** A picture built from a rule over normalised coordinates in -0.5..0.5. */
+function picture(f: (x: number, y: number) => number): string {
   const cells = new Float32Array(GRID_SIZE * GRID_SIZE);
   for (let j = 0; j < GRID_SIZE; j++) {
     for (let i = 0; i < GRID_SIZE; i++) {
-      const nx = (i + 0.5) / GRID_SIZE - 0.5;
-      const ny = (j + 0.5) / GRID_SIZE - 0.5;
-      const middle = Math.max(0, 1 - Math.hypot(nx, ny) * 2.6);
-      cells[j * GRID_SIZE + i] = inverted ? 1 - middle : middle;
+      cells[j * GRID_SIZE + i] = f((i + 0.5) / GRID_SIZE - 0.5, (j + 0.5) / GRID_SIZE - 0.5);
     }
   }
-  return packGrid(cells);
+  return packGrid(cells, GRID_SIZE);
 }
 
-/** Mean thread coverage inside a centred disc of the given radius fraction. */
+/** A dark disc of the given radius on a light ground. */
+const disc = (r: number): string => picture((x, y) => (Math.sqrt(x * x + y * y) < r ? 0.95 : 0.05));
+
+/** A dark ring with a light hole in it. */
+const ring = (inner: number, outer: number): string =>
+  picture((x, y) => {
+    const d = Math.sqrt(x * x + y * y);
+    return d >= inner && d < outer ? 0.95 : 0.05;
+  });
+
+/** Nail centres, in canvas fractions, in the order they were driven. */
+function nails(svg: string): [number, number][] {
+  const out: [number, number][] = [];
+  const re = /<circle cx="([-\d.]+)" cy="([-\d.]+)"/g;
+  let m = re.exec(svg);
+  while (m) {
+    out.push([Number(m[1]) / SIZE, Number(m[2]) / SIZE]);
+    m = re.exec(svg);
+  }
+  return out;
+}
+
+/** Mean darkness away from the paper, within a centred disc of radius `to`. */
 function inkWithin(svg: string, from: number, to: number): number {
   const { pixels } = rasterize(svg, SIZE);
+  const paper = TEST_PALETTES[0]!.background;
+  const [pr, pg, pb] = [1, 3, 5].map((i) => parseInt(paper.slice(i, i + 2), 16)) as [number, number, number];
+  const paperLum = (0.2126 * pr + 0.7152 * pg + 0.0722 * pb) / 255;
   let sum = 0;
   let n = 0;
   for (let y = 0; y < SIZE; y++) {
     for (let x = 0; x < SIZE; x++) {
-      const r = Math.hypot((x + 0.5) / SIZE - 0.5, (y + 0.5) / SIZE - 0.5) * 2;
+      const dx = (x + 0.5) / SIZE - 0.5;
+      const dy = (y + 0.5) / SIZE - 0.5;
+      const r = Math.sqrt(dx * dx + dy * dy);
       if (r < from || r >= to) continue;
       const o = (y * SIZE + x) * 4;
-      sum +=
-        0.2126 * (pixels[o] as number) + 0.7152 * (pixels[o + 1] as number) + 0.0722 * (pixels[o + 2] as number);
+      const lum =
+        (0.2126 * (pixels[o] as number) + 0.7152 * (pixels[o + 1] as number) + 0.0722 * (pixels[o + 2] as number)) /
+        255;
+      sum += Math.abs(lum - paperLum);
       n += 1;
     }
   }
-  return n === 0 ? 0 : sum / n / 255;
+  return n === 0 ? 0 : sum / n;
 }
 
 describe('string-art', () => {
   /**
-   * The picture is a picture of the picture.
+   * The nails are the drawing.
    *
-   * Everything else here is machinery in service of this one claim, and it is
-   * the claim that can fail while every other test stays green: a solver that
-   * ignored its target, or read it upside down, or lost it somewhere between
-   * the packed string and the residual, would still wind a perfectly
-   * respectable disc of thread.
+   * This is the claim the whole construction rests on and the one that
+   * separates it from what this pattern used to be. The old version drove its
+   * nails around a circular rim at uniform angles — they carried no
+   * information at all — and made the picture entirely out of chord density.
+   * Here a nail is driven on an *outline*, which is why the board reads as the
+   * subject before a single thread goes on.
    *
-   * So the target is a blob — dark in the middle, light at the rim — and the
-   * assertion is that the thread went where the darkness was. The same grid
-   * inverted has to flip it, which is what rules out a solver that happens to
-   * crowd the middle for geometric reasons: chords do bunch toward the centre
-   * of a circle, so "more ink in the middle" on its own proves nothing.
+   * So: a dark disc, one tone, no shading. Every nail must sit on the disc's
+   * edge and nowhere else, and they must be evenly spaced along it, because
+   * marching squares puts vertices where the grid is rather than where the
+   * curve turns — spacing by vertex would crowd them into the corners.
    *
-   * Bounds taken from measurement: the centre-dark target scores 2.16
-   * centre-to-rim and the edge-dark one 0.66. Watched failing by solving
-   * against a flat target, which takes the first to 1.11.
+   * Bounds from measurement. Against the real thing 81 nails land at a mean
+   * radius of 0.2819 where the picture's edge is 0.282, their radii span
+   * 0.0038 of the canvas, and the widest gap between neighbours is 1.013x the
+   * median. Watched failing twice: placing nails at ring vertices instead of
+   * at even arc length takes the gap ratio to 1.32, and driving them into a
+   * rim circle as the old version did puts their mean radius at 0.444.
    */
-  it('winds the thread where the picture is dark', () => {
-    const middleDark = render({ image: blob(false) });
-    const rimDark = render({ image: blob(true) });
+  it('drives the nails along the picture’s outline, evenly spaced', () => {
+    const svg = render({ image: disc(0.3), tones: 1, coverage: 0.28, shading: 0 });
+    const pts = nails(svg);
+    expect(pts.length, 'no nails were driven at all').toBeGreaterThan(30);
 
-    const centreA = inkWithin(middleDark, 0, 0.45);
-    const rimA = inkWithin(middleDark, 0.62, 0.95);
-    const centreB = inkWithin(rimDark, 0, 0.45);
-    const rimB = inkWithin(rimDark, 0.62, 0.95);
+    const radii = pts.map(([x, y]) => Math.sqrt((x - 0.5) * (x - 0.5) + (y - 0.5) * (y - 0.5)));
+    const lo = Math.min(...radii);
+    const hi = Math.max(...radii);
+    // The disc's edge, mapped onto the canvas by the board's size.
+    const want = 0.3 * BOARD;
+    expect(
+      (lo + hi) / 2,
+      `the nails sit at radius ${((lo + hi) / 2).toFixed(3)} of the canvas, where the picture's edge is ${want.toFixed(3)}`,
+    ).toBeCloseTo(want, 1);
+    expect(hi - lo, `the nails' radii span ${(hi - lo).toFixed(3)}, so they are not on one outline`).toBeLessThan(0.03);
 
-    expect(centreA, `a centre-dark picture put ${centreA.toFixed(3)} ink in the middle and ${rimA.toFixed(3)} at the rim`).toBeGreaterThan(rimA * 1.6);
-    expect(centreB, `an edge-dark picture put ${centreB.toFixed(3)} ink in the middle and ${rimB.toFixed(3)} at the rim`).toBeLessThan(rimB * 0.8);
+    const gaps = pts.map(([x, y], i) => {
+      const [nx, ny] = pts[(i + 1) % pts.length] as [number, number];
+      return Math.sqrt((nx - x) * (nx - x) + (ny - y) * (ny - y));
+    });
+    const sorted = [...gaps].sort((a, b) => a - b);
+    const median = sorted[sorted.length >> 1] as number;
+    const worst = (sorted[sorted.length - 1] as number) / median;
+    expect(worst, `the widest gap between neighbouring nails is ${worst.toFixed(3)}x the median`).toBeLessThan(1.15);
   });
 
   /**
-   * How much one thread is worth is derived, not chosen.
+   * The thread shades a region; it does not bridge across one.
    *
-   * The total ink is fixed by how dark the target is, and divided among
-   * however many threads are asked for, so thread count trades boldness for
-   * fineness rather than making the picture darker.
+   * A star polygon on a ring stays inside it only while the ring is convex.
+   * On anything else — the notch between a helmet's cheek and its jaw, the
+   * opening of a crescent, the hole in a ring — some chords leave the shape,
+   * and those are exactly the chords that would destroy the drawing, because
+   * the hole is the thing that makes it a ring rather than a disc.
    *
-   * What this catches specifically is the drawn alpha being a constant, which
-   * it was until this test was written: deriving only the solver's subtraction
-   * leaves thread count a brightness control by the back door, and quadrupling
-   * it laid 2.15x the ink. It does *not* catch a constant ink-per-thread
-   * inside the solver — that changes how the threads are distributed without
-   * moving the total on the board — and it is worth saying so rather than
-   * leaving a reader to assume otherwise.
+   * Each chord is therefore tested along its own length and dropped if it
+   * leaves. This asserts the consequence at the place a reader would look:
+   * a dark ring with a light hole must come out with an empty hole.
+   *
+   * Measured: the middle of the hole carries 0.002 of the render's ink
+   * against 0.121 in the ring's own body. Watched failing by removing the
+   * test at the chord, which fills the hole to 0.093 — thirty-nine times over.
    */
-  it('spends the same ink whether it is wound in few threads or many', () => {
-    const image = blob(false);
-    const few = inkWithin(render({ image, threads: 700 }), 0, 0.95);
-    const many = inkWithin(render({ image, threads: 2800 }), 0, 0.95);
-    const ratio = many / Math.max(1e-6, few);
+  it('leaves a hole in the picture as a hole in the thread', () => {
+    const svg = render({ image: ring(0.18, 0.34), tones: 1, coverage: 0.26, nailsVisible: false });
+    const hole = inkWithin(svg, 0, 0.12);
+    const body = inkWithin(svg, 0.2, 0.3);
+    expect(body, `the ring's own body carries only ${body.toFixed(3)} ink, so nothing was wound`).toBeGreaterThan(0.03);
     expect(
-      ratio,
-      `four times the threads laid ${ratio.toFixed(2)}x the ink, so the ink per thread is not derived`,
-    ).toBeLessThan(1.6);
-    expect(ratio, `four times the threads laid only ${ratio.toFixed(2)}x the ink`).toBeGreaterThan(0.6);
+      hole,
+      `the hole carries ${hole.toFixed(3)} ink against ${body.toFixed(3)} in the body, so chords are bridging it`,
+    ).toBeLessThan(body * 0.2);
   });
 
   /**
-   * Where the thread crosses itself, it gets darker. That is the whole medium.
+   * Shading makes more thread, at every setting.
    *
-   * This generator drew its winding as a single `<path>` at first, because a
-   * wound board really is one continuous thread and saying so cost two
-   * thousand elements less. It also made the picture impossible, and the bug
-   * was invisible from any angle except this one: SVG strokes a path as one
-   * shape and applies opacity to the result, so a path that crosses itself
-   * does not composite with itself. Ten overlapping strokes at 30% rendered
-   * at 178 on a 0-255 scale where one stroke gives 179; as ten elements, 8.
+   * This is a regression test for a fault that shipped in the first build of
+   * this construction and is worth the words, because it is the "two controls
+   * that fight" shape and it looked like a design rather than a bug.
    *
-   * With no accumulation, tone can only come from how much *area* is covered,
-   * which saturates almost immediately — every render came out one flat grey
-   * with a hint of a face in it. So the assertion is about depth, not shape:
-   * the darkest place in a render has to be far darker than a single thread,
-   * which is only true if crossings add up.
+   * Two quantities decide a region's winding: how far in the star-polygon
+   * families reach, and how many of them are wound inside that reach. Both
+   * were free, and a fixed chord budget was spent by widening the stride
+   * between families until it fitted. So asking for more shading asked for
+   * more reach, which spread the same budget thinner: at `shading` 1 a render
+   * carried 1,539 chords in visibly separated bands where 0.55 carried 1,653.
+   * The control ran backwards, and every individual piece of it was correct.
+   *
+   * Reach is now fixed by the tone and shading buys passes within it, and on
+   * the subject below the chord counts run 1,196 / 2,541 / 4,108 across the
+   * three settings. Watched failing by putting the first build back: it reads
+   * 3,783 chords at 0.6 shading and 3,411 at 1, which is the inversion, and
+   * the assertion that catches it is the plain one that more must be more.
    */
-  it('darkens where the thread crosses itself', () => {
-    const svg = render({ image: blob(false), threads: 1200 });
-    const { pixels } = rasterize(svg, SIZE);
+  it('winds more thread the more shading is asked for', () => {
+    const image = disc(0.33);
+    const read = (shading: number): { chords: number; ink: number } => {
+      const svg = render({ image, shading, nailsVisible: false });
+      return { chords: (svg.match(/<line/g) ?? []).length, ink: inkWithin(svg, 0, 0.34) };
+    };
+    const low = read(0.2);
+    const mid = read(0.6);
+    const high = read(1);
 
-    const paper = TEST_PALETTES[0]!.background;
-    const [pr, pg, pb] = [1, 3, 5].map((i) => parseInt(paper.slice(i, i + 2), 16)) as [number, number, number];
-    const paperLum = (0.2126 * pr + 0.7152 * pg + 0.0722 * pb) / 255;
-
-    // How far from the paper each pixel got, and how many distinct depths
-    // there are. A render with no accumulation has essentially two: paper, and
-    // one thread's worth.
-    const depths = new Set<number>();
-    let deepest = 0;
-    for (let y = 0; y < SIZE; y++) {
-      for (let x = 0; x < SIZE; x++) {
-        const r = Math.hypot((x + 0.5) / SIZE - 0.5, (y + 0.5) / SIZE - 0.5) * 2;
-        if (r > 0.85) continue;
-        const o = (y * SIZE + x) * 4;
-        const lum =
-          (0.2126 * (pixels[o] as number) + 0.7152 * (pixels[o + 1] as number) + 0.0722 * (pixels[o + 2] as number)) /
-          255;
-        const depth = Math.abs(lum - paperLum);
-        if (depth > deepest) deepest = depth;
-        depths.add(Math.round(depth * 40));
-      }
-    }
-
-    const single = Number(/stroke-opacity="([\d.]+)"/.exec(svg)?.[1] ?? '1');
-    expect(single, 'no thread opacity to compare against').toBeGreaterThan(0);
-    // One thread lays `single` of the way from paper to thread colour. The
-    // deepest point of a real winding is many threads on top of each other.
     expect(
-      deepest / single,
-      `the darkest point is ${(deepest / single).toFixed(1)} threads deep, so crossings are not accumulating`,
-    ).toBeGreaterThan(3);
-    expect(depths.size, `only ${depths.size} distinct depths in the whole render`).toBeGreaterThan(12);
+      mid.chords,
+      `${low.chords} chords at 0.2 shading and ${mid.chords} at 0.6`,
+    ).toBeGreaterThan(low.chords * 1.3);
+    expect(
+      high.chords,
+      `${mid.chords} chords at 0.6 shading and ${high.chords} at 1 — raising shading thinned the winding`,
+    ).toBeGreaterThan(mid.chords);
+    expect(high.ink, `${mid.ink.toFixed(3)} ink at 0.6 shading and ${high.ink.toFixed(3)} at 1`).toBeGreaterThan(mid.ink);
+    expect(low.ink, `${low.ink.toFixed(3)} ink at 0.2 shading and ${mid.ink.toFixed(3)} at 0.6`).toBeLessThan(mid.ink);
+  });
+
+  /**
+   * Deeper tones are traced as their own shapes, inside the shallower ones.
+   *
+   * A picture is posterised at nested quantiles, so a dark mark inside a
+   * mid-grey body has to come out as an outline of its own rather than as
+   * more thread in the body's winding. This is what "including internal
+   * structures" means, and it is the difference between a silhouette and a
+   * drawing.
+   *
+   * The subject is a mid-grey disc with a dark bar across it. With one tone
+   * only the disc is found; with three, the bar is traced too, which shows up
+   * as nails along the bar's own edges — well inside the disc's outline.
+   *
+   * Measured: 0.0% of nails fall inside the silhouette at one tone and 23.5%
+   * at three. Watched failing by giving every tone the same threshold instead
+   * of halving it each time, which takes the three-tone reading to 0.0% —
+   * three copies of the silhouette and no drawing.
+   */
+  it('traces internal structure, not just the silhouette', () => {
+    const subject = picture((x, y) => {
+      if (Math.sqrt(x * x + y * y) >= 0.33) return 0.04;
+      return Math.abs(y) < 0.07 && Math.abs(x) < 0.22 ? 0.95 : 0.5;
+    });
+    const inner = (svg: string): number => {
+      const pts = nails(svg);
+      const deep = pts.filter(([x, y]) => Math.sqrt((x - 0.5) * (x - 0.5) + (y - 0.5) * (y - 0.5)) < 0.33 * BOARD * 0.8);
+      return pts.length === 0 ? 0 : deep.length / pts.length;
+    };
+    const silhouette = inner(render({ image: subject, tones: 1, coverage: 0.34, shading: 0 }));
+    const drawing = inner(render({ image: subject, tones: 3, coverage: 0.34, shading: 0 }));
+
+    expect(
+      silhouette,
+      `at one tone ${(silhouette * 100).toFixed(0)}% of nails are inside the silhouette, so the outline is not the outline`,
+    ).toBeLessThan(0.08);
+    expect(
+      drawing,
+      `at three tones only ${(drawing * 100).toFixed(0)}% of nails are inside the silhouette, so the bar was not traced`,
+    ).toBeGreaterThan(0.12);
   });
 
   /**

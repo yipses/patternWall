@@ -7,142 +7,457 @@ import { el, num, svgRoot } from '../svg.js';
 import { pBool, pNum, pStr, type Generator, type RenderContext } from '../types.js';
 
 const description = `
-Drive a ring of nails into a board, tie on one long black thread, and wind it from nail to nail across the middle. Every pass lays a straight chord over whatever is already there. Do it two thousand times and a face appears — not because any thread knows about the face, but because the places the thread crossed most often are the places that needed to be dark.
+A real string-art board is built in two movements, and they are not the same movement. First the maker finds the *outlines* of the subject — the silhouette, and every internal edge that matters: the slots of a helmet, the ridge of a nose, the counters of a letter — and drives a nail every few millimetres along each one. At that point, before a single thread is tied, the board already reads as the picture. Only then does the thread go on, wound from nail to nail *within* each outline, and its job is shading: a region is dark because a lot of thread crossed it, light because little did.
 
-The picture is made by a greedy search, which is the whole of the algorithm. Start at a nail. For every other nail, look at the straight line to it and ask how much of the *remaining* darkness that line would cover — the darkness the picture still wants and the thread has not supplied yet. Take the best one, draw it, subtract what it just supplied from that remainder, and start again from the nail you arrived at. Nothing is ever undone and nothing is planned ahead; each step is the best single chord available at that moment, and the portrait is the residue of two thousand such decisions.
+This draws the same way. A picture is reduced to a small grid of darkness, and a few nested thresholds are taken through it by quantile rather than by value — the darkest third, then the darkest sixth, then the darkest twelfth — so a flat photograph and a contrasty one both yield the same number of usable shapes. Marching squares traces each threshold into closed rings, and nails are driven along every ring at a fixed spacing, which is the physical truth of the thing: a nail is a nail, so a big shape gets more of them than a small one rather than the same number spread thinner.
 
-What makes it work is the subtraction. Without it the search would pick the same darkest chord forever; with it, every thread makes its own line slightly less attractive and the next one has to go somewhere else. How much each thread supplies is not a setting — it is derived. Add up all the darkness the picture asks for, divide by the number of threads and the length of an average chord, and that is what one thread is worth. Get it wrong and the failure is total rather than subtle: too much and the search fills the whole disc solid before it gets to the detail, too little and it never commits to the shadows at all.
+The shading is wound as a star polygon inside each ring. Join every nail to the one a fixed number of places around, and the chords fall into a family whose inner boundary is a smaller copy of the ring; increase that number and the family reaches further in. So how dark a region wants to be becomes how many families are wound in it, and the thread naturally bunches near the outline and thins toward the middle — which is what the caustic on a real board looks like, and it is a property of the geometry rather than something tuned in. A chord that would leave its region is dropped, tested at the chord rather than assumed from the shape, so a concave outline keeps its concavity instead of being bridged over.
 
-**Threads** therefore controls the fineness rather than the darkness. Each one is worth less than the last, because the total is fixed by the picture, so a thousand threads and three thousand carry the same ink and differ in how finely it is divided — though more of them do resolve more, because tone here is made of crossings and more threads means more places to cross. **Nails** sets how many directions are available; below about a hundred the chords visibly snap to a coarse set of angles, and past three hundred the extra choices mostly duplicate each other.
+Nothing here is a search. The earlier version of this pattern was one — a greedy solver picking two thousand chords across a circular loom to approximate a photograph's tone — and it could not make these pictures, because it had no idea what an edge was. It only ever knew how dark a point was, and every chord it drew ran the full width of the disc and deposited ink along all of it. The result was a soft average of a face. Edges come from where the nails are; the thread only shades. Splitting those two jobs is the whole difference.
 
-Upload a picture and it becomes the target. Whatever you give it is reduced to a square grid of sixteen darkness levels before the solver sees it, because the whole picture has to travel in the share link — a string-art link is the portrait, not a reference to one. **Picture detail** is where that trade is made, and it is a real one: measured against a full-resolution original with detail at several scales, a 48-cell grid scores 0.73 correlation for about 1,500 characters of URL and a 128-cell grid scores 0.79 for about 11,000. Finer than that stops paying — 192 cells costs 24,600 characters and scores *worse*, because the gain is in how finely the solver tracks its own work rather than in how much of the photograph it was handed. With no picture given, the target is a composition of the seed's own making, which is an abstract rather than a portrait.
+**Tones** is how many nested outlines are traced, and **Coverage** is how much of the picture the outermost one encloses — the exposure control, in effect, since it decides what counts as dark. **Simplify** blurs the field before tracing, which is what separates an outline from a coastline: too little and every speck of grain becomes its own ring. **Shading** is how much thread goes on. At zero it is line art. With no picture given, the subject is a field of the seed's own making, which posterises into nested islands rather than a portrait.
 `.trim();
 
 /**
- * The grid the solver actually works on, derived from the stored one.
+ * The grid the outlines are traced on.
  *
- * These are two different resolutions doing two different jobs, and the second
- * one turns out to be the bigger lever. The stored grid is how much of the
- * photograph survived; the solve grid is the residual, which is the solver's
- * memory of where it has already put thread. Too coarse a residual and one
- * chord darkens a huge fraction of every cell it crosses, so the search
- * loses track of its own work long before it runs out of picture.
- *
- * Measured from a 128 grid against a detailed original: solving at 192 scores
- * 0.755, at 256 scores 0.778 and at 320 scores 0.789 — a bigger gain than
- * going from a 48 store to a 128 one, and it costs only time. Storing finer
- * than 128 is the thing that does not pay: a 192 grid is 24,580 characters of
- * link and scores 0.776, which a 128 grid beats by being solved on more field.
- *
- * Two and a half times the stored size, bounded, is where those numbers put
- * it. The ceiling is a render-time decision: 320 solves in about two seconds.
+ * Fixed, and deliberately not the stored picture's size. Those are two
+ * different questions: how much of the photograph survived into the link
+ * (`detail`, 48 to 128) and how finely a ring is drawn. Tracing on the stored
+ * grid would tie the second to the first, so raising picture detail would
+ * quietly change the *shape* of every outline rather than only how much
+ * information fed it. A stored grid is resampled up to this, and a coarse one
+ * simply arrives smooth.
  */
-const SOLVE_MULTIPLE = 2.5;
-const SOLVE_MIN = 192;
-const SOLVE_MAX = 320;
+const TRACE = 128;
+
+/** Widest blur, in trace cells, that `simplify` may ask for. */
+const MAX_BLUR = 6;
+
+/** Bins used to find a threshold by quantile. */
+const HIST_BINS = 256;
 
 /**
- * Nails nearer than this fraction of the ring are not offered as a target.
+ * A ring with fewer nails than this is not a shape, it is a speck.
  *
- * A chord between neighbouring nails is a few pixels long, covers almost
- * nothing, and scores well on any measure that divides by length — so without
- * a floor the search spends its threads creeping around the rim.
+ * Below a handful of nails a star polygon has no interior to wind — every
+ * stride is either the outline or the outline's mirror — so such a ring can
+ * only ever contribute a dot of outline. The floor is above that rather than
+ * at it, because a ring small enough to be a speck reads as grain however
+ * neatly it is wound, and a scattering of specks around a subject is the one
+ * thing that makes this look like noise rather than a drawing.
  */
-const MIN_SPAN = 0.04;
+const MIN_RING_NAILS = 10;
 
 /**
- * How wide a thread is drawn, in solver cells.
+ * Nails in the whole render, at most.
  *
- * The solver's model is a chord one cell wide, so one cell is the honest
- * width — and measured, 1.4 of them is better: 0.853 correlation against
- * 0.814 at exactly one. A stroke narrower than the cell it is accounted
- * against leaves gaps the solver thinks it filled.
+ * Spacing is the control, and this is the backstop for the case where a
+ * picture traces into a very long coastline at a very fine spacing. It is
+ * applied by *widening the spacing* rather than by truncating the list, so
+ * what gives way is nail density everywhere rather than half the picture.
  */
-const THREAD_CELLS = 1.4;
-
-/** Score every nth pixel of a candidate chord. See the note at its use. */
-const SCORE_STRIDE = 2;
+const MAX_NAILS = 1200;
 
 /**
- * What the drawn thread is worth, against what the solver budgeted.
+ * Shading chords in the whole render, at most.
  *
- * The solver adds darkness linearly: N passes over a cell subtract N times the
- * ink. Paint does not work that way — N strokes at alpha a leave 1-(1-a)^N,
- * which is always less — so a thread drawn at exactly its budgeted worth
- * arrives lighter than the picture asked for. Measured, alpha at the budget
- * gives a mean darkness of 0.686 against a target of 0.783; at 1.4 times it,
- * 0.814, and correlation is unmoved either way (0.813 against 0.800). This is
- * that compensation and nothing more: it is a fact about compositing, not a
- * knob for taste.
+ * Applied by scaling every region's pass count down together, not by
+ * truncating a list: what gives way is density everywhere rather than the
+ * last shapes getting nothing.
+ *
+ * It must not be applied to the *reach* instead, and the first version was.
+ * Spreading a fixed chord budget over a longer reach makes the picture
+ * sparser, so `shading` at 1 came out thinner and more banded than at 0.55 —
+ * 1,539 chords against 1,653, in visibly separated families. That is the
+ * "two controls that fight" fault: reach and density were both free, and the
+ * budget silently traded one for the other. Reach is now fixed by the tone
+ * and `shading` buys passes within it, so the control moves the quantity a
+ * person can actually see.
  */
-const ALPHA_OVER_INK = 1.4;
+const CHORD_BUDGET = 6000;
 
-/** Mean chord length of a circle of radius 1, used to derive the ink. */
-const MEAN_CHORD = 4 / Math.PI;
+/**
+ * Star-polygon families wound in one region, at full shading.
+ *
+ * A family is one stride: every nail joined to the one `m` places round. The
+ * count is what density is made of, and the reach is what it is spread over.
+ */
+const PASS_MAX = 22;
+
+/**
+ * How far the families reach in, as a fraction of the distance to the middle.
+ *
+ * A family at stride m has its inner boundary at cos(pi*m/n) of the ring, so
+ * this is strongly non-linear: reaching half way in to the nails' own stride
+ * limit still leaves the middle 70% of a round shape empty, and only the top
+ * of the range fills a region through. The shallowest tone therefore starts
+ * well up the range rather than at nothing, and the deepest fills through.
+ */
+const REACH_BASE = 0.35;
+const REACH_SPAN = 0.65;
+
+/** Interior points a chord is tested at before it is allowed to shade. */
+const INSIDE_SAMPLES = 7;
+
+/** Thread width and nail radius, as fractions of the nail spacing. */
+const THREAD_OF_SPACING = 0.11;
+const NAIL_OF_SPACING = 0.15;
+
+/**
+ * How solid a thread is drawn.
+ *
+ * The outline is nearly opaque because it is the drawing; the shading is not,
+ * because tone here is made of crossings and a stack of opaque chords is a
+ * blot rather than a shadow. Both are drawn as separate elements for the same
+ * reason — an SVG path does not composite with itself, so a winding drawn as
+ * one path has no tone at all.
+ */
+const OUTLINE_ALPHA = 0.95;
+const SHADE_ALPHA = 0.4;
+
+/** Read a field cell, clamped to the grid. */
+function at(f: Float32Array, F: number, x: number, y: number): number {
+  const xi = x < 0 ? 0 : x > F - 1 ? F - 1 : x;
+  const yi = y < 0 ? 0 : y > F - 1 ? F - 1 : y;
+  return f[yi * F + xi] as number;
+}
+
+/** Bilinear sample of the field at fractional grid coordinates. */
+function sample(f: Float32Array, F: number, x: number, y: number): number {
+  const fx = x < 0 ? 0 : x > F - 1.001 ? F - 1.001 : x;
+  const fy = y < 0 ? 0 : y > F - 1.001 ? F - 1.001 : y;
+  const i0 = Math.floor(fx);
+  const j0 = Math.floor(fy);
+  const tx = fx - i0;
+  const ty = fy - j0;
+  const a = f[j0 * F + i0] as number;
+  const b = f[j0 * F + i0 + 1] as number;
+  const c = f[(j0 + 1) * F + i0] as number;
+  const d = f[(j0 + 1) * F + i0 + 1] as number;
+  return a * (1 - tx) * (1 - ty) + b * tx * (1 - ty) + c * (1 - tx) * ty + d * tx * ty;
+}
+
+/**
+ * One axis of a box blur, with fractional end taps.
+ *
+ * Fractional because `simplify` is a slider: an integer-radius box would give
+ * it six distinct settings and six visible jumps. The end taps carry the
+ * fraction, so the radius moves continuously.
+ */
+function blurAxis(src: Float32Array, dst: Float32Array, F: number, r: number, alongX: boolean): void {
+  const ri = Math.floor(r);
+  const fr = r - ri;
+  const norm = 1 / (2 * ri + 1 + 2 * fr);
+  for (let j = 0; j < F; j++) {
+    for (let i = 0; i < F; i++) {
+      let sum = 0;
+      for (let k = -ri; k <= ri; k++) sum += alongX ? at(src, F, i + k, j) : at(src, F, i, j + k);
+      if (fr > 0) {
+        sum += fr * (alongX ? at(src, F, i - ri - 1, j) : at(src, F, i, j - ri - 1));
+        sum += fr * (alongX ? at(src, F, i + ri + 1, j) : at(src, F, i, j + ri + 1));
+      }
+      dst[j * F + i] = sum * norm;
+    }
+  }
+}
+
+/**
+ * The field value that the darkest `fraction` of the picture lies above.
+ *
+ * Thresholds are taken by quantile and not by value, and that is the whole
+ * reason this pattern survives being handed an arbitrary photograph. A
+ * threshold at a fixed darkness is a different control on every picture: a
+ * backlit snapshot has nothing above 0.5 and traces no rings at all, a
+ * silhouette has half the frame above 0.9 and traces one enormous blob. A
+ * quantile asks the question that was actually meant — "outline the darkest
+ * third of this" — and answers it the same way whatever arrived.
+ *
+ * This is the same fault recorded for contours, where levels expressed as
+ * fractions of a field's *possible* range drew eight of their twenty-two
+ * lines because fractal noise only ever occupied a third of that range. The
+ * cure there was to stretch the field; here the field is somebody's
+ * photograph and cannot be trusted to have a shape at all, so the reading
+ * moves instead.
+ */
+function isoAtFraction(field: Float32Array, fraction: number): number {
+  const hist = new Int32Array(HIST_BINS);
+  for (let i = 0; i < field.length; i++) {
+    const v = field[i] as number;
+    const b = v <= 0 ? 0 : v >= 1 ? HIST_BINS - 1 : Math.floor(v * HIST_BINS);
+    hist[b] = (hist[b] as number) + 1;
+  }
+  const want = fraction * field.length;
+  let seen = 0;
+  for (let b = HIST_BINS - 1; b >= 0; b--) {
+    const c = hist[b] as number;
+    if (c > 0 && seen + c >= want) return (b + 1 - (want - seen) / c) / HIST_BINS;
+    seen += c;
+  }
+  return 0;
+}
+
+/** A closed outline, in trace-grid coordinates. */
+interface Ring {
+  x: number[];
+  y: number[];
+}
+
+/**
+ * Marching squares, chained into closed rings.
+ *
+ * The field's border is forced light before this runs, so every ring closes
+ * inside the frame and there are no open chains to special-case — a shape
+ * touching the edge of the picture is closed along the edge rather than left
+ * hanging. Each crossing sits on one grid edge and an edge is shared by
+ * exactly two cells, so the fragments join without guessing which end meets
+ * which; keying them by edge is what makes that true.
+ *
+ * The two ambiguous cases — opposite corners inside, opposite corners out —
+ * are settled by the cell's own centre, which is the cheapest reading that
+ * cannot contradict itself. Settling them arbitrarily instead gives a
+ * crossing three neighbours, and a ring that walks into one never comes back.
+ */
+function traceRings(field: Float32Array, F: number, iso: number): Ring[] {
+  const HCOUNT = (F - 1) * F;
+  const found = new Map<number, number>();
+  const px: number[] = [];
+  const py: number[] = [];
+  const adjA: number[] = [];
+  const adjB: number[] = [];
+
+  const crossing = (id: number, x: number, y: number): number => {
+    const got = found.get(id);
+    if (got !== undefined) return got;
+    const n = px.length;
+    px.push(x);
+    py.push(y);
+    adjA.push(-1);
+    adjB.push(-1);
+    found.set(id, n);
+    return n;
+  };
+  const link = (a: number, b: number): void => {
+    if ((adjA[a] as number) < 0) adjA[a] = b;
+    else if ((adjB[a] as number) < 0) adjB[a] = b;
+    if ((adjA[b] as number) < 0) adjA[b] = a;
+    else if ((adjB[b] as number) < 0) adjB[b] = a;
+  };
+  // A crossing on a horizontal edge lies between (i,j) and (i+1,j); on a
+  // vertical edge, between (i,j) and (i,j+1). Linear interpolation only —
+  // every operation here is add, subtract, multiply or divide, all of which
+  // IEEE-754 pins exactly, so two engines trace the identical ring.
+  const onH = (i: number, j: number): number => {
+    const a = field[j * F + i] as number;
+    const b = field[j * F + i + 1] as number;
+    return crossing(j * (F - 1) + i, i + (iso - a) / (b - a), j);
+  };
+  const onV = (i: number, j: number): number => {
+    const a = field[j * F + i] as number;
+    const b = field[(j + 1) * F + i] as number;
+    return crossing(HCOUNT + j * F + i, i, j + (iso - a) / (b - a));
+  };
+
+  for (let j = 0; j < F - 1; j++) {
+    for (let i = 0; i < F - 1; i++) {
+      const v0 = field[j * F + i] as number;
+      const v1 = field[j * F + i + 1] as number;
+      const v2 = field[(j + 1) * F + i + 1] as number;
+      const v3 = field[(j + 1) * F + i] as number;
+      let idx = 0;
+      if (v0 >= iso) idx |= 1;
+      if (v1 >= iso) idx |= 2;
+      if (v2 >= iso) idx |= 4;
+      if (v3 >= iso) idx |= 8;
+      if (idx === 0 || idx === 15) continue;
+
+      // Which of the four cell edges the contour crosses, by case. 5 and 10
+      // are the saddles: the centre decides whether the two inside corners
+      // are joined through the middle or cut off separately.
+      if (idx === 5 || idx === 10) {
+        const middle = (v0 + v1 + v2 + v3) / 4;
+        const joined = middle >= iso;
+        const cutCorners = idx === 5 ? joined : !joined;
+        if (cutCorners) {
+          // Loops around the top-right and bottom-left corners.
+          link(onH(i, j), onV(i + 1, j));
+          link(onH(i, j + 1), onV(i, j));
+        } else {
+          // Loops around the top-left and bottom-right corners.
+          link(onV(i, j), onH(i, j));
+          link(onV(i + 1, j), onH(i, j + 1));
+        }
+        continue;
+      }
+      switch (idx) {
+        case 1:
+        case 14:
+          link(onV(i, j), onH(i, j));
+          break;
+        case 2:
+        case 13:
+          link(onH(i, j), onV(i + 1, j));
+          break;
+        case 3:
+        case 12:
+          link(onV(i, j), onV(i + 1, j));
+          break;
+        case 4:
+        case 11:
+          link(onV(i + 1, j), onH(i, j + 1));
+          break;
+        case 6:
+        case 9:
+          link(onH(i, j), onH(i, j + 1));
+          break;
+        case 7:
+        case 8:
+          link(onV(i, j), onH(i, j + 1));
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  const seen = new Uint8Array(px.length);
+  const rings: Ring[] = [];
+  for (let s = 0; s < px.length; s++) {
+    if (seen[s]) continue;
+    const x: number[] = [];
+    const y: number[] = [];
+    let cur = s;
+    while (cur >= 0 && !seen[cur]) {
+      seen[cur] = 1;
+      x.push(px[cur] as number);
+      y.push(py[cur] as number);
+      const a = adjA[cur] as number;
+      const b = adjB[cur] as number;
+      cur = a >= 0 && !seen[a] ? a : b >= 0 && !seen[b] ? b : -1;
+    }
+    if (x.length >= 3) rings.push({ x, y });
+  }
+  return rings;
+}
+
+/** Length once round a closed ring. */
+function perimeterOf(ring: Ring): number {
+  let total = 0;
+  const n = ring.x.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const dx = (ring.x[j] as number) - (ring.x[i] as number);
+    const dy = (ring.y[j] as number) - (ring.y[i] as number);
+    total += Math.sqrt(dx * dx + dy * dy);
+  }
+  return total;
+}
+
+/**
+ * `count` nails at even arc length around a ring.
+ *
+ * Even by arc length rather than by vertex, because marching squares puts
+ * vertices where the grid is and not where the curve turns — a straight run
+ * of outline produces one vertex per cell and a tight curve produces three,
+ * so spacing nails by vertex would drive them into every corner and leave the
+ * flats bare. A nail is a nail: the same distance apart everywhere.
+ */
+function placeNails(ring: Ring, count: number, perim: number): { x: Float64Array; y: Float64Array } {
+  const x = new Float64Array(count);
+  const y = new Float64Array(count);
+  const n = ring.x.length;
+  const step = perim / count;
+  let seg = 0;
+  let walked = 0;
+  let segLen = 0;
+  const lengthOf = (i: number): number => {
+    const j = (i + 1) % n;
+    const dx = (ring.x[j] as number) - (ring.x[i] as number);
+    const dy = (ring.y[j] as number) - (ring.y[i] as number);
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+  segLen = lengthOf(0);
+  for (let k = 0; k < count; k++) {
+    const want = k * step;
+    while (seg < n - 1 && walked + segLen < want) {
+      walked += segLen;
+      seg += 1;
+      segLen = lengthOf(seg);
+    }
+    const t = segLen > 0 ? (want - walked) / segLen : 0;
+    const j = (seg + 1) % n;
+    x[k] = (ring.x[seg] as number) + ((ring.x[j] as number) - (ring.x[seg] as number)) * t;
+    y[k] = (ring.y[seg] as number) + ((ring.y[j] as number) - (ring.y[seg] as number)) * t;
+  }
+  return { x, y };
+}
+
+/** A traced outline with its nails, ready to be wound. */
+interface Shape {
+  iso: number;
+  level: number;
+  nails: { x: Float64Array; y: Float64Array };
+  reach: number;
+  passes: number;
+}
 
 export const stringArt: Generator = {
   id: 'string-art',
   name: 'String Art',
-  tagline: 'One thread, a ring of nails, and a picture made of straight lines.',
+  tagline: 'Nails driven along the outlines, thread wound inside them for the shading.',
   tags: ['radial', 'flow'],
   description,
   params: [
-    { key: 'image', label: 'Picture', type: 'image', default: '', description: 'The photograph the thread is trying to reproduce, reduced to a grid of sixteen darkness levels — small enough that the whole picture travels in the share link. How fine that grid is comes from Picture detail. With none given, the target is a composition of the seed’s own making.' },
-    { key: 'threads', label: 'Threads', type: 'number', min: 300, max: 4000, step: 50, default: 2500, description: 'How many chords are wound. Each is worth less ink than the last, because the total is fixed by how dark the picture is — so this trades boldness for fineness rather than making the image darker.' },
-    { key: 'nails', label: 'Nails', type: 'number', min: 60, max: 360, step: 4, default: 240, description: 'How many directions the thread can take. Below about a hundred the chords snap to a visibly coarse set of angles; past three hundred the extra choices mostly duplicate ones already there.' },
-    { key: 'diameter', label: 'Diameter', type: 'number', min: 0.4, max: 1.2, step: 0.01, default: 0.92, description: 'The width of the ring as a fraction of the canvas width. Above 1 the nails run off the sides, which crops the disc into the frame.' },
-    { key: 'offsetX', label: 'Offset across', type: 'number', min: -0.5, max: 0.5, step: 0.01, default: 0, description: 'Moves the ring left or right from the middle, as a fraction of the canvas width.' },
-    { key: 'offsetY', label: 'Offset down', type: 'number', min: -0.5, max: 0.5, step: 0.01, default: 0, description: 'Moves the ring up or down from the middle, as a fraction of the canvas height. Pushing it below centre puts the picture clear of the clock.' },
-    { key: 'thickness', label: 'Thread', type: 'number', min: 0.3, max: 2.5, step: 0.05, default: 1, description: 'How heavy the thread is drawn. It does not change where the threads go — only how much of the board each one covers, so it is the fastest way to lift or flatten the contrast of a finished winding.' },
-    { key: 'contrast', label: 'Contrast', type: 'number', min: 0.4, max: 2.5, step: 0.05, default: 1, description: 'A curve on the target before any thread is wound. Below 1 lifts the mid tones so more of the picture gets attention; above 1 drives them down and the thread concentrates on the darkest passages.' },
-    { key: 'nailsVisible', label: 'Show nails', type: 'boolean', default: true, description: 'Draws the ring of nails the thread is wound around. They are the one part of the picture that is not thread.' },
-    { key: 'detail', label: 'Picture detail', type: 'select', options: [{ value: '48', label: 'Coarse \u2014 short link' }, { value: '64', label: 'Low' }, { value: '96', label: 'High' }, { value: '128', label: 'Finest \u2014 long link' }], default: '128', description: 'How finely a picture is read when you choose one. The whole picture travels in the share link, so this is a trade rather than a free setting: coarse is about 1,500 characters of URL and finest is about 11,000. It applies to the next picture you pick \u2014 the one already loaded keeps whatever it was read at, since the original is not kept.' },
+    { key: 'image', label: 'Picture', type: 'image', default: '', description: 'The photograph the board is built from, reduced to a grid of sixteen darkness levels — small enough that the whole picture travels in the share link. How fine that grid is comes from Picture detail. With none given, the subject is a field of the seed’s own making.' },
+    { key: 'tones', label: 'Tones', type: 'number', min: 1, max: 5, step: 1, default: 3, description: 'How many nested outlines are traced. Each encloses half the area of the one before it, so one is a silhouette, three is a readable drawing, and five picks out the deepest shadows as shapes of their own.' },
+    { key: 'coverage', label: 'Coverage', type: 'number', min: 0.12, max: 0.7, step: 0.01, default: 0.34, description: 'How much of the picture the outermost outline encloses. This is the exposure control: it decides what counts as dark, and because it is read as a proportion rather than a brightness, a flat photograph and a contrasty one both give usable shapes.' },
+    { key: 'simplify', label: 'Simplify', type: 'number', min: 0, max: 1, step: 0.02, default: 0.5, description: 'Softens the picture before the outlines are traced. This is what separates an outline from a coastline — at zero, every speck of grain becomes a ring of its own; high, and only the broad shapes survive.' },
+    { key: 'nailSpacing', label: 'Nail spacing', type: 'number', min: 0.012, max: 0.05, step: 0.001, default: 0.022, description: 'How far apart the nails are driven, as a fraction of the canvas width. It is a distance and not a count, so a big shape gets more nails than a small one rather than the same number spread thinner — which is how a real board is built.' },
+    { key: 'shading', label: 'Shading', type: 'number', min: 0, max: 1, step: 0.02, default: 0.62, description: 'How much thread is wound inside the outlines. At zero it is line art. Raising it reaches further in from each outline, and the deeper tones reach further than the shallow ones, which is what makes the shadows read as shadows.' },
+    { key: 'scale', label: 'Size', type: 'number', min: 0.4, max: 1.15, step: 0.01, default: 0.94, description: 'The width of the board as a fraction of the canvas. Above 1 the picture runs off the sides.' },
+    { key: 'offsetX', label: 'Offset across', type: 'number', min: -0.5, max: 0.5, step: 0.01, default: 0, description: 'Moves the board left or right from the middle, as a fraction of the canvas width.' },
+    { key: 'offsetY', label: 'Offset down', type: 'number', min: -0.5, max: 0.5, step: 0.01, default: 0, description: 'Moves the board up or down from the middle, as a fraction of the canvas height. Pushing it below centre puts the picture clear of the clock.' },
+    { key: 'thickness', label: 'Thread', type: 'number', min: 0.3, max: 2.5, step: 0.05, default: 1, description: 'How heavy the thread is drawn. It does not change where anything goes — only how much of the board each chord covers, so it is the fastest way to lift or flatten the contrast of a finished board.' },
+    { key: 'nailsVisible', label: 'Show nails', type: 'boolean', default: true, description: 'Draws the nails. They are the drawing here rather than a frame around it, so turning them off leaves only the thread.' },
+    { key: 'detail', label: 'Picture detail', type: 'select', options: [{ value: '48', label: 'Coarse — short link' }, { value: '64', label: 'Low' }, { value: '96', label: 'High' }, { value: '128', label: 'Finest — long link' }], default: '128', description: 'How finely a picture is read when you choose one. The whole picture travels in the share link, so this is a trade rather than a free setting: coarse is about 1,500 characters of URL and finest is about 11,000. It applies to the next picture you pick — the one already loaded keeps whatever it was read at, since the original is not kept.' },
   ],
 
   render(ctx: RenderContext): string {
     const { width: w, height: h, palette, params, rng } = ctx;
 
-    const threads = Math.round(clamp(pNum(params, 'threads', 2500), 300, 4000));
-    const nailCount = Math.round(clamp(pNum(params, 'nails', 240), 60, 360));
-    const diameter = clamp(pNum(params, 'diameter', 0.92), 0.4, 1.2);
+    const tones = Math.round(clamp(pNum(params, 'tones', 3), 1, 5));
+    const coverage = clamp(pNum(params, 'coverage', 0.34), 0.12, 0.7);
+    const simplify = clamp(pNum(params, 'simplify', 0.42), 0, 1);
+    const nailSpacing = clamp(pNum(params, 'nailSpacing', 0.022), 0.012, 0.05);
+    const shading = clamp(pNum(params, 'shading', 0.55), 0, 1);
+    const scale = clamp(pNum(params, 'scale', 0.94), 0.4, 1.15);
     const offsetX = clamp(pNum(params, 'offsetX', 0), -0.5, 0.5);
     const offsetY = clamp(pNum(params, 'offsetY', 0), -0.5, 0.5);
     const thickness = clamp(pNum(params, 'thickness', 1), 0.3, 2.5);
-    const contrast = clamp(pNum(params, 'contrast', 1), 0.4, 2.5);
     const nailsVisible = pBool(params, 'nailsVisible', true);
 
-    const radius = (w * diameter) / 2;
+    // The board: a square of side S, because the stored picture is square.
+    const S = w * scale;
     const cx = w / 2 + offsetX * w;
     const cy = h / 2 + offsetY * h;
+    const toX = (gx: number): number => cx + (gx / (TRACE - 1) - 0.5) * S;
+    const toY = (gy: number): number => cy + (gy / (TRACE - 1) - 0.5) * S;
 
-    // The target, on the solver's grid. A given picture is a stored grid
-    // stretched to it; with none, the seed's own noise stands in, so the
-    // pattern is still a pattern rather than an empty ring.
+    // The field the outlines are traced from. A given picture is the stored
+    // grid resampled up; with none, the seed's own noise stands in.
     const given = unpackGrid(pStr(params, 'image', ''));
-    // The stored picture names its own size, so a link made at one detail
-    // setting still reads at another; the control only governs what the next
-    // upload is reduced to.
     const gridSize = given ? given.size : (GRID_SIZES[GRID_SIZES.length - 1] as number);
-    const SOLVE_GRID = Math.round(
-      clamp(gridSize * SOLVE_MULTIPLE, SOLVE_MIN, SOLVE_MAX),
-    );
-    const target = new Float32Array(SOLVE_GRID * SOLVE_GRID);
+    let field = new Float32Array(TRACE * TRACE);
     const noise = createNoise2D(rng);
-    for (let j = 0; j < SOLVE_GRID; j++) {
-      for (let i = 0; i < SOLVE_GRID; i++) {
-        // Outside the ring there is no board to cover, so nothing there can
-        // ever be worth a thread.
-        const nx = (i + 0.5) / SOLVE_GRID - 0.5;
-        const ny = (j + 0.5) / SOLVE_GRID - 0.5;
-        if (nx * nx + ny * ny > 0.25) continue;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let j = 0; j < TRACE; j++) {
+      for (let i = 0; i < TRACE; i++) {
         let v: number;
         if (given) {
-          // Bilinear, not nearest: the stored grid is a quarter the solver's
-          // resolution each way, and nearest would hand the search a staircase
-          // to chase along every tonal edge.
           const g = given.values;
-          const fx = Math.min(gridSize - 1.001, ((i + 0.5) * gridSize) / SOLVE_GRID - 0.5);
-          const fy = Math.min(gridSize - 1.001, ((j + 0.5) * gridSize) / SOLVE_GRID - 0.5);
+          const fx = Math.min(gridSize - 1.001, ((i + 0.5) * gridSize) / TRACE - 0.5);
+          const fy = Math.min(gridSize - 1.001, ((j + 0.5) * gridSize) / TRACE - 0.5);
           const i0 = Math.max(0, Math.floor(fx));
           const j0 = Math.max(0, Math.floor(fy));
           const tx = fx - i0;
@@ -155,200 +470,229 @@ export const stringArt: Generator = {
             (g[j1 * gridSize + i0] as number) * (1 - tx) * ty +
             (g[j1 * gridSize + i1] as number) * tx * ty;
         } else {
-          // No picture given, so the seed supplies one. Plain noise will not
-          // do: it is uniform by construction, and a uniform target gives the
-          // search no reason to prefer one chord over another, so the disc
-          // comes out an even haze. What makes a picture is a *composition* —
-          // here a bright centre falling to a dark rim, which the noise then
-          // breaks up into lobes. The vignette is what the thread has an
-          // opinion about; the noise is what stops it being a gradient.
-          const r2 = (nx * nx + ny * ny) * 4;
-          const vignette = clamp(r2 * 0.95, 0, 1);
-          const lobes = clamp(noise.fbm(nx * 2.6, ny * 2.6, 3) * 0.5 + 0.5, 0, 1);
-          v = clamp(vignette * 0.68 + lobes * 0.5 - 0.12, 0, 1);
+          // No picture, so the seed supplies a subject. Fractal noise is the
+          // right stand-in precisely because this construction posterises:
+          // its level sets are nested closed islands, which is the shape of
+          // thing the tracer wants, where a vignette would give one ring per
+          // tone and a set of concentric circles.
+          //
+          // Three octaves and not five. The tracer is looking for outlines,
+          // and an outline is a thing you can follow with your eye; the fine
+          // octaves of an fBm only add wobble along a boundary whose shape is
+          // already set by the coarse ones, so they cost nails and buy
+          // nothing. The island term keeps the subject clear of the frame
+          // without closing it into a disc — it falls off linearly and starts
+          // outside the picture, so the shapes still run wide.
+          const nx = (i + 0.5) / TRACE - 0.5;
+          const ny = (j + 0.5) / TRACE - 0.5;
+          const island = clamp(1.9 - Math.sqrt(nx * nx + ny * ny) * 2.2, 0, 1);
+          const wx = noise.fbm(nx * 1.7 + 4.1, ny * 1.7 - 2.3, 2) * 0.26;
+          const wy = noise.fbm(nx * 1.7 - 3.7, ny * 1.7 + 1.9, 2) * 0.26;
+          v = (noise.fbm(nx * 2.3 + wx, ny * 2.3 + wy, 3) * 0.5 + 0.5) * island;
         }
-        // `Math.pow` is implementation-approximated, and this target feeds a
-        // greedy search that turns one bit of difference into a different
-        // picture, so it is not called unless it has something to do.
-        target[j * SOLVE_GRID + i] = contrast === 1 ? v : Math.pow(v, contrast);
+        field[j * TRACE + i] = v;
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
       }
     }
-
-    // Nails, in solver coordinates and in canvas coordinates. The solve is done
-    // on the grid and drawn on the canvas, and keeping the two in step by index
-    // rather than by rescaling coordinates is what makes a thumbnail and an
-    // export wind the identical thread.
-    const gr = SOLVE_GRID / 2 - 0.5;
-    // The solver's nails are whole cells, settled once.
-    //
-    // This is not a rounding convenience, it is what makes the pattern the
-    // same picture everywhere. A greedy search has no tolerance: two engines
-    // that disagree about a chord's length in the last bit choose a different
-    // chord, and from there the two windings share nothing. Integer endpoints
-    // make every length `Math.sqrt` of an exact integer, and `sqrt` is the one
-    // root operation IEEE-754 pins exactly — where `Math.hypot`, which this
-    // used, is explicitly allowed to approximate however an engine likes.
-    const gx = new Int32Array(nailCount);
-    const gy = new Int32Array(nailCount);
-    const px = new Float64Array(nailCount);
-    const py = new Float64Array(nailCount);
-    for (let i = 0; i < nailCount; i++) {
-      const a = (i / nailCount) * Math.PI * 2 - Math.PI / 2;
-      gx[i] = Math.round(SOLVE_GRID / 2 + gr * Math.cos(a));
-      gy[i] = Math.round(SOLVE_GRID / 2 + gr * Math.sin(a));
-      px[i] = cx + radius * Math.cos(a);
-      py[i] = cy + radius * Math.sin(a);
+    // Stretched to its own range before anything reads a height off it, which
+    // is the lesson contours paid for: fractal noise occupies about a third of
+    // its nominal range, so a field left unstretched hands the histogram below
+    // a picture with most of its levels empty.
+    const span = hi - lo;
+    if (span > 1e-6) {
+      for (let k = 0; k < field.length; k++) field[k] = ((field[k] as number) - lo) / span;
     }
 
-    // What one thread is worth, derived rather than set. The total ink the
-    // picture asks for, divided among the threads that will carry it. This is
-    // the number the whole thing turns on: a constant here fills the disc solid
-    // at high thread counts and never reaches the shadows at low ones.
-    let wanted = 0;
-    for (let i = 0; i < target.length; i++) wanted += target[i] as number;
-    const ink = wanted / Math.max(1, threads * gr * MEAN_CHORD);
-    // The same budget has to govern the *drawn* thread as well as the solver's
-    // bookkeeping, or the two disagree about what the picture is. Deriving only
-    // the subtraction makes thread count a brightness control by the back door:
-    // each thread is drawn at a fixed alpha, so four times as many threads is
-    // four times the ink on the board however carefully the search rationed it.
-    // Measured before this, quadrupling the count laid 2.15x the ink.
-    //
-    // So the alpha moves inversely with the count, against a fixed reference,
-    // and scales with how dark the picture is — a pale target gets a fainter
-    // thread rather than the same thread wound fewer times.
-    // The drawn thread is worth what the solver said it was worth. That only
-    // became a meaningful statement once chords stopped sharing one path — see
-    // the note on the emission below — because before it, overlapping strokes
-    // did not accumulate and the alpha only set an overall level.
-    const alpha = clamp(ink * ALPHA_OVER_INK, 0.01, 0.9);
+    if (simplify > 0) {
+      const r = simplify * MAX_BLUR;
+      const tmp = new Float32Array(TRACE * TRACE);
+      const out = new Float32Array(TRACE * TRACE);
+      blurAxis(field, tmp, TRACE, r, true);
+      blurAxis(tmp, out, TRACE, r, false);
+      field = out;
+    }
 
-    const residual = Float32Array.from(target);
-    const minSpan = Math.max(1, Math.round(nailCount * MIN_SPAN));
-    const order: number[] = [0];
-    let at = 0;
+    // The border is forced light, so every outline closes inside the frame.
+    // Without it a shape running off the edge of the picture traces an open
+    // chain, which has no interior to wind and no ends to join.
+    for (let i = 0; i < TRACE; i++) {
+      field[i] = 0;
+      field[(TRACE - 1) * TRACE + i] = 0;
+      field[i * TRACE] = 0;
+      field[i * TRACE + TRACE - 1] = 0;
+    }
 
-    for (let t = 0; t < threads; t++) {
-      let bestNail = -1;
-      let bestScore = 0;
-      for (let step = minSpan; step <= nailCount - minSpan; step++) {
-        const cand = (at + step) % nailCount;
-        // Walk the chord on the grid, averaging the darkness still wanted.
-        // Averaged rather than summed, because a sum rewards length as much as
-        // darkness and a diameter is the longest chord there is. The two are
-        // not far apart in practice -- swapping the mean for a sum still
-        // produces a recognisable picture, and it is a choice rather than a
-        // correctness question -- but the mean is the one that answers "is
-        // there darkness along here", which is the question being asked.
-        const x0 = gx[at] as number;
-        const y0 = gy[at] as number;
-        const dx = (gx[cand] as number) - x0;
-        const dy = (gy[cand] as number) - y0;
-        const steps = Math.max(1, Math.round(Math.sqrt(dx * dx + dy * dy)));
-        // Scored on every second pixel. The search runs threads x nails x
-        // chord length, which at the top of both sliders is half a billion
-        // reads, and it is choosing between chords rather than measuring one:
-        // a mean taken over half the pixels ranks them the same way. The
-        // subtraction below still walks every pixel, because that *is* a
-        // measurement and a gap in it would be a gap in the picture.
-        let sum = 0;
-        let taken = 0;
-        for (let k = 0; k <= steps; k += SCORE_STRIDE) {
-          const x = Math.round(x0 + (dx * k) / steps);
-          const y = Math.round(y0 + (dy * k) / steps);
-          if (x >= 0 && y >= 0 && x < SOLVE_GRID && y < SOLVE_GRID) sum += residual[y * SOLVE_GRID + x] as number;
-          taken += 1;
-        }
-        const score = sum / taken;
-        if (score > bestScore) {
-          bestScore = score;
-          bestNail = cand;
+    // Trace each tone. Each encloses half the area of the one before it, by
+    // repeated halving rather than by `Math.pow`, which is one of the few
+    // operations IEEE-754 leaves an engine free to approximate — and these
+    // numbers become thresholds, where one bit is a different outline.
+    const rings: { ring: Ring; iso: number; level: number; perim: number }[] = [];
+    let fraction = coverage;
+    for (let level = 1; level <= tones; level++) {
+      const iso = isoAtFraction(field, fraction);
+      for (const ring of traceRings(field, TRACE, iso)) {
+        rings.push({ ring, iso, level, perim: perimeterOf(ring) });
+      }
+      fraction *= 0.5;
+    }
+
+    // Nail spacing, in trace cells. The canvas width cancels out of this
+    // entirely, which is what makes a thumbnail and an export drive nails into
+    // the same places: the spacing is a fraction of the width and the board is
+    // a fraction of the width.
+    let spacing = (nailSpacing * (TRACE - 1)) / scale;
+    let totalPerim = 0;
+    for (const r of rings) totalPerim += r.perim;
+    if (totalPerim / spacing > MAX_NAILS) spacing = totalPerim / MAX_NAILS;
+
+    const shapes: Shape[] = [];
+    for (const r of rings) {
+      const count = Math.round(r.perim / spacing);
+      if (count < MIN_RING_NAILS) continue;
+      // Two separate quantities, and keeping them separate is the whole of
+      // what makes `shading` behave. How far in the families reach is fixed by
+      // the tone: a shallow tone rings its outline, the deepest fills through,
+      // which is what makes a shadow read as deeper rather than as a second
+      // outline. How many families are wound inside that reach is what
+      // `shading` buys, and that is the density anyone can see.
+      const limit = Math.floor((count - 1) / 2);
+      const tone = r.level / tones;
+      const reach = Math.max(1, Math.min(limit, Math.round(((REACH_BASE + REACH_SPAN * tone) * count) / 2)));
+      const passes = Math.min(reach - 1, Math.round(shading * PASS_MAX * (0.5 + 0.5 * tone)));
+      if (passes < 1) {
+        shapes.push({ iso: r.iso, level: r.level, nails: placeNails(r.ring, count, r.perim), reach, passes: 0 });
+        continue;
+      }
+      shapes.push({ iso: r.iso, level: r.level, nails: placeNails(r.ring, count, r.perim), reach, passes });
+    }
+
+    // The budget, spent by thinning every region together. `asked` is the
+    // chord count the shading wants; if it is over, every shape loses the same
+    // proportion of its passes, so what a tight budget costs is density rather
+    // than whole shapes.
+    let asked = 0;
+    for (const s of shapes) asked += s.nails.x.length * s.passes;
+    const afford = asked > CHORD_BUDGET ? CHORD_BUDGET / asked : 1;
+
+    const outlines: string[] = [];
+    const shades: string[] = [];
+    for (let i = 0; i < tones; i++) {
+      outlines.push('');
+      shades.push('');
+    }
+
+    for (const s of shapes) {
+      const n = s.nails.x.length;
+      const nx = s.nails.x;
+      const ny = s.nails.y;
+      const seg = (a: number, b: number): string =>
+        el('line', {
+          x1: num(toX(nx[a] as number), 1),
+          y1: num(toY(ny[a] as number), 1),
+          x2: num(toX(nx[b] as number), 1),
+          y2: num(toY(ny[b] as number), 1),
+        });
+
+      // The outline itself, always drawn: it is what the nails are for.
+      let line = '';
+      for (let k = 0; k < n; k++) line += seg(k, (k + 1) % n);
+      outlines[s.level - 1] = (outlines[s.level - 1] as string) + line;
+
+      let shade = '';
+      const passes = Math.max(0, Math.round(s.passes * afford));
+      // The families are spread evenly across the reach, so raising the count
+      // closes the gaps between them rather than moving where they end.
+      // Rounded up, so the families never outnumber the passes that were
+      // budgeted for. Rounding down overshoots by as much as a third — at a
+      // reach of 44 and fifteen passes it gives a stride of two and twenty-one
+      // families — which quietly makes the budget a suggestion.
+      const stride = passes > 0 ? Math.max(1, Math.ceil((s.reach - 1) / passes)) : 0;
+      for (let m = 1 + stride; stride > 0 && m <= s.reach; m += stride) {
+        for (let k = 0; k < n; k++) {
+          const b = (k + m) % n;
+          // Tested at the chord, not assumed from the shape. A star polygon
+          // on a convex ring stays inside it; on a concave one a chord can
+          // bridge the concavity, and bridging is exactly the thing this
+          // construction exists to avoid — the notch between a helmet's cheek
+          // and its jaw is a shape, not a gap to be filled in.
+          let inside = true;
+          const x0 = nx[k] as number;
+          const y0 = ny[k] as number;
+          const dx = (nx[b] as number) - x0;
+          const dy = (ny[b] as number) - y0;
+          for (let t = 1; t < INSIDE_SAMPLES; t++) {
+            const f = t / INSIDE_SAMPLES;
+            if (sample(field, TRACE, x0 + dx * f, y0 + dy * f) < s.iso) {
+              inside = false;
+              break;
+            }
+          }
+          if (inside) shade += seg(k, b);
         }
       }
-      // Nothing left that a thread would improve. Stopping here rather than
-      // winding out the full count is what keeps a sparse picture sparse.
-      if (bestNail < 0) break;
-
-      const x0 = gx[at] as number;
-      const y0 = gy[at] as number;
-      const dx = (gx[bestNail] as number) - x0;
-      const dy = (gy[bestNail] as number) - y0;
-      const steps = Math.max(1, Math.round(Math.sqrt(dx * dx + dy * dy)));
-      for (let k = 0; k <= steps; k++) {
-        const x = Math.round(x0 + (dx * k) / steps);
-        const y = Math.round(y0 + (dy * k) / steps);
-        if (x >= 0 && y >= 0 && x < SOLVE_GRID && y < SOLVE_GRID) {
-          const idx = y * SOLVE_GRID + x;
-          residual[idx] = Math.max(0, (residual[idx] as number) - ink);
-        }
-      }
-      order.push(bestNail);
-      at = bestNail;
+      shades[s.level - 1] = (shades[s.level - 1] as string) + shade;
     }
 
-    // One element per chord, and this is the thing the whole pattern turned on.
-    //
-    // It was a single `<path>` first, because a wound board really is one
-    // continuous thread and saying so in the drawing was pleasing and cheap:
-    // two thousand chords as one path instead of two thousand elements. It
-    // also made the picture impossible. SVG strokes a path as one shape and
-    // *then* applies its opacity, so where a path crosses itself it does not
-    // composite with itself — ten overlapping strokes at 30% render exactly as
-    // dark as one, measured at 178 against 179 on a 0-255 scale, where ten
-    // separate elements give 8.
-    //
-    // Tone in string art is made of crossings. A region gets dark because
-    // forty threads passed through it, not because the threads there are
-    // darker. With one path, tone could only come from how much *area* was
-    // covered, which saturates almost at once and flattens the whole disc to
-    // one grey. As separate elements the same solve goes from 0.69 correlation
-    // with its target to 0.85.
-    let body = '';
-    for (let i = 1; i < order.length; i++) {
-      const a = order[i - 1] as number;
-      const b = order[i] as number;
-      body += el('line', {
-        x1: num(px[a] as number, 1),
-        y1: num(py[a] as number, 1),
-        x2: num(px[b] as number, 1),
-        y2: num(py[b] as number, 1),
-      });
-    }
+    // Thread colour, one per tone. The deepest tone is nearly all ink, because
+    // a tonal medium needs the contrast the ink carries and the middle of an
+    // accent ramp does not have it; the shallower tones keep more accent, so
+    // the nesting reads as colour as well as density — which is what the gold
+    // and the white are doing on a real two-thread board.
+    const inkLch = hexToOklch(palette.ink);
+    const threadFor = (level: number): string => {
+      const t = tones > 1 ? (level - 1) / (tones - 1) : 1;
+      return oklchToHex(mixOklch(hexToOklch(accentAt(palette, 1 - t * 0.8)), inkLch, 0.3 + 0.6 * t));
+    };
 
-    // The thread is mostly the palette's ink, with a little accent in it.
-    //
-    // String art is a tonal medium and the darkest it can go is whatever one
-    // thread colour is: full coverage of a mid accent simply cannot reach the
-    // dark end of a photograph. Measured across the curated palettes, `ink`
-    // carries two to three times the contrast against the paper that the
-    // middle of the accent ramp does — 15.7 against 6.8 on Paper, 12.4 against
-    // 4.7 on Riso Pink — and that ratio is the tonal range this pattern has to
-    // work in. Keeping a third of the accent in it is what stops every palette
-    // rendering the same grey thread.
-    const thread = mixOklch(hexToOklch(palette.ink), hexToOklch(accentAt(palette, 0.5)), 0.35);
-
-    const strokeWidth = (w / SOLVE_GRID) * THREAD_CELLS * thickness;
-    const threadHex = oklchToHex(thread);
+    const spacingCanvas = (spacing * S) / (TRACE - 1);
+    const threadWidth = spacingCanvas * THREAD_OF_SPACING * thickness;
+    const nailRadius = spacingCanvas * NAIL_OF_SPACING;
 
     let out = el('rect', { x: 0, y: 0, width: w, height: h, fill: palette.background });
-    out += el(
-      'g',
-      {
-        stroke: threadHex,
-        'stroke-width': num(strokeWidth, 3),
-        'stroke-opacity': num(alpha, 4),
-        'stroke-linecap': 'round',
-        fill: 'none',
-      },
-      body,
-    );
+    for (let level = tones; level >= 1; level--) {
+      const shade = shades[level - 1] as string;
+      if (shade === '') continue;
+      out += el(
+        'g',
+        {
+          stroke: threadFor(level),
+          'stroke-width': num(threadWidth, 3),
+          'stroke-opacity': num(SHADE_ALPHA, 3),
+          'stroke-linecap': 'round',
+          fill: 'none',
+        },
+        shade,
+      );
+    }
+    for (let level = tones; level >= 1; level--) {
+      const line = outlines[level - 1] as string;
+      if (line === '') continue;
+      out += el(
+        'g',
+        {
+          stroke: threadFor(level),
+          'stroke-width': num(threadWidth * 1.15, 3),
+          'stroke-opacity': num(OUTLINE_ALPHA, 3),
+          'stroke-linecap': 'round',
+          fill: 'none',
+        },
+        line,
+      );
+    }
 
     if (nailsVisible) {
       let nails = '';
-      for (let i = 0; i < nailCount; i++) {
-        nails += el('circle', { cx: num(px[i] as number, 1), cy: num(py[i] as number, 1), r: num(strokeWidth * 1.1, 3) });
+      for (const s of shapes) {
+        for (let k = 0; k < s.nails.x.length; k++) {
+          nails += el('circle', {
+            cx: num(toX(s.nails.x[k] as number), 1),
+            cy: num(toY(s.nails.y[k] as number), 1),
+            r: num(nailRadius, 3),
+          });
+        }
       }
-      out += el('g', { fill: palette.ink, 'fill-opacity': '0.55' }, nails);
+      if (nails !== '') out += el('g', { fill: palette.ink, 'fill-opacity': '0.7' }, nails);
     }
 
     return svgRoot(w, h, `${stringArt.name} wallpaper`, out);
