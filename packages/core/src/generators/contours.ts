@@ -22,6 +22,8 @@ Two cases are genuinely ambiguous: a cell with high corners diagonally opposite 
 
 The interval a contour map can carry is not a free choice, and the render treats it as one it has to earn. Line density is how the map says "steep", so a steep enough slope at a fine enough interval runs its lines together into a solid mass \u2014 ask for sixty lines and the most interesting ground comes back as a blob. Two things happen where that threatens. The stroke thins to the gap available rather than the gap having to accommodate the stroke, which answers a heavy pen; and where no width would help, the interval itself doubles, and doubles again to the index contours, exactly as a printed sheet drops intermediate lines off a scarp and keeps the ones the eye counts by. Where there is room, neither happens and the line count you asked for is the line count you get.
 
+The same rule runs the other way. Flat country is the one place a contour map has nothing to say — the lines are simply far apart, and the reader gets an expanse of blank paper over ground that may well be doing something. **Supplementary lines** are the printed answer: an extra contour at half the interval, drawn only where there is room for it and dashed so it cannot be mistaken for part of the real one. Between the two, the interval the map carries stops being a number you set and becomes one the terrain answers.
+
 **Depression ticks** settle the one ambiguity a contour map has. A closed ring is the same mark around a summit and around a hollow, and nothing in the line says which it is; the convention that separates them is a row of short ticks on the downhill side, pointing into the basin. Here every closed contour is asked which way its own interior falls, and the ones enclosing low ground get ticked, so craters, sinks and dry lake beds stop reading as hills. Below sea level they are left off — a basin already under water has a shoreline to explain it.
 
 **Index contours** are the cartographer's convention of drawing every fifth line heavier, and they are the reason a real map reads as height rather than as pattern: the eye counts the bold lines and gets elevation for free, where a field of identical lines only gives shape. **Relief** is composition rather than geology. It flattens the field toward the top of the canvas, so the upper third holds a few wide, calm lines and the lower canvas carries the dense contours and the peaks. A phone's clock sits on that quiet ground, and the detail lands where iOS covers nothing.
@@ -57,6 +59,15 @@ const WIDTH_STEPS = 6;
  */
 const ROOM_WANTED = 3;
 
+/**
+ * How empty the map has to be before a half-interval line is drawn into it,
+ * as a multiple of the stroke width. The control slides between the two: at
+ * its lowest only the emptiest ground gets one, at its highest most open
+ * ground does.
+ */
+const SUPP_AT_MOST = 34;
+const SUPP_AT_LEAST = 9;
+
 /** Offsets so the two warp fields are different slices of the same noise. */
 const WARP_X = 11.3;
 const WARP_Y = -7.1;
@@ -81,6 +92,7 @@ export const contours: Generator = {
     { key: 'seaLevel', label: 'Sea level', type: 'number', min: 0, max: 0.75, step: 0.01, default: 0.32, description: 'Floods the land below a chosen height. The coastline is a contour like any other \u2014 the level snaps to the nearest one, because a shoreline that ran between two contours would be the only line on the map not answering the same question as the rest. At zero there is no water, which is a different and drier kind of country.' },
     { key: 'elevationTint', label: 'Elevation tint', type: 'number', min: 0, max: 1, step: 0.01, default: 0.65, description: 'Paints each band between two contours in its own shade, the way a printed atlas washes lowland green and high ground brown. The lines give you slope through their spacing; the tint gives you height at a glance, without having to count them. Kept well short of full strength on purpose \u2014 a map in saturated bands stops being a map and becomes a poster.' },
     { key: 'hachures', label: 'Depression ticks', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'A ring of contour is the same line whether it encircles a summit or a hollow, and nothing about the line says which \u2014 on a printed sheet the difference is carried by short ticks drawn on the downhill side, pointing into the basin. Here they are added to every closed contour whose interior is lower than the line itself, so craters, sinks and dry lake beds stop reading as hills. Above the sea only: a basin already under water has a shoreline to explain it.' },
+    { key: 'supplementary', label: 'Supplementary lines', type: 'number', min: 0, max: 1, step: 0.01, default: 0.5, description: 'Draws a dashed line at half the contour interval wherever the map has room for it. Flat country is the one place a contour map says nothing \u2014 the lines are simply far apart \u2014 and the printed answer is an extra line between them, dashed so it cannot be mistaken for the real interval. It is the same rule as the thinning and dropping on steep ground, read from the other end: the interval follows the terrain. At zero the map keeps one interval everywhere.' },
   ],
 
   render(ctx: RenderContext): string {
@@ -100,6 +112,15 @@ export const contours: Generator = {
     // and the fill beneath it ends exactly where that line runs.
     const elevationTint = clamp(pNum(params, 'elevationTint', 0.65), 0, 1);
     const hachures = clamp(pNum(params, 'hachures', 0.6), 0, 1);
+    const supplementary = clamp(pNum(params, 'supplementary', 0.5), 0, 1);
+
+    // Sub-levels. With supplementary lines switched on the field is traced at
+    // twice the contour interval and every second sub-level is a candidate for
+    // a dashed half-interval line; with them off nothing extra is traced, and
+    // the render costs exactly what it did. `k` counts sub-levels throughout,
+    // `k / sub` is the contour level it belongs to.
+    const sub = supplementary > 0 ? 2 : 1;
+    const steps = levels * sub;
     // The wash interval is derived, not set, and it is a whole number of
     // contour intervals so every wash boundary is a line the map already draws.
     //
@@ -232,7 +253,7 @@ export const contours: Generator = {
     const sy: number[] = [];
     const sa: number[] = [];
     const sb: number[] = [];
-    const touched: number[][] = Array.from({ length: levels }, () => []);
+    const touched: number[][] = Array.from({ length: steps }, () => []);
 
     const slot = (id: number, L: number, x: number, y: number): number => {
       const key = L * EDGES + id;
@@ -272,9 +293,9 @@ export const contours: Generator = {
         // is the difference between a render and a stall at high resolutions.
         const lo = Math.min(a, b, c, e);
         const hi = Math.max(a, b, c, e);
-        let first = Math.floor(lo * levels) + 1;
+        let first = Math.floor(lo * steps) + 1;
         if (first < 1) first = 1;
-        const last = Math.min(levels - 1, Math.floor(hi * levels));
+        const last = Math.min(steps - 1, Math.floor(hi * steps));
         if (last < first) continue;
 
         const tE = j * cols + i;
@@ -283,7 +304,7 @@ export const contours: Generator = {
         const rE = lE + 1;
 
         for (let L = first; L <= last; L++) {
-          const iso = L / levels;
+          const iso = L / steps;
           const idx = (a > iso ? 8 : 0) | (b > iso ? 4 : 0) | (c > iso ? 2 : 0) | (e > iso ? 1 : 0);
           if (idx === 0 || idx === 15) continue;
 
@@ -393,7 +414,7 @@ export const contours: Generator = {
     const tickLen = cell * 1.15 * hachures;
     const probe = cell * 0.75;
 
-    const hachurePaths: string[] = new Array(levels).fill('');
+    const hachurePaths: string[] = new Array(steps).fill('');
 
     /**
      * Ticks on the downhill side of a closed contour, if that side is inside.
@@ -508,8 +529,8 @@ export const contours: Generator = {
       // Ticks go on rings above the water, and only on rings with room for
       // them: a hollow four crossings across is a rounding artefact of the
       // grid, and ticking it just speckles the map.
-      if (ring && hachures > 0 && L > seaIndex && chain.length >= 10) {
-        hachurePaths[L] += hachuresFor(pts, L / levels);
+      if (ring && hachures > 0 && L % sub === 0 && L / sub > seaIndex && chain.length >= 10) {
+        hachurePaths[L] += hachuresFor(pts, L / steps);
       }
       lastGap = gapOf(pts);
       return smoothPath(pts, 1, 1, ring);
@@ -541,17 +562,35 @@ export const contours: Generator = {
     // stroke width is an attribute of an element and cannot vary along a path.
     // Six buckets: enough that the thinning reads as continuous, few enough
     // that the group count stays in proportion to the line count.
-    const paths: string[][] = Array.from({ length: levels }, () => new Array(WIDTH_STEPS).fill(''));
-    for (let L = 1; L < levels; L++) {
-      const ids = touched[L] as number[];
+    const paths: string[][] = Array.from({ length: steps }, () => new Array(WIDTH_STEPS).fill(''));
+    // Supplementary lines are one path per sub-level: they are all drawn at one
+    // width, because the test that lets them exist at all is that there is
+    // room for them.
+    const extra: string[] = new Array(steps).fill('');
+    for (let k = 1; k < steps; k++) {
+      const ids = touched[k] as number[];
       if (ids.length === 0) continue;
+      const isMain = k % sub === 0;
+      const L = k / sub;
       const take = (id: number): void => {
-        const d = traceFrom(id, L);
+        const d = traceFrom(id, k);
         if (!d) return;
-        // The stroke thins to the gap rather than the gap having to accommodate
-        // the stroke — the same rule the truchet arcs settled on. Half the gap
-        // is the ceiling: at exactly the gap two neighbours touch, so half
-        // leaves as much paper as ink at the tightest point.
+        const stroke = minDim * 0.0022 * weight;
+        const ratio = lastGap / stroke;
+        if (!isMain) {
+          // A half-interval line goes in where the full interval has left the
+          // map empty, and nowhere else. `lastGap` is the gap between the full
+          // contours either side of it, so halving it is what this line is
+          // about to do; the test is that what remains is still several times
+          // the room a line needs, scaled by how much of it the reader asked
+          // for. Measured at the defaults the chain ratios run 5.1 at the
+          // tightest to 32 at the ninetieth percentile, so this reaches a
+          // quarter of the map at the low end of the control and most of the
+          // open ground at the high end.
+          if (ratio < SUPP_AT_MOST - (SUPP_AT_MOST - SUPP_AT_LEAST) * supplementary) return;
+          extra[k] += d;
+          return;
+        }
         // Two answers to crowding, because they answer different causes.
         //
         // The stroke first thins to the gap rather than the gap accommodating
@@ -570,14 +609,12 @@ export const contours: Generator = {
         // falls from 0.175 to 0.102 and the worst window from 0.506 to 0.270,
         // while the default render is pixel for pixel what it was — there is
         // room at fourteen lines, so nothing is dropped and nothing thins.
-        const stroke = minDim * 0.0022 * weight;
         const decimated = indexEvery > 0 ? indexEvery : 4;
-        const keepEvery =
-          lastGap >= stroke * ROOM_WANTED ? 1 : lastGap * 2 >= stroke * ROOM_WANTED ? 2 : decimated;
+        const keepEvery = ratio >= ROOM_WANTED ? 1 : ratio * 2 >= ROOM_WANTED ? 2 : decimated;
         if (keepEvery > 1 && L % keepEvery !== 0) return;
-        const f = Math.max(1 / WIDTH_STEPS, Math.min(1, (lastGap * 0.5) / stroke));
+        const f = Math.max(1 / WIDTH_STEPS, Math.min(1, ratio * 0.5));
         const bucket = Math.max(0, Math.min(WIDTH_STEPS - 1, Math.round(f * WIDTH_STEPS) - 1));
-        (paths[L] as string[])[bucket] += d;
+        (paths[k] as string[])[bucket] += d;
       };
       for (const id of ids) if (seen[id] === 0 && sb[id] === -1) take(id);
       for (const id of ids) if (seen[id] === 0) take(id);
@@ -817,14 +854,37 @@ export const contours: Generator = {
     }
 
     const base = minDim * 0.0022 * weight;
-    for (let L = 1; L < levels; L++) {
-      const buckets = paths[L] as string[];
-      const ticks = hachurePaths[L] as string;
+    for (let k = 1; k < steps; k++) {
+      // Supplementary lines go down first and lightly: half the interval,
+      // dashed so they cannot be counted as part of it, and thinner. A printed
+      // sheet distinguishes them exactly this way, and it matters here for the
+      // same reason — a reader counting index contours must not pick one up.
+      const supp = extra[k] as string;
+      if (supp) {
+        const ts = clamp(0.5 + (k / steps - 0.5) * colorSpread, 0, 1);
+        const ss = Math.round(ts * (COLOR_STEPS - 1)) / (COLOR_STEPS - 1);
+        body += el(
+          'g',
+          {
+            fill: 'none',
+            stroke: accentAt(palette, ss),
+            'stroke-width': num(base * 0.7, 2),
+            'stroke-linecap': 'butt',
+            'stroke-dasharray': `${num(cell * 0.8, 2)} ${num(cell * 0.7, 2)}`,
+            'stroke-opacity': '0.55',
+          },
+          el('path', { d: supp }),
+        );
+      }
+      if (k % sub !== 0) continue;
+      const L = k / sub;
+      const buckets = paths[k] as string[];
+      const ticks = hachurePaths[k] as string;
       if (buckets.every((d) => !d) && !ticks) continue;
       // Elevation walks the ramp. Quantising it to a fixed number of steps
       // rather than to the line count keeps the palette moving at the same
       // rate whether there are eight contours or sixty.
-      const t = clamp(0.5 + ((L / levels) - 0.5) * colorSpread, 0, 1);
+      const t = clamp(0.5 + (L / levels - 0.5) * colorSpread, 0, 1);
       const step = Math.round(t * (COLOR_STEPS - 1)) / (COLOR_STEPS - 1);
       const isIndex = indexEvery > 0 && L % indexEvery === 0;
       // The shoreline is the one line on the map that separates two kinds of
@@ -836,8 +896,8 @@ export const contours: Generator = {
       // path rather than on the group because a level is one thing — one
       // colour, one opacity, one line on the legend — that happens to be drawn
       // at several widths where the ground crowds it. Splitting a level into
-      // several groups instead says there are more contours than there are,
-      // to a reader and to a test alike.
+      // several groups instead says there are more contours than there are, to
+      // a reader and to a test alike.
       let inner = '';
       for (let b = 0; b < WIDTH_STEPS; b++) {
         const d = buckets[b] as string;

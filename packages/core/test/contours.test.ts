@@ -46,11 +46,44 @@ function subpaths(svg: string): { start: [number, number]; end: [number, number]
  * Depression ticks are dropped for the same reason and by the same rule: they
  * are straight marks, drawn butt-ended, and they are not contours.
  */
-function lineGroups(svg: string): string[] {
+/**
+ * The stroked groups of a render, sorted into the three kinds it draws.
+ *
+ * Every one of them is `fill="none"`, so a test asking about contours has to
+ * say which it means. A supplementary line is dashed; a row of depression ticks
+ * is butt-ended and solid; a contour is neither.
+ */
+function groupsOf(svg: string, kind: 'contour' | 'supplementary' | 'hachure'): string[] {
   return svg
     .split('<g fill="none"')
     .slice(1)
-    .filter((g) => !g.includes('stroke-linecap="butt"'));
+    .filter((g) => {
+      const seen = g.includes('stroke-dasharray')
+        ? 'supplementary'
+        : g.includes('stroke-linecap="butt"')
+          ? 'hachure'
+          : 'contour';
+      return seen === kind;
+    });
+}
+
+/** The same groups in document order, each labelled, for tests that need both. */
+function orderedGroups(svg: string): { kind: 'contour' | 'supplementary' | 'hachure'; body: string }[] {
+  return svg
+    .split('<g fill="none"')
+    .slice(1)
+    .map((body) => ({
+      kind: body.includes('stroke-dasharray')
+        ? ('supplementary' as const)
+        : body.includes('stroke-linecap="butt"')
+          ? ('hachure' as const)
+          : ('contour' as const),
+      body,
+    }));
+}
+
+function lineGroups(svg: string): string[] {
+  return groupsOf(svg, 'contour');
 }
 
 function lines(svg: string): string {
@@ -81,7 +114,11 @@ describe('contours', () => {
     ['rough country, where saddles occur', { resolution: 200, levels: 60, detail: 5, scale: 6, grain: 1, incision: 0.8 }],
   ])('leaves no contour stopping in the middle of the map: %s', (_label, over) => {
     const SIZE = 600;
-    const paths = subpaths(lines(render(over, SIZE)));
+    // Supplementary lines are contours as well — traced from the same
+    // crossings, at a height halfway between two of them — so the invariant is
+    // theirs too, and including them is the only coverage they have of it.
+    const svg = render(over, SIZE);
+    const paths = subpaths(lines(svg) + groupsOf(svg, 'supplementary').join(''));
     expect(paths.length, 'no contours to check').toBeGreaterThan(20);
 
     const onBorder = ([x, y]: [number, number]): boolean => {
@@ -198,8 +235,8 @@ describe('contours', () => {
     /** Closed rings of each level, as polygons of their on-path points. */
     const rings = new Map<number, [number, number][][]>();
     let level = 0;
-    for (const g of svg.split('<g fill="none"').slice(1)) {
-      if (g.includes('stroke-linecap="butt"')) continue;
+    for (const { kind, body: g } of orderedGroups(svg)) {
+      if (kind !== 'contour') continue;
       level += 1;
       const d = /<path d="([^"]+)"/.exec(g)?.[1];
       if (!d) continue;
@@ -241,8 +278,9 @@ describe('contours', () => {
     let sparsest = 1;
     let sparsestAt = '';
     level = 0;
-    for (const g of svg.split('<g fill="none"').slice(1)) {
-      if (!g.includes('stroke-linecap="butt"')) {
+    for (const { kind, body: g } of orderedGroups(svg)) {
+      if (kind === 'supplementary') continue;
+      if (kind === 'contour') {
         level += 1;
         continue;
       }
@@ -409,6 +447,48 @@ describe('contours', () => {
     // levels nothing is dropped and nothing is thinned.
     const easy = ink({});
     expect(easy.mean, `the default render averages ${easy.mean.toFixed(3)} ink`).toBeLessThan(0.06);
+  });
+
+  /**
+   * Flat country is the one place a contour map says nothing.
+   *
+   * The lines are simply far apart, and the reader gets an expanse of paper
+   * where the ground may well be doing something. The printed answer is a line
+   * at half the interval, dashed so it cannot be counted as part of the real
+   * one, drawn only where there is room for it — which makes it the same rule
+   * as the thinning and dropping on steep ground, read from the other end.
+   *
+   * So the assertion is about where they land rather than that they exist. The
+   * room test is what separates this from simply doubling the line count, and
+   * without it the feature is not a supplementary contour at all: measured over
+   * a 600px render, eight levels draw 12 of them and sixty levels draw 2,
+   * because at sixty there is nowhere left to put one.
+   */
+  it('fills empty country with half-interval lines and crowded country with none', () => {
+    const dashes = (over: Record<string, number>): number =>
+      groupsOf(render({ resolution: 60, ...over }, 600), 'supplementary')
+        .join('')
+        .split('M').length - 1;
+
+    const sparse = dashes({ levels: 8 });
+    const crowded = dashes({ levels: 60 });
+    expect(sparse, `only ${sparse} supplementary lines on an eight-level map`).toBeGreaterThanOrEqual(8);
+    expect(
+      crowded,
+      `${crowded} supplementary lines went into a sixty-level map, which has no room for any`,
+    ).toBeLessThanOrEqual(4);
+    expect(crowded).toBeLessThan(sparse / 2);
+
+    // The control reaches from the emptiest ground to most open ground: 12 at
+    // the default against 33 at the top, on the same map.
+    expect(dashes({ levels: 8, supplementary: 1 })).toBeGreaterThan(sparse * 1.5);
+    expect(dashes({ supplementary: 0 }), 'the control does nothing at zero').toBe(0);
+
+    // Dashed, and the only thing on the map that is. A reader counting index
+    // contours must not pick one of these up, and neither must a test.
+    const svg = render({ resolution: 60, levels: 8 }, 600);
+    expect(groupsOf(svg, 'supplementary').length).toBeGreaterThan(0);
+    for (const g of groupsOf(svg, 'contour')) expect(g).not.toMatch(/stroke-dasharray/);
   });
 
   /**
