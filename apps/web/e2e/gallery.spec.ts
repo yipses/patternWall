@@ -92,6 +92,33 @@ test.describe('gallery', () => {
     expect(errors, `page threw: ${errors.join(' | ')}`).toEqual([]);
   });
 
+  // Items whose pattern is gone from the build are kept on load rather than
+  // dropped, which is right -- but the list rendered them as null while the
+  // export button counted them, so they were invisible and inflated the count,
+  // and a collection of only such items showed an empty grid under an "Export
+  // all 2" button.
+  test('a collected item from a missing pattern is shown and not counted for export', async ({ page }) => {
+    const palette = { id: 'obsidian', name: 'Obsidian', background: '#0b0b0d', ink: '#f4f2ec', accents: ['#ff7a3d'], mode: 'dark', tags: [] };
+    await page.addInitScript((p) => {
+      window.localStorage.setItem(
+        'patternwall.collected.v1',
+        JSON.stringify([
+          { id: 'gone', generatorId: 'no-such-pattern', seed: 'orphan', params: {}, savedAt: 2, palette: p },
+          { id: 'here', generatorId: 'truchet', seed: 'present', params: {}, savedAt: 1, palette: p },
+        ]),
+      );
+    }, palette);
+    await page.goto('/collected');
+
+    // Visible, nameable and removable rather than silently absent.
+    await expect(page.getByText('no-such-pattern')).toBeVisible();
+    await expect(page.getByText('orphan')).toBeVisible();
+    await expect(page.getByText('present')).toBeVisible();
+
+    // Counted as one, because only one of them can be drawn.
+    await expect(page.getByTestId('export-collection')).toHaveText(/Export all 1 as a zip/);
+  });
+
   test('the collected view starts empty and points somewhere', async ({ page }) => {
     await page.goto('/collected');
     await expect(page.getByText('Nothing collected yet.')).toBeVisible();

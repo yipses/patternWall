@@ -28,7 +28,10 @@ export function CollectionExport({ items }: { items: CollectedItem[] }) {
   const [open, setOpen] = useState(false);
   const cancelRef = useRef(false);
 
-  const total = items.length;
+  // Only what can actually be drawn. Counting items whose generator is missing
+  // from this build put an "Export all 3" on a zip that would contain two.
+  const exportable = items.filter((i) => getGenerator(i.generatorId));
+  const total = exportable.length;
 
   const onExport = async () => {
     setRunning(true);
@@ -42,7 +45,7 @@ export function CollectionExport({ items }: { items: CollectedItem[] }) {
       // Filenames are numbered in collection order so the album has a stable,
       // readable sequence rather than whatever order Photos decides on import.
       const width = String(total).length;
-      for (const [i, item] of items.entries()) {
+      for (const [i, item] of exportable.entries()) {
         if (cancelRef.current) break;
         const g = getGenerator(item.generatorId);
         if (!g) {

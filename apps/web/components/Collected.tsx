@@ -45,7 +45,33 @@ export function Collected() {
         <ul className={styles.grid}>
           {items.map((item) => {
             const g = getGenerator(item.generatorId);
-            if (!g) return null;
+            // An item whose pattern is not in this build is kept rather than
+            // dropped on load, so it has to be visible: returning null left it
+            // counted by the export button and invisible in the list, and a
+            // collection of only such items showed an empty grid with an
+            // "Export all 2" button above it. Showing it is also the only way
+            // to remove it.
+            if (!g) {
+              return (
+                <li key={item.id} className={styles.item}>
+                  <div className={styles.meta}>
+                    <span className={styles.name}>{item.generatorId}</span>
+                    <span className={styles.when}>{new Date(item.savedAt).toLocaleDateString()}</span>
+                  </div>
+                  <span className={styles.seed}>
+                    This pattern is not in this build, so it cannot be drawn or exported. Seed {item.seed}.
+                  </span>
+                  <Button
+                    size="small"
+                    variant="ghost"
+                    onClick={() => setItems(removeCollected(item.id))}
+                    aria-label={`Remove the saved ${item.generatorId} configuration with seed ${item.seed}`}
+                  >
+                    Remove
+                  </Button>
+                </li>
+              );
+            }
             const query = encodeConfig({ generatorId: g.id, seed: item.seed, params: item.params, palette: item.palette });
             return (
               <li key={item.id} className={styles.item}>

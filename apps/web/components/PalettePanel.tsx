@@ -5,6 +5,7 @@ import {
   accent,
   checkPalette,
   curatedPalettes,
+  hashSeed,
   hexToOklch,
   isHex,
   oklchToHex,
@@ -277,7 +278,13 @@ export function PalettePanel({ palette, onChange }: { palette: Palette; onChange
             size="small"
             success={saveState === 'saved'}
             onClick={() => {
-              const id = `saved-${Date.now().toString(36)}`;
+              // Keyed on the palette's colours, not the clock. Two saves in
+              // the same millisecond produced the same id, which meant
+              // duplicate React keys in the library and a Delete that removed
+              // both. Content also makes saving the same palette twice an
+              // update rather than a duplicate, which savePalette already
+              // handles by id.
+              const id = `saved-${hashSeed(`${palette.background}|${palette.ink}|${palette.accents.join('')}`).toString(36)}`;
               const name = palette.name === 'Custom' ? `Custom ${new Date().toLocaleDateString()}` : palette.name;
               const result = savePalette({ ...palette, id, name, tags: [...(palette.tags ?? []), 'saved'] });
               setSaved(result.items);
