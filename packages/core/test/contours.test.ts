@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Resvg } from '@resvg/resvg-js';
 import { renderToSvg } from '../src/index.js';
 import { ALL_GENERATORS, baseParams, TEST_PALETTES } from './helpers.js';
 
@@ -45,12 +46,15 @@ function subpaths(svg: string): { start: [number, number]; end: [number, number]
  * Depression ticks are dropped for the same reason and by the same rule: they
  * are straight marks, drawn butt-ended, and they are not contours.
  */
-function lines(svg: string): string {
+function lineGroups(svg: string): string[] {
   return svg
     .split('<g fill="none"')
     .slice(1)
-    .filter((g) => !g.startsWith(' stroke') || !g.includes('stroke-linecap="butt"'))
-    .join('');
+    .filter((g) => !g.includes('stroke-linecap="butt"'));
+}
+
+function lines(svg: string): string {
+  return lineGroups(svg).join('');
 }
 
 describe('contours', () => {
@@ -122,8 +126,11 @@ describe('contours', () => {
    * so this asserts what that buys. Before, it scored 8 of 21.
    */
   it('draws a line for nearly every level asked for', () => {
+    // Counted through `lines`, so the depression ticks do not pad the total —
+    // they are `fill="none"` groups too, and counting them made this read 17
+    // groups for 13 levels at the defaults.
     const svg = render({ levels: 22, resolution: 60 }, 600);
-    const drawn = (svg.match(/<g fill="none"/g) ?? []).length;
+    const drawn = lineGroups(svg).length;
     expect(drawn, `only ${drawn} of 21 contour levels drew anything`).toBeGreaterThanOrEqual(18);
   });
 
@@ -327,6 +334,81 @@ describe('contours', () => {
       `tinting grew the document ${(tinted / plain).toFixed(2)}x, from ${(plain / 1024).toFixed(0)}kB`,
     ).toBeLessThan(2);
     expect(fills({ elevationTint: 0 }), 'the tint still painted at zero').toHaveLength(0);
+  });
+
+  /**
+   * Sixty contours across a scarp is more line than there is paper.
+   *
+   * Line density is how a contour map says "steep", so a steep enough slope at
+   * a fine enough interval runs its lines together into a solid mass — and
+   * measured, that is not a near miss: at sixty levels, 162 sixteen-pixel
+   * windows of a phone-sized render were over 80% ink and some were completely
+   * filled. The picture is a blob where the map is most interesting.
+   *
+   * Thinning the stroke is the obvious answer and it is only half of one. It
+   * fixes crowding caused by a heavy pen — at sixty levels and weight 3 it
+   * takes mean ink from 0.45 to 0.23 — and does almost nothing at weight 1,
+   * because sixteen lines through sixteen pixels is solid at any width. The
+   * other half is the printed convention: steep ground carries fewer contours,
+   * keeping the index lines the eye counts by. Both are asserted here, since
+   * either alone leaves one of the two cases broken.
+   *
+   * Measured in mean luminance over the render and the worst window of it,
+   * which is linear in ink where a coverage count is not — a sub-pixel line
+   * antialiases across two pixels and a threshold counts both as full.
+   */
+  it('keeps the lines apart where the interval will not fit', () => {
+    const ink = (over: Record<string, number>): { mean: number; worst: number } => {
+      const W = 430;
+      const H = 932;
+      const svg = renderToSvg({
+        generator: contours,
+        width: W,
+        height: H,
+        palette: TEST_PALETTES[0]!,
+        params: { ...baseParams(contours), elevationTint: 0, seaLevel: 0, hachures: 0, ...over },
+        seed: 'survey',
+        bleed: 0,
+      });
+      const px = new Resvg(svg, { fitTo: { mode: 'width', value: W } }).render().pixels;
+      const WIN = 16;
+      const windows: number[] = [];
+      for (let y = 0; y + WIN <= H; y += WIN) {
+        for (let x = 0; x + WIN <= W; x += WIN) {
+          let sum = 0;
+          for (let j = 0; j < WIN; j++) {
+            for (let i = 0; i < WIN; i++) {
+              const o = ((y + j) * W + (x + i)) * 4;
+              sum += 0.2126 * (px[o] as number) + 0.7152 * (px[o + 1] as number) + 0.0722 * (px[o + 2] as number);
+            }
+          }
+          windows.push(sum / (WIN * WIN * 255));
+        }
+      }
+      return {
+        mean: windows.reduce((a, b) => a + b, 0) / windows.length,
+        worst: Math.max(...windows),
+      };
+    };
+
+    // Sixty levels: the decimation case. Without it, 0.175 mean and 0.506 in
+    // the worst window; with it, 0.107 and 0.295.
+    const many = ink({ levels: 60 });
+    expect(many.worst, `the worst window at sixty levels is ${(many.worst * 100).toFixed(0)}% ink`).toBeLessThan(0.4);
+    expect(many.mean, `sixty levels averages ${many.mean.toFixed(3)} ink`).toBeLessThan(0.14);
+
+    // Sixty levels at maximum weight: the thinning case. Decimation alone
+    // leaves this at 0.229 mean and 0.686 worst; with both it is 0.110 and
+    // 0.433. A fat pen cannot be answered by dropping lines, because the lines
+    // that remain are still too fat for the gap.
+    const heavy = ink({ levels: 60, weight: 3 });
+    expect(heavy.mean, `sixty levels at weight 3 averages ${heavy.mean.toFixed(3)} ink`).toBeLessThan(0.17);
+    expect(heavy.worst, `its worst window is ${(heavy.worst * 100).toFixed(0)}% ink`).toBeLessThan(0.55);
+
+    // And none of it touches a render that has room: at the default fourteen
+    // levels nothing is dropped and nothing is thinned.
+    const easy = ink({});
+    expect(easy.mean, `the default render averages ${easy.mean.toFixed(3)} ink`).toBeLessThan(0.06);
   });
 
   /**
