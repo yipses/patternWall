@@ -18,6 +18,10 @@ Chaining is what makes **resolution** a fair control rather than a tax. Drawn fr
 
 Two cases are genuinely ambiguous: a cell with high corners diagonally opposite each other is either a saddle or a pinch, and the crossings alone cannot say which. Taking the average of the four corners settles it, and the difference is visible — guess wrong and contours join across a pass that should divide them, which is the difference between two hills and one lumpy one.
 
+**Elevation tint** is the layer wash a printed atlas puts under its contours — lowland one shade, high ground another — and it answers a question the lines cannot. Contour spacing tells you how steep somewhere is, but reading height off it means counting rings inward from a number you have to find first; a wash tells you at a glance. Its interval is deliberately much coarser than the contour interval, and derived rather than set: about six steps whatever the line count, always a whole number of contour intervals, so every boundary in the wash is a line the map already draws. That is not only cartographic tidiness — tinting a band per contour turns out to be unaffordable, because at ordinary settings the height changes by about one band across a single grid cell, so there is no flat interior anywhere to fill cheaply.
+
+**Depression ticks** settle the one ambiguity a contour map has. A closed ring is the same mark around a summit and around a hollow, and nothing in the line says which it is; the convention that separates them is a row of short ticks on the downhill side, pointing into the basin. Here every closed contour is asked which way its own interior falls, and the ones enclosing low ground get ticked, so craters, sinks and dry lake beds stop reading as hills. Below sea level they are left off — a basin already under water has a shoreline to explain it.
+
 **Index contours** are the cartographer's convention of drawing every fifth line heavier, and they are the reason a real map reads as height rather than as pattern: the eye counts the bold lines and gets elevation for free, where a field of identical lines only gives shape. **Relief** is composition rather than geology. It flattens the field toward the top of the canvas, so the upper third holds a few wide, calm lines and the lower canvas carries the dense contours and the peaks. A phone's clock sits on that quiet ground, and the detail lands where iOS covers nothing.
 `.trim();
 
@@ -57,6 +61,8 @@ export const contours: Generator = {
     { key: 'grain', label: 'Grain', type: 'number', min: 0, max: 1, step: 0.01, default: 0.45, description: 'Gives the country a direction. At zero every hill is a rounded blob, because plain noise has no orientation and the contours come out as splodges; raising it drags the field through itself so ridges run, valleys branch and the whole map acquires the flow of somewhere real.' },
     { key: 'incision', label: 'Valley incision', type: 'number', min: 0, max: 1, step: 0.01, default: 0.22, description: 'Cuts the valleys rather than rounding them. Blends in ridged noise, which creases where plain noise would dome, so contours kink sharply along the lines water would take \u2014 the V pointing upstream that gives a printed sheet away as terrain and not decoration.' },
     { key: 'seaLevel', label: 'Sea level', type: 'number', min: 0, max: 0.75, step: 0.01, default: 0.32, description: 'Floods the land below a chosen height. The coastline is a contour like any other \u2014 the level snaps to the nearest one, because a shoreline that ran between two contours would be the only line on the map not answering the same question as the rest. At zero there is no water, which is a different and drier kind of country.' },
+    { key: 'elevationTint', label: 'Elevation tint', type: 'number', min: 0, max: 1, step: 0.01, default: 0.65, description: 'Paints each band between two contours in its own shade, the way a printed atlas washes lowland green and high ground brown. The lines give you slope through their spacing; the tint gives you height at a glance, without having to count them. Kept well short of full strength on purpose \u2014 a map in saturated bands stops being a map and becomes a poster.' },
+    { key: 'hachures', label: 'Depression ticks', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'A ring of contour is the same line whether it encircles a summit or a hollow, and nothing about the line says which \u2014 on a printed sheet the difference is carried by short ticks drawn on the downhill side, pointing into the basin. Here they are added to every closed contour whose interior is lower than the line itself, so craters, sinks and dry lake beds stop reading as hills. Above the sea only: a basin already under water has a shoreline to explain it.' },
   ],
 
   render(ctx: RenderContext): string {
@@ -74,6 +80,19 @@ export const contours: Generator = {
     const incision = clamp(pNum(params, 'incision', 0.22), 0, 1);
     // Snapped to a contour: the shoreline is then a line the map already draws,
     // and the fill beneath it ends exactly where that line runs.
+    const elevationTint = clamp(pNum(params, 'elevationTint', 0.65), 0, 1);
+    const hachures = clamp(pNum(params, 'hachures', 0.6), 0, 1);
+    // The wash interval is derived, not set, and it is a whole number of
+    // contour intervals so every wash boundary is a line the map already draws.
+    //
+    // Six steps, near enough, whatever the line count -- the same reasoning as
+    // COLOR_STEPS: the palette should walk the elevation at one rate whether
+    // there are eight contours or sixty. Tying it to the index contours instead
+    // was tried and reads better on paper than on a phone: at the default
+    // fourteen lines every fifth, it gives three bands, and one of them covers
+    // most of the canvas, so the wash is invisible where it is not steep.
+    const washEvery = Math.max(1, Math.round(levels / 6));
+    const washSteps = Math.ceil(levels / washEvery);
     const seaRaw = clamp(pNum(params, 'seaLevel', 0.32), 0, 0.75);
     const seaIndex = seaRaw <= 0 ? 0 : Math.max(1, Math.min(levels - 1, Math.round(seaRaw * levels)));
 
@@ -303,7 +322,135 @@ export const contours: Generator = {
     // closed ring and can be started anywhere.
     const seen = new Uint8Array(sx.length);
     const chain: number[] = [];
-    const traceFrom = (start: number): string => {
+
+    /**
+     * The field at an arbitrary point, between grid samples.
+     *
+     * Only the hachures need this — everything else reads corners directly —
+     * but they need it off the grid, a fraction of a cell to one side of a
+     * traced curve. Bilinear rather than nearest, because a whole cell of
+     * rounding at that distance would often land the probe back on the line it
+     * was measuring away from.
+     */
+    const sampleField = (x: number, y: number): number => {
+      const gx = clamp(x / cw, 0, cols);
+      const gy = clamp(y / ch, 0, rows);
+      const i0 = Math.min(cols - 1, Math.floor(gx));
+      const j0 = Math.min(rows - 1, Math.floor(gy));
+      const fx = gx - i0;
+      const fy = gy - j0;
+      const r0 = j0 * (cols + 1) + i0;
+      const r1 = r0 + cols + 1;
+      return (
+        (field[r0] as number) * (1 - fx) * (1 - fy) +
+        (field[r0 + 1] as number) * fx * (1 - fy) +
+        (field[r1] as number) * (1 - fx) * fy +
+        (field[r1 + 1] as number) * fx * fy
+      );
+    };
+
+    // A tick every this many cells along the ring, and this long. Both in cell
+    // widths rather than pixels, so a thumbnail and an export tick at the same
+    // density — the grid is keyed on the column count, so a cell is the same
+    // fraction of the canvas at any size.
+    const cell = Math.min(cw, ch);
+    const tickGap = cell * 2.6;
+    const tickLen = cell * 1.15 * hachures;
+    const probe = cell * 0.75;
+
+    const hachurePaths: string[] = new Array(levels).fill('');
+
+    /**
+     * Ticks on the downhill side of a closed contour, if that side is inside.
+     *
+     * A ring is the same mark around a summit and around a hollow; the
+     * convention that separates them is a short tick into the low ground. So
+     * the test is literally that: step a fraction of a cell off the curve
+     * toward its interior and ask the field whether it is lower there.
+     *
+     * Which way is inward comes from the ring's own winding rather than from a
+     * centroid, because a contour is rarely convex — a centroid falls outside
+     * any ring shaped like a horseshoe, and the sign it gives is then simply
+     * wrong. The shoelace sign says which way the walk goes around, and the
+     * quarter turn that points into the polygon follows from it. The reading is
+     * taken at several points and voted on, since one probe on a narrow neck
+     * can cross the ring and sample the far side.
+     */
+    const hachuresFor = (pts: [number, number][], iso: number): string => {
+      const n = pts.length;
+      let area2 = 0;
+      for (let k = 0; k < n; k++) {
+        const [x1, y1] = pts[k] as [number, number];
+        const [x2, y2] = pts[(k + 1) % n] as [number, number];
+        area2 += x1 * y2 - x2 * y1;
+      }
+      const orient = area2 > 0 ? 1 : -1;
+
+      // Unit inward normal at k, from a central difference so it follows the
+      // curve rather than one segment of it.
+      const inward = (k: number): [number, number] => {
+        const [px, py] = pts[(k - 1 + n) % n] as [number, number];
+        const [qx, qy] = pts[(k + 1) % n] as [number, number];
+        const tx = qx - px;
+        const ty = qy - py;
+        const len = Math.hypot(tx, ty) || 1e-9;
+        return [(orient * -ty) / len, (orient * tx) / len];
+      };
+
+      let low = 0;
+      let votes = 0;
+      const stride = Math.max(1, Math.floor(n / 12));
+      for (let k = 0; k < n; k += stride) {
+        const [px, py] = pts[k] as [number, number];
+        const [nx, ny] = inward(k);
+        if (sampleField(px + nx * probe, py + ny * probe) < iso) low += 1;
+        votes += 1;
+      }
+      if (votes === 0 || low * 2 <= votes) return '';
+
+      // A tick must not cross its own basin and come out the far side, which a
+      // fixed length does on any ring narrower than it — and rings that narrow
+      // are common, since a long thin hollow has plenty of crossings without
+      // ever being wide. Area over perimeter is the half width of a long thin
+      // shape and the radius over two of a round one, so twice it is the room
+      // available in the worst direction; the tick takes most of that or its
+      // nominal length, whichever is less.
+      let perim = 0;
+      for (let k = 0; k < n; k++) {
+        const [x1, y1] = pts[k] as [number, number];
+        const [x2, y2] = pts[(k + 1) % n] as [number, number];
+        perim += Math.hypot(x2 - x1, y2 - y1);
+      }
+      const room = perim > 0 ? (Math.abs(area2) / perim) * 1.7 : tickLen;
+      const reach = Math.min(tickLen, room);
+
+      let d = '';
+      let carried = tickGap;
+      for (let k = 0; k < n; k++) {
+        const [px, py] = pts[k] as [number, number];
+        const [qx, qy] = pts[(k + 1) % n] as [number, number];
+        carried += Math.hypot(qx - px, qy - py);
+        if (carried < tickGap) continue;
+        const [nx, ny] = inward(k);
+        const ex = px + nx * reach;
+        const ey = py + ny * reach;
+        // Every tick is checked against the field before it is drawn, rather
+        // than trusted to the winding. The claim a hachure makes is that it
+        // points downhill, so that is what gets asserted, one mark at a time.
+        // The winding is right about the ring as a whole and wrong here and
+        // there along it: at a tight kink — and incised country is full of
+        // them — the chord between a point's neighbours can run backwards
+        // against the local tangent and take the normal with it. Measured, two
+        // ticks in forty-four came out pointing uphill; they are now simply not
+        // drawn, which costs a gap in one row of ticks and nothing else.
+        if (sampleField(ex, ey) >= iso) continue;
+        carried = 0;
+        d += `M${num(px, 2)} ${num(py, 2)}L${num(ex, 2)} ${num(ey, 2)}`;
+      }
+      return d;
+    };
+
+    const traceFrom = (start: number, L: number): string => {
       chain.length = 0;
       let prev = -1;
       let cur = start;
@@ -323,6 +470,12 @@ export const contours: Generator = {
       const tail = chain[chain.length - 1] as number;
       const ring = chain.length >= 3 && (sa[tail] === start || sb[tail] === start);
       const pts: [number, number][] = chain.map((n) => [sx[n] as number, sy[n] as number]);
+      // Ticks go on rings above the water, and only on rings with room for
+      // them: a hollow four crossings across is a rounding artefact of the
+      // grid, and ticking it just speckles the map.
+      if (ring && hachures > 0 && L > seaIndex && chain.length >= 10) {
+        hachurePaths[L] += hachuresFor(pts, L / levels);
+      }
       return smoothPath(pts, 1, 1, ring);
     };
 
@@ -331,34 +484,34 @@ export const contours: Generator = {
       const ids = touched[L] as number[];
       if (ids.length === 0) continue;
       let d = '';
-      for (const id of ids) if (seen[id] === 0 && sb[id] === -1) d += traceFrom(id);
-      for (const id of ids) if (seen[id] === 0) d += traceFrom(id);
+      for (const id of ids) if (seen[id] === 0 && sb[id] === -1) d += traceFrom(id, L);
+      for (const id of ids) if (seen[id] === 0) d += traceFrom(id, L);
       paths[L] = d;
     }
 
-    // The water, filled cell by cell rather than by closing the coastline into
-    // polygons. A contour that runs off the canvas is not a closed ring, so
-    // filling from the rings alone would need the open ones stitched together
-    // along the border — real work, for a boundary that is then covered by the
-    // coastline stroke drawn over it. Walking each cell's edges in order and
-    // collecting the corners below the line, plus the crossings, gives the same
-    // region to within the width of that stroke.
+    // Everything below a given height, as a fill.
     //
-    // The two diagonal cases come out as a bowtie, since the water there is two
-    // opposite corners the walk joins into one loop. They are a fraction of a
-    // percent of cells, the lobes still fill, and the join sits under the
-    // shoreline.
+    // Used twice: once for the sea, and once per band for the elevation tint.
+    // Filled cell by cell rather than by closing the contour rings into
+    // polygons -- a contour that runs off the canvas is not a closed ring, so
+    // filling from the rings would need the open ones stitched together along
+    // the border, real work for a boundary the stroke then covers anyway.
+    // Walking each cell's edges in order and collecting the corners below the
+    // line, plus the crossings, gives the same region to within a stroke width.
     //
-    // Runs of wholly submerged cells are merged along the row into a single
-    // rectangle. Only the cells the shoreline actually crosses need their own
-    // polygon, and open water is most of the water: at a high sea level the
-    // per-cell version spent 600kB of path data drawing the same rectangle
-    // forty times in a row, which the preview renders synchronously on the main
-    // thread. The merge is exact -- adjacent full cells share an edge -- so it
-    // costs nothing but the bookkeeping.
-    let water = '';
-    if (seaIndex > 0) {
-      const seaIso = seaIndex / levels;
+    // The two diagonal cases come out as a bowtie, since the region there is
+    // two opposite corners the walk joins into one loop. They are a fraction of
+    // a percent of cells and both lobes still fill.
+    //
+    // Runs of wholly submerged cells merge along the row into one rectangle.
+    // Only the cells the boundary actually crosses need their own polygon, and
+    // open water is most of the water: at a high sea level the per-cell version
+    // spent 600kB of path data drawing the same rectangle forty times in a row,
+    // which the preview renders synchronously on the main thread. The merge is
+    // exact -- adjacent full cells share an edge -- and it is what makes the
+    // tint affordable at all, since that asks for this fill once per band.
+    const fillBelow = (iso: number): string => {
+      let d = '';
       for (let j = 0; j < rows; j++) {
         const y0 = j * ch;
         const y1 = y0 + ch;
@@ -371,7 +524,7 @@ export const contours: Generator = {
           const rx1 = num(until * cw, 1);
           const ry0 = num(y0, 1);
           const ry1 = num(y1, 1);
-          water += `M${rx0} ${ry0}L${rx1} ${ry0}L${rx1} ${ry1}L${rx0} ${ry1}Z`;
+          d += `M${rx0} ${ry0}L${rx1} ${ry0}L${rx1} ${ry1}L${rx0} ${ry1}Z`;
           runFrom = -1;
         };
         for (let i = 0; i < cols; i++) {
@@ -379,10 +532,10 @@ export const contours: Generator = {
           const b = field[rowA + i + 1] as number;
           const c = field[rowB + i + 1] as number;
           const e = field[rowB + i] as number;
-          const A = a > seaIso;
-          const B = b > seaIso;
-          const C = c > seaIso;
-          const E = e > seaIso;
+          const A = a > iso;
+          const B = b > iso;
+          const C = c > iso;
+          const E = e > iso;
           if (A && B && C && E) {
             flush(i);
             continue;
@@ -400,20 +553,46 @@ export const contours: Generator = {
           };
           // Round the cell: top left to top right, then down, back, and up.
           if (!A) at(x0, y0);
-          if (A !== B) at(x0 + cw * ((seaIso - a) / (b - a || 1e-9)), y0);
+          if (A !== B) at(x0 + cw * ((iso - a) / (b - a || 1e-9)), y0);
           if (!B) at(x1, y0);
-          if (B !== C) at(x1, y0 + ch * ((seaIso - b) / (c - b || 1e-9)));
+          if (B !== C) at(x1, y0 + ch * ((iso - b) / (c - b || 1e-9)));
           if (!C) at(x1, y1);
-          if (C !== E) at(x0 + cw * ((seaIso - e) / (c - e || 1e-9)), y1);
+          if (C !== E) at(x0 + cw * ((iso - e) / (c - e || 1e-9)), y1);
           if (!E) at(x0, y1);
-          if (E !== A) at(x0, y0 + ch * ((seaIso - a) / (e - a || 1e-9)));
-          if (pts.length >= 3) water += `M${pts.join('L')}Z`;
+          if (E !== A) at(x0, y0 + ch * ((iso - a) / (e - a || 1e-9)));
+          if (pts.length >= 3) d += `M${pts.join('L')}Z`;
         }
         flush(cols);
       }
-    }
+      return d;
+    };
+
+    const water = seaIndex > 0 ? fillBelow(seaIndex / levels) : '';
 
     const bg = hexToOklch(palette.background);
+
+    /**
+     * The wash for one elevation band.
+     *
+     * Hue walks the same ramp the contour lines walk, quantised the same way,
+     * so a band and the line bounding it are never a step apart. What carries
+     * the height, though, is lightness rather than hue: mixing a near-black
+     * background with an accent at a constant strength leaves every low band
+     * indistinguishable from every other and from the paper, which is what the
+     * first version of this did — 434kB of fill that could not be seen. The
+     * mix deepens with height and the result is pushed away from the
+     * background's own lightness, up on a dark palette and down on a light one,
+     * so the ramp reads as relief in the way a printed atlas does.
+     */
+    const tintFor = (k: number): string => {
+      const f = washSteps > 1 ? k / (washSteps - 1) : 0;
+      const t = clamp(0.5 + ((k + 0.5) / washSteps - 0.5) * colorSpread, 0, 1);
+      const step = Math.round(t * (COLOR_STEPS - 1)) / (COLOR_STEPS - 1);
+      const mixed = mixOklch(bg, hexToOklch(accentAt(palette, step)), elevationTint * (0.06 + 0.3 * f));
+      const lift = elevationTint * 0.16 * f;
+      return oklchToHex({ ...mixed, l: clamp(mixed.l + (palette.mode === 'dark' ? lift : -lift), 0, 1) });
+    };
+
     const tintTop = oklchToHex({ ...bg, l: clamp(bg.l + (palette.mode === 'dark' ? 0.014 : -0.012), 0, 1) });
     const tintBottom = oklchToHex(
       mixOklch(bg, hexToOklch(accentAt(palette, 0.7)), palette.mode === 'dark' ? 0.12 : 0.08),
@@ -429,6 +608,105 @@ export const contours: Generator = {
     );
 
     let body = defs + el('rect', { x: 0, y: 0, width: w, height: h, fill: 'url(#ct-bg)' });
+
+    // Elevation tint: the ground between two heights washed in its own shade.
+    //
+    // The wash is deliberately far coarser than the contour interval, and that
+    // is the whole of what makes it affordable. Two versions of this were
+    // written on the assumption that a band per contour was the thing to build,
+    // and the arithmetic says it never was. At fourteen levels on a ninety
+    // column grid the bands are 0.071 of the field apart, which is about what
+    // the field moves across one cell, so essentially every cell spans a
+    // boundary: measured, 16,438 of 17,550 cells. There is no interior left to
+    // merge into runs and no version of a per-cell fill that is cheap. The
+    // first attempt -- nested sub-level fills, each band repainting the ground
+    // beneath it -- came to 692kB at the defaults and 7.1MB at sixty levels;
+    // classifying cells instead made it 995kB, because the optimisation had
+    // nothing to work on.
+    //
+    // A printed atlas does not tint per contour either. The layer tint has its
+    // own, much coarser interval, and it changes on the index contours -- the
+    // bold ones -- so the wash boundary is always a line the map already draws
+    // heavier. Keying it there gives the cartography and the cost at once: the
+    // bands are wide enough that most cells sit wholly inside one, the runs
+    // merge along the row, and only the cells an index contour crosses need a
+    // polygon.
+    //
+    // Within such a cell the nesting still does the work: its own rectangle in
+    // the colour of the highest band it touches, then one sub-level polygon per
+    // boundary crossing it, each landing in a band painted later. Bands are
+    // emitted top down so that order holds.
+    if (elevationTint > 0 && washSteps > 1) {
+      const bandOf = (v: number): number =>
+        Math.min(washSteps - 1, Math.max(0, Math.floor((v * levels) / washEvery)));
+      const bandPaths: string[] = new Array(washSteps).fill('');
+      for (let j = 0; j < rows; j++) {
+        const y0 = j * ch;
+        const y1 = y0 + ch;
+        const rowA = j * (cols + 1);
+        const rowB = (j + 1) * (cols + 1);
+        let runBand = -1;
+        let runFrom = 0;
+        const flush = (until: number): void => {
+          if (runBand < 0) return;
+          const rx0 = num(runFrom * cw, 1);
+          const rx1 = num(until * cw, 1);
+          const ry0 = num(y0, 1);
+          const ry1 = num(y1, 1);
+          bandPaths[runBand] += `M${rx0} ${ry0}L${rx1} ${ry0}L${rx1} ${ry1}L${rx0} ${ry1}Z`;
+          runBand = -1;
+        };
+        for (let i = 0; i < cols; i++) {
+          const a = field[rowA + i] as number;
+          const b = field[rowA + i + 1] as number;
+          const c = field[rowB + i + 1] as number;
+          const e = field[rowB + i] as number;
+          const hiBand = bandOf(Math.max(a, b, c, e));
+          const loBand = bandOf(Math.min(a, b, c, e));
+          // Every cell joins the run for the highest band it touches, straddled
+          // or not. For a cell wholly inside a band that is the whole story;
+          // for a straddled one it lays down the base the sub-level polygons
+          // below then paint over, which is the same rectangle the cell would
+          // have emitted on its own — except that it merges with its
+          // neighbours instead of costing a subpath each.
+          if (runBand !== hiBand) {
+            flush(i);
+            runBand = hiBand;
+            runFrom = i;
+          }
+          if (hiBand === loBand) continue;
+          const x0 = i * cw;
+          const x1 = x0 + cw;
+          for (let k = hiBand; k > loBand; k--) {
+            const iso = (k * washEvery) / levels;
+            const A = a > iso;
+            const B = b > iso;
+            const C = c > iso;
+            const E = e > iso;
+            if (A && B && C && E) continue;
+            const pts: string[] = [];
+            const at = (x: number, y: number): void => {
+              pts.push(`${num(x, 1)} ${num(y, 1)}`);
+            };
+            if (!A) at(x0, y0);
+            if (A !== B) at(x0 + cw * ((iso - a) / (b - a || 1e-9)), y0);
+            if (!B) at(x1, y0);
+            if (B !== C) at(x1, y0 + ch * ((iso - b) / (c - b || 1e-9)));
+            if (!C) at(x1, y1);
+            if (C !== E) at(x0 + cw * ((iso - e) / (c - e || 1e-9)), y1);
+            if (!E) at(x0, y1);
+            if (E !== A) at(x0, y0 + ch * ((iso - a) / (e - a || 1e-9)));
+            if (pts.length >= 3) bandPaths[k - 1] += `M${pts.join('L')}Z`;
+          }
+        }
+        flush(cols);
+      }
+      for (let k = washSteps - 1; k >= 0; k--) {
+        const d = bandPaths[k] as string;
+        if (!d) continue;
+        body += el('path', { d, fill: tintFor(k), stroke: 'none' });
+      }
+    }
 
     // Water goes down before any contour, so the lines that cross it — the ones
     // below sea level, which a real sheet would show as soundings — read as
@@ -447,6 +725,7 @@ export const contours: Generator = {
     const base = minDim * 0.0022 * weight;
     for (let L = 1; L < levels; L++) {
       const d = paths[L] as string;
+      const ticks = hachurePaths[L] as string;
       if (!d) continue;
       // Elevation walks the ramp. Quantising it to a fixed number of steps
       // rather than to the line count keeps the palette moving at the same
@@ -469,6 +748,23 @@ export const contours: Generator = {
         },
         el('path', { d }),
       );
+      // The ticks are the same ink as the contour they belong to, because on a
+      // sheet they are part of that line rather than an annotation of it. Their
+      // own group only because they are drawn butt-ended and a shade finer: a
+      // round cap on a mark this short is most of the mark.
+      if (ticks) {
+        body += el(
+          'g',
+          {
+            fill: 'none',
+            stroke: accentAt(palette, step),
+            'stroke-width': num(base * 0.85, 2),
+            'stroke-linecap': 'butt',
+            'stroke-opacity': '0.82',
+          },
+          el('path', { d: ticks }),
+        );
+      }
     }
 
     return svgRoot(w, h, `${contours.name} wallpaper`, body);

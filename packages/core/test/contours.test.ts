@@ -41,9 +41,16 @@ function subpaths(svg: string): { start: [number, number]; end: [number, number]
  * *lines* has to look at the line groups alone. Measured against the whole
  * document, the water's `L` commands read as un-smoothed contours and the
  * curve test failed on correct output.
+ *
+ * Depression ticks are dropped for the same reason and by the same rule: they
+ * are straight marks, drawn butt-ended, and they are not contours.
  */
 function lines(svg: string): string {
-  return svg.split('<g fill="none"').slice(1).join('');
+  return svg
+    .split('<g fill="none"')
+    .slice(1)
+    .filter((g) => !g.startsWith(' stroke') || !g.includes('stroke-linecap="butt"'))
+    .join('');
 }
 
 describe('contours', () => {
@@ -134,7 +141,9 @@ describe('contours', () => {
    */
   it('floods more ground as the sea rises, and none at zero', () => {
     const area = (seaLevel: number): number => {
-      const svg = render({ seaLevel, resolution: 60 }, 600);
+      // Tint off: its bands are filled paths of the same shape as the water,
+      // and this is a question about the water alone.
+      const svg = render({ seaLevel, resolution: 60, elevationTint: 0 }, 600);
       const fill = /<path d="([^"]+)" fill="#/.exec(svg);
       if (!fill) return 0;
       let total = 0;
@@ -155,6 +164,169 @@ describe('contours', () => {
     const high = area(0.55);
     expect(low, `sea level 0.25 flooded ${(low * 100).toFixed(1)}% of the canvas`).toBeGreaterThan(0.02);
     expect(high, `sea level 0.55 flooded ${(high * 100).toFixed(1)}%, against ${(low * 100).toFixed(1)}% at 0.25`).toBeGreaterThan(low * 1.5);
+  });
+
+  /**
+   * Ticks go on hollows, and they point into them.
+   *
+   * A closed contour is exactly the same mark around a summit and around a
+   * basin, so the only thing distinguishing them on a printed sheet is which
+   * side the ticks fall on. Getting that backwards is not a subtle defect —
+   * it relabels every crater as a hill — and it is a one-character mistake,
+   * because "inward" comes from the sign of the ring's shoelace area.
+   *
+   * Both halves are asserted, since the sign feeds the classification as well
+   * as the direction and flipping it moves the ticks wholesale from the
+   * hollows to the summits: measured, 104 ticks become 282 on different rings.
+   *
+   * The hollow test is topological rather than a height lookup, because the
+   * field is not reachable from out here. Inside a depression at level L the
+   * ground falls, so any contour nested within it is L-1; inside a hill it
+   * rises, so any nested contour is L+1. A ring with the next level up inside
+   * it is a hill that has been ticked.
+   */
+  it('ticks hollows on their downhill side, not summits', () => {
+    const svg = render({ resolution: 60, levels: 18 }, 600);
+
+    /** Closed rings of each level, as polygons of their on-path points. */
+    const rings = new Map<number, [number, number][][]>();
+    let level = 0;
+    for (const g of svg.split('<g fill="none"').slice(1)) {
+      if (g.includes('stroke-linecap="butt"')) continue;
+      level += 1;
+      const d = /<path d="([^"]+)"/.exec(g)?.[1];
+      if (!d) continue;
+      const polys: [number, number][][] = [];
+      for (const sub of d.split('M').slice(1)) {
+        if (!sub.trimEnd().endsWith('Z')) continue;
+        const nums = (sub.match(/-?[\d.]+/g) ?? []).map(Number);
+        const poly: [number, number][] = [];
+        for (let i = 0; i + 1 < nums.length; i += 2) poly.push([nums[i] as number, nums[i + 1] as number]);
+        if (poly.length >= 3) polys.push(poly);
+      }
+      rings.set(level, polys);
+    }
+
+    const inside = (pt: [number, number], poly: [number, number][]): boolean => {
+      let hit = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi, yi] = poly[i] as [number, number];
+        const [xj, yj] = poly[j] as [number, number];
+        if (yi > pt[1] !== yj > pt[1] && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi || 1e-9) + xi) hit = !hit;
+      }
+      return hit;
+    };
+
+    const perimeter = (poly: [number, number][]): number => {
+      let total = 0;
+      for (let i = 0; i < poly.length; i++) {
+        const [ax, ay] = poly[i] as [number, number];
+        const [bx, by] = poly[(i + 1) % poly.length] as [number, number];
+        total += Math.hypot(bx - ax, by - ay);
+      }
+      return total;
+    };
+
+    let ticks = 0;
+    let pointingOut = 0;
+    let hills = 0;
+    let hollows = 0;
+    let sparsest = 1;
+    let sparsestAt = '';
+    level = 0;
+    for (const g of svg.split('<g fill="none"').slice(1)) {
+      if (!g.includes('stroke-linecap="butt"')) {
+        level += 1;
+        continue;
+      }
+      const d = /<path d="([^"]+)"/.exec(g)?.[1] ?? '';
+      const own = rings.get(level) ?? [];
+      const perRing = new Map<number, number>();
+      for (const seg of d.split('M').slice(1)) {
+        const n = (seg.match(/-?[\d.]+/g) ?? []).map(Number);
+        if (n.length < 4) continue;
+        ticks += 1;
+        const tip: [number, number] = [n[2] as number, n[3] as number];
+        const host = own.findIndex((poly) => inside(tip, poly));
+        if (host < 0) {
+          pointingOut += 1;
+          continue;
+        }
+        perRing.set(host, (perRing.get(host) ?? 0) + 1);
+        const ring = own[host] as [number, number][];
+        const probe = (lv: number): boolean =>
+          (rings.get(lv) ?? []).some((poly) => poly.every((pt) => inside(pt, ring)));
+        if (probe(level + 1)) hills += 1;
+        else if (probe(level - 1)) hollows += 1;
+      }
+      // Ticks sit one gap apart, so a ring that is a hollow carries very nearly
+      // as many as its perimeter has room for. A ring carrying two or three is
+      // not a hollow that was ticked; it is a hill with a few dimples in it.
+      for (const [idx, drawn] of perRing) {
+        const slots = perimeter(own[idx] as [number, number][]) / (2.6 * (600 / 60));
+        if (slots >= 2 && drawn / slots < sparsest) {
+          sparsest = drawn / slots;
+          sparsestAt = `level ${level}, ${drawn} ticks in ${slots.toFixed(1)} slots`;
+        }
+      }
+    }
+
+    expect(ticks, 'no depression ticks were drawn to check').toBeGreaterThan(20);
+    expect(pointingOut, `${pointingOut} of ${ticks} ticks point out of their ring instead of into it`).toBe(0);
+    expect(hills, `${hills} ticked rings have the next contour up inside them, so they are summits`).toBe(0);
+    expect(hollows, 'no ticked ring could be confirmed as a hollow').toBeGreaterThan(0);
+    // Measured both ways: with the ring vote in place the emptiest ticked ring
+    // fills 0.74 of its slots, and without it a stray ring appears at 0.23.
+    expect(sparsest, `the emptiest ticked ring is barely ticked at all — ${sparsestAt}`).toBeGreaterThan(0.5);
+  });
+
+  /**
+   * The elevation tint has to be visible, and it has to be affordable.
+   *
+   * Two versions of it were not. Filling a band per contour is the obvious
+   * construction and the arithmetic rules it out: at the default fourteen
+   * levels the bands are about as far apart as the field moves across one
+   * grid cell, so essentially every cell straddles a boundary — 16,438 of
+   * 17,550 measured — and there is no interior to merge into runs. Nested
+   * sub-level fills came to 692kB against 258kB untinted, and classifying
+   * cells instead made it 995kB. Keying the wash to a derived, much coarser
+   * interval is what makes it cheap, so the size is the assertion.
+   *
+   * The other end matters just as much: the first version that was cheap
+   * enough was also invisible, because a constant mix against a near-black
+   * background leaves every low band looking like the paper. So the distinct
+   * fill colours are counted too — a tint that renders as one flat wash is a
+   * tint that is not doing anything.
+   */
+  it('tints the elevation visibly without flooding the document', () => {
+    // Sea level off: the water is a filled path of the same shape as a tint
+    // band, and this is a question about the bands.
+    const fills = (over: Record<string, number>): string[] => {
+      const svg = render({ resolution: 90, seaLevel: 0, ...over }, 600);
+      return [...svg.matchAll(/<path d="[^"]+" fill="(#[0-9a-f]{6})" stroke="none"/g)].map((m) => m[1] as string);
+    };
+    const plain = render({ resolution: 90, elevationTint: 0 }, 600).length;
+    const tinted = render({ resolution: 90 }, 600).length;
+
+    // Spread, not step count. The version of this that was cheap enough and
+    // still useless had seven distinct shades and all of them within four
+    // luminance units of the paper — counting them said the ramp was fine
+    // while the picture showed nothing at all. Measured across eight palettes
+    // the spread is 24 to 40 units now and 4 with the ramp flattened, so the
+    // bound sits between the two with room either side.
+    const lum = (hex: string): number => {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number];
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const shades = fills({});
+    expect(new Set(shades).size, `the tint renders in ${new Set(shades).size} distinct shades`).toBeGreaterThanOrEqual(5);
+    const spread = Math.max(...shades.map(lum)) - Math.min(...shades.map(lum));
+    expect(spread, `the tint's bands span ${spread.toFixed(1)} luminance units, so it is invisible`).toBeGreaterThan(12);
+    expect(
+      tinted / plain,
+      `tinting grew the document ${(tinted / plain).toFixed(2)}x, from ${(plain / 1024).toFixed(0)}kB`,
+    ).toBeLessThan(2);
+    expect(fills({ elevationTint: 0 }), 'the tint still painted at zero').toHaveLength(0);
   });
 
   /**
