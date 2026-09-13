@@ -33,6 +33,19 @@ function subpaths(svg: string): { start: [number, number]; end: [number, number]
   return out;
 }
 
+/**
+ * Only the contour lines, with the water fill and the background dropped.
+ *
+ * The sea is a run of straight-edged cell polygons by construction — it is a
+ * filled region, not a traced curve — so anything asking a question about the
+ * *lines* has to look at the line groups alone. Measured against the whole
+ * document, the water's `L` commands read as un-smoothed contours and the
+ * curve test failed on correct output.
+ */
+function lines(svg: string): string {
+  return svg.split('<g fill="none"').slice(1).join('');
+}
+
 describe('contours', () => {
   /**
    * A contour is a closed curve, or it runs off the canvas. It cannot stop in
@@ -57,7 +70,7 @@ describe('contours', () => {
     ['rough country, where saddles occur', { resolution: 200, levels: 60, detail: 5, scale: 6, grain: 1, incision: 0.8 }],
   ])('leaves no contour stopping in the middle of the map: %s', (_label, over) => {
     const SIZE = 600;
-    const paths = subpaths(render(over, SIZE));
+    const paths = subpaths(lines(render(over, SIZE)));
     expect(paths.length, 'no contours to check').toBeGreaterThan(20);
 
     const onBorder = ([x, y]: [number, number]): boolean => {
@@ -82,10 +95,66 @@ describe('contours', () => {
    * which is the regression that would quietly put the faceting back.
    */
   it('draws curves rather than straight hops', () => {
-    const svg = render({ resolution: 60, levels: 18 }, 600);
-    expect(svg).not.toMatch(/L-?[\d.]+ -?[\d.]+L/);
-    const curvy = subpaths(svg).filter((p) => p.points > 0).length;
-    expect(curvy / subpaths(svg).length, 'most contours should be curves').toBeGreaterThan(0.9);
+    const ink = lines(render({ resolution: 60, levels: 18 }, 600));
+    expect(ink).not.toMatch(/L-?[\d.]+ -?[\d.]+L/);
+    const curvy = subpaths(ink).filter((p) => p.points > 0).length;
+    expect(curvy / subpaths(ink).length, 'most contours should be curves').toBeGreaterThan(0.9);
+  });
+
+  /**
+   * Every contour the count asks for should land inside the terrain.
+   *
+   * Fractal noise clusters hard around its middle — at the defaults the raw
+   * field ran 0.337 to 0.695, barely a third of its nominal range — so heights
+   * taken as fractions of 0..1 mostly fell outside the land entirely. Of
+   * twenty-two lines, eight drew and fourteen drew nothing, which made the
+   * control roughly a third as fine as it claimed and was invisible from the
+   * outside: the map simply looked coarser than the number said.
+   *
+   * The field is stretched to its own range before any height is read off it,
+   * so this asserts what that buys. Before, it scored 8 of 21.
+   */
+  it('draws a line for nearly every level asked for', () => {
+    const svg = render({ levels: 22, resolution: 60 }, 600);
+    const drawn = (svg.match(/<g fill="none"/g) ?? []).length;
+    expect(drawn, `only ${drawn} of 21 contour levels drew anything`).toBeGreaterThanOrEqual(18);
+  });
+
+  /**
+   * Sea level has to reach the land it is meant to flood.
+   *
+   * Its first version took the height as a fraction of 0..1, and the default of
+   * 0.32 sat below the lowest ground on the map — so no cell was ever
+   * underwater, no water was drawn, and the slider did nothing whatsoever until
+   * two-thirds of its travel. Nothing about the render looked broken; there was
+   * simply never any water.
+   *
+   * Measured as area rather than presence, so it also catches a shoreline that
+   * floods the wrong side or stops responding partway up.
+   */
+  it('floods more ground as the sea rises, and none at zero', () => {
+    const area = (seaLevel: number): number => {
+      const svg = render({ seaLevel, resolution: 60 }, 600);
+      const fill = /<path d="([^"]+)" fill="#/.exec(svg);
+      if (!fill) return 0;
+      let total = 0;
+      for (const poly of (fill[1] as string).split('M').slice(1)) {
+        const nums = (poly.match(/-?[\d.]+/g) ?? []).map(Number);
+        let acc = 0;
+        for (let i = 0; i + 1 < nums.length; i += 2) {
+          const jx = (i + 2) % nums.length;
+          acc += (nums[i] as number) * (nums[jx + 1] as number) - (nums[jx] as number) * (nums[i + 1] as number);
+        }
+        total += Math.abs(acc) / 2;
+      }
+      return total / (600 * 600);
+    };
+
+    expect(area(0), 'sea level zero should leave dry land').toBe(0);
+    const low = area(0.25);
+    const high = area(0.55);
+    expect(low, `sea level 0.25 flooded ${(low * 100).toFixed(1)}% of the canvas`).toBeGreaterThan(0.02);
+    expect(high, `sea level 0.55 flooded ${(high * 100).toFixed(1)}%, against ${(low * 100).toFixed(1)}% at 0.25`).toBeGreaterThan(low * 1.5);
   });
 
   /**
@@ -111,10 +180,10 @@ describe('contours', () => {
     // there are no segments to take midpoints of, and how many points a band
     // of the canvas holds tracks how much contour runs through it.
     const topShare = (relief: number): number => {
-      const svg = render({ relief, resolution: 60 }, SIZE);
+      const ink = lines(render({ relief, resolution: 60 }, SIZE));
       let top = 0;
       let bottom = 0;
-      for (const d of svg.matchAll(/ d="([^"]+)"/g)) {
+      for (const d of ink.matchAll(/ d="([^"]+)"/g)) {
         const nums = ((d[1] as string).match(/-?[\d.]+/g) ?? []).map(Number);
         for (let i = 1; i < nums.length; i += 2) {
           const y = nums[i] as number;

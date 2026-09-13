@@ -46,7 +46,7 @@ export const contours: Generator = {
   tags: ['noise', 'organic'],
   description,
   params: [
-    { key: 'levels', label: 'Contour lines', type: 'number', min: 6, max: 60, step: 1, default: 22, description: 'How many heights get a line. More lines read as steeper country, because a contour map shows slope as line density.' },
+    { key: 'levels', label: 'Contour lines', type: 'number', min: 6, max: 60, step: 1, default: 14, description: 'How many heights get a line. Every one of them lands inside the terrain, because the field is stretched to the relief actually present before any height is asked of it. More lines read as steeper country, since a contour map shows slope as line density.' },
     { key: 'scale', label: 'Terrain scale', type: 'number', min: 0.6, max: 6, step: 0.1, default: 1.5, description: 'How far back you are standing. Low values give two or three broad massifs across the width; high values an archipelago of small islands.' },
     { key: 'detail', label: 'Detail', type: 'number', min: 1, max: 5, step: 1, default: 3, description: 'Octaves of noise. One gives smooth domes; each one after roughens the coastline without moving the mountains.' },
     { key: 'resolution', label: 'Resolution', type: 'number', min: 40, max: 220, step: 10, default: 90, description: 'The sampling grid the lines are traced on. Since the crossings are chained and smoothed, low values do not make the curves angular \u2014 they make the map forget small things, dropping islands and rounding off narrow inlets. This is what a render costs, so it is the knob to reach for if the preview feels slow.' },
@@ -56,13 +56,14 @@ export const contours: Generator = {
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.75, description: 'How much of the accent ramp the elevation walks through. At zero every line is the middle of the palette; at one the lowest contour and the highest sit at opposite ends of it.' },
     { key: 'grain', label: 'Grain', type: 'number', min: 0, max: 1, step: 0.01, default: 0.45, description: 'Gives the country a direction. At zero every hill is a rounded blob, because plain noise has no orientation and the contours come out as splodges; raising it drags the field through itself so ridges run, valleys branch and the whole map acquires the flow of somewhere real.' },
     { key: 'incision', label: 'Valley incision', type: 'number', min: 0, max: 1, step: 0.01, default: 0.22, description: 'Cuts the valleys rather than rounding them. Blends in ridged noise, which creases where plain noise would dome, so contours kink sharply along the lines water would take \u2014 the V pointing upstream that gives a printed sheet away as terrain and not decoration.' },
+    { key: 'seaLevel', label: 'Sea level', type: 'number', min: 0, max: 0.75, step: 0.01, default: 0.32, description: 'Floods the land below a chosen height. The coastline is a contour like any other \u2014 the level snaps to the nearest one, because a shoreline that ran between two contours would be the only line on the map not answering the same question as the rest. At zero there is no water, which is a different and drier kind of country.' },
   ],
 
   render(ctx: RenderContext): string {
     const { width: w, height: h, palette, params, rng } = ctx;
     const noise = createNoise2D(rng);
 
-    const levels = Math.max(2, Math.round(pNum(params, 'levels', 22)));
+    const levels = Math.max(2, Math.round(pNum(params, 'levels', 14)));
     const scale = pNum(params, 'scale', 1.5);
     const detail = Math.max(1, Math.round(pNum(params, 'detail', 3)));
     const indexEvery = Math.max(0, Math.round(pNum(params, 'indexEvery', 5)));
@@ -71,6 +72,10 @@ export const contours: Generator = {
     const weight = pNum(params, 'weight', 1);
     const grain = clamp(pNum(params, 'grain', 0.45), 0, 1);
     const incision = clamp(pNum(params, 'incision', 0.22), 0, 1);
+    // Snapped to a contour: the shoreline is then a line the map already draws,
+    // and the fill beneath it ends exactly where that line runs.
+    const seaRaw = clamp(pNum(params, 'seaLevel', 0.32), 0, 0.75);
+    const seaIndex = seaRaw <= 0 ? 0 : Math.max(1, Math.min(levels - 1, Math.round(seaRaw * levels)));
 
     // The sampling grid is a parameter, never a function of the canvas size.
     // Deriving it from pixels would trace a 108px thumbnail on a coarser grid
@@ -123,6 +128,35 @@ export const contours: Generator = {
         const raw = incision > 0 ? domed * (1 - incision) + noise.ridged(sx, sy, detail) * incision : domed;
         field[j * (cols + 1) + i] = 0.5 + (raw - 0.5) * amp;
       }
+    }
+
+    // Stretch the field to fill 0..1 before any height is asked of it.
+    //
+    // Fractal noise is a sum of gradients and clusters hard around its middle:
+    // measured at the defaults, the raw field ran 0.337 to 0.695, barely a
+    // third of its nominal range. Every height is a fraction of that range, so
+    // the consequences were quiet and large. Of twenty-two contour lines only
+    // eight fell inside the terrain and the rest drew nothing, which made the
+    // count control roughly a third as fine as it claimed. Sea level was worse
+    // than coarse: the default sat below the lowest ground on the map, so the
+    // water simply never appeared, and the slider did nothing at all until
+    // two-thirds of its travel.
+    //
+    // Normalising once here fixes both, and keys them to the relief that is
+    // actually present rather than to one the noise never reaches. It is
+    // scale-invariant because the grid is keyed on the column count: the same
+    // configuration samples the same points, and finds the same extremes, at
+    // any canvas size.
+    let fmin = Infinity;
+    let fmax = -Infinity;
+    for (let k = 0; k < field.length; k++) {
+      const v = field[k] as number;
+      if (v < fmin) fmin = v;
+      if (v > fmax) fmax = v;
+    }
+    const span = fmax - fmin;
+    if (span > 1e-6) {
+      for (let k = 0; k < field.length; k++) field[k] = ((field[k] as number) - fmin) / span;
     }
 
     // Contours are traced as whole curves, not emitted cell by cell.
@@ -302,6 +336,83 @@ export const contours: Generator = {
       paths[L] = d;
     }
 
+    // The water, filled cell by cell rather than by closing the coastline into
+    // polygons. A contour that runs off the canvas is not a closed ring, so
+    // filling from the rings alone would need the open ones stitched together
+    // along the border — real work, for a boundary that is then covered by the
+    // coastline stroke drawn over it. Walking each cell's edges in order and
+    // collecting the corners below the line, plus the crossings, gives the same
+    // region to within the width of that stroke.
+    //
+    // The two diagonal cases come out as a bowtie, since the water there is two
+    // opposite corners the walk joins into one loop. They are a fraction of a
+    // percent of cells, the lobes still fill, and the join sits under the
+    // shoreline.
+    //
+    // Runs of wholly submerged cells are merged along the row into a single
+    // rectangle. Only the cells the shoreline actually crosses need their own
+    // polygon, and open water is most of the water: at a high sea level the
+    // per-cell version spent 600kB of path data drawing the same rectangle
+    // forty times in a row, which the preview renders synchronously on the main
+    // thread. The merge is exact -- adjacent full cells share an edge -- so it
+    // costs nothing but the bookkeeping.
+    let water = '';
+    if (seaIndex > 0) {
+      const seaIso = seaIndex / levels;
+      for (let j = 0; j < rows; j++) {
+        const y0 = j * ch;
+        const y1 = y0 + ch;
+        const rowA = j * (cols + 1);
+        const rowB = (j + 1) * (cols + 1);
+        let runFrom = -1;
+        const flush = (until: number): void => {
+          if (runFrom < 0) return;
+          const rx0 = num(runFrom * cw, 1);
+          const rx1 = num(until * cw, 1);
+          const ry0 = num(y0, 1);
+          const ry1 = num(y1, 1);
+          water += `M${rx0} ${ry0}L${rx1} ${ry0}L${rx1} ${ry1}L${rx0} ${ry1}Z`;
+          runFrom = -1;
+        };
+        for (let i = 0; i < cols; i++) {
+          const a = field[rowA + i] as number;
+          const b = field[rowA + i + 1] as number;
+          const c = field[rowB + i + 1] as number;
+          const e = field[rowB + i] as number;
+          const A = a > seaIso;
+          const B = b > seaIso;
+          const C = c > seaIso;
+          const E = e > seaIso;
+          if (A && B && C && E) {
+            flush(i);
+            continue;
+          }
+          if (!A && !B && !C && !E) {
+            if (runFrom < 0) runFrom = i;
+            continue;
+          }
+          flush(i);
+          const x0 = i * cw;
+          const x1 = x0 + cw;
+          const pts: string[] = [];
+          const at = (x: number, y: number): void => {
+            pts.push(`${num(x, 1)} ${num(y, 1)}`);
+          };
+          // Round the cell: top left to top right, then down, back, and up.
+          if (!A) at(x0, y0);
+          if (A !== B) at(x0 + cw * ((seaIso - a) / (b - a || 1e-9)), y0);
+          if (!B) at(x1, y0);
+          if (B !== C) at(x1, y0 + ch * ((seaIso - b) / (c - b || 1e-9)));
+          if (!C) at(x1, y1);
+          if (C !== E) at(x0 + cw * ((seaIso - e) / (c - e || 1e-9)), y1);
+          if (!E) at(x0, y1);
+          if (E !== A) at(x0, y0 + ch * ((seaIso - a) / (e - a || 1e-9)));
+          if (pts.length >= 3) water += `M${pts.join('L')}Z`;
+        }
+        flush(cols);
+      }
+    }
+
     const bg = hexToOklch(palette.background);
     const tintTop = oklchToHex({ ...bg, l: clamp(bg.l + (palette.mode === 'dark' ? 0.014 : -0.012), 0, 1) });
     const tintBottom = oklchToHex(
@@ -319,6 +430,20 @@ export const contours: Generator = {
 
     let body = defs + el('rect', { x: 0, y: 0, width: w, height: h, fill: 'url(#ct-bg)' });
 
+    // Water goes down before any contour, so the lines that cross it — the ones
+    // below sea level, which a real sheet would show as soundings — read as
+    // being under the surface rather than drawn on top of it. Muted rather than
+    // the accent at full strength: a solid third of the canvas in a saturated
+    // colour stops being a map and becomes a poster.
+    if (water) {
+      const low = clamp(0.5 - 0.5 * colorSpread, 0, 1);
+      body += el('path', {
+        d: water,
+        fill: oklchToHex(mixOklch(bg, hexToOklch(accentAt(palette, low)), palette.mode === 'dark' ? 0.26 : 0.2)),
+        stroke: 'none',
+      });
+    }
+
     const base = minDim * 0.0022 * weight;
     for (let L = 1; L < levels; L++) {
       const d = paths[L] as string;
@@ -329,14 +454,18 @@ export const contours: Generator = {
       const t = clamp(0.5 + ((L / levels) - 0.5) * colorSpread, 0, 1);
       const step = Math.round(t * (COLOR_STEPS - 1)) / (COLOR_STEPS - 1);
       const isIndex = indexEvery > 0 && L % indexEvery === 0;
+      // The shoreline is the one line on the map that separates two kinds of
+      // place rather than two heights, so it carries more weight than even an
+      // index contour.
+      const isCoast = L === seaIndex;
       body += el(
         'g',
         {
           fill: 'none',
           stroke: accentAt(palette, step),
-          'stroke-width': num(isIndex ? base * 2.1 : base, 2),
+          'stroke-width': num(isCoast ? base * 3.2 : isIndex ? base * 2.1 : base, 2),
           'stroke-linecap': 'round',
-          'stroke-opacity': isIndex ? '1' : '0.82',
+          'stroke-opacity': isCoast || isIndex ? '1' : '0.82',
         },
         el('path', { d }),
       );
