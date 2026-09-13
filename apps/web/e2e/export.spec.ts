@@ -14,7 +14,10 @@ test.describe('export', () => {
     // Bleed on by default: the file is 8% larger on every edge.
     await expect(page.getByText('1496×3243', { exact: true })).toBeVisible();
 
+    // Measuring is an explicit ask now: the encode blocks the main thread for
+    // about a second, so it does not run on every settings change.
     const sizeCell = page.getByTestId('export-size');
+    await page.getByTestId('measure-size').click();
     await expect(sizeCell).not.toHaveText('measuring…', { timeout: 60_000 });
     await expect(sizeCell).not.toHaveText('—', { timeout: 60_000 });
 
@@ -52,11 +55,11 @@ test.describe('export', () => {
     await page.getByRole('tab', { name: 'Export' }).click();
     await page.getByLabel('Device').selectOption('ip13mini');
 
-    // The panel re-measures on every settings change; wait for the new number
-    // rather than reading whatever the previous one left behind.
+    // A settings change clears the number rather than re-measuring, so each
+    // reading is asked for explicitly.
     const sizeCell = page.getByTestId('export-size');
     const measured = async (): Promise<string> => {
-      await expect(sizeCell).toHaveText('measuring…', { timeout: 30_000 });
+      await page.getByTestId('measure-size').click();
       await expect(sizeCell).not.toHaveText('measuring…', { timeout: 60_000 });
       return (await sizeCell.textContent()) ?? '';
     };
@@ -118,10 +121,12 @@ test.describe('export', () => {
     await page.getByLabel('Height').fill('430');
 
     const sizeCell = page.getByTestId('export-size');
+    await page.getByTestId('measure-size').click();
     await expect(sizeCell).not.toHaveText('measuring…', { timeout: 30_000 });
     const base = await sizeCell.textContent();
 
     await page.getByRole('switch', { name: /Home Screen variant/i }).click();
+    await page.getByTestId('measure-size').click();
     await expect(sizeCell).not.toHaveText('measuring…', { timeout: 30_000 });
     const boosted = await sizeCell.textContent();
     expect(boosted).toBeTruthy();

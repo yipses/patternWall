@@ -60,30 +60,37 @@ export function ExportPanel({ subject }: { subject: ExportSubject }) {
     [subject.generatorId, subject.seed, outWidth, outHeight, homeVariant],
   );
 
-  // Measure the real encoded size in the background whenever the settings that
-  // affect it change. It is the actual encoder on the actual resolution, so the
-  // number next to the button is a fact rather than an estimate.
+  // A settings change invalidates the number but does not re-measure. Showing
+  // a stale size would be worse than showing none.
   useEffect(() => {
-    let cancelled = false;
     setSize(null);
-    setMeasuring(true);
-    const id = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const blob = await renderPngBlob(buildSvg(), outWidth, outHeight, { depth, colors });
-          if (!cancelled) setSize(blob.size);
-        } catch {
-          if (!cancelled) setSize(null);
-        } finally {
-          if (!cancelled) setMeasuring(false);
-        }
-      })();
-    }, 450);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(id);
-    };
   }, [buildSvg, outWidth, outHeight, depth, colors]);
+
+  /**
+   * The measurement is the real encoder at the real resolution, so the number
+   * is a fact rather than an estimate. It is also expensive: at 1399x3042,
+   * measured on a desktop, the render is 68ms, the rasterise 188ms and
+   * UPNG.encode 949ms — and all of it is synchronous on the main thread.
+   *
+   * It used to run automatically 450ms after the panel opened and after every
+   * settings change, so moving the palette-size slider froze the UI for about a
+   * second per step. On a phone that is several seconds nobody asked for. It is
+   * now asked for explicitly. Downloading still fills the number in, since the
+   * encode has happened anyway.
+   */
+  const onMeasure = async () => {
+    setMeasuring(true);
+    setError(null);
+    try {
+      const blob = await renderPngBlob(buildSvg(), outWidth, outHeight, { depth, colors });
+      setSize(blob.size);
+    } catch (err) {
+      setSize(null);
+      setError(err instanceof Error ? err.message : 'That size could not be measured. Try PNG-24, or a smaller size.');
+    } finally {
+      setMeasuring(false);
+    }
+  };
 
   useEffect(() => {
     if (!done) return;
@@ -123,7 +130,17 @@ export function ExportPanel({ subject }: { subject: ExportSubject }) {
           <dt>Format</dt>
           <dd>{depth === 'png8' ? `PNG-8 · ${colors} colours` : 'PNG-24'}</dd>
           <dt>Size</dt>
-          <dd data-testid="export-size">{measuring ? 'measuring…' : size === null ? '—' : formatBytes(size)}</dd>
+          <dd data-testid="export-size">
+            {measuring ? (
+              'measuring…'
+            ) : size === null ? (
+              <Button size="small" variant="ghost" onClick={() => void onMeasure()} data-testid="measure-size">
+                Check size
+              </Button>
+            ) : (
+              formatBytes(size)
+            )}
+          </dd>
         </dl>
       </div>
 
