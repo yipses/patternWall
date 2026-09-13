@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GRID_SIZE, packGrid, renderToSvg, unpackGrid } from '../src/index.js';
+import { GRID_SIZE, GRID_SIZES, gridChars, packGrid, renderToSvg, unpackGrid } from '../src/index.js';
 import { ALL_GENERATORS, baseParams, rasterize, sampleGrid, TEST_PALETTES } from './helpers.js';
 
 const stringArt = ALL_GENERATORS.find((g) => g.id === 'string-art')!;
@@ -131,17 +131,30 @@ describe('string-art', () => {
    * as well as through the render: sixteen levels, so nothing may move by more
    * than half a step.
    */
-  it('packs and unpacks a picture within one quantisation step', () => {
-    const cells = new Float32Array(GRID_SIZE * GRID_SIZE);
-    for (let i = 0; i < cells.length; i++) cells[i] = (i % 97) / 96;
-    const back = unpackGrid(packGrid(cells));
-    expect(back, 'a freshly packed grid did not unpack').not.toBeNull();
-    let worst = 0;
-    for (let i = 0; i < cells.length; i++) worst = Math.max(worst, Math.abs((back as Float32Array)[i]! - cells[i]!));
-    expect(worst, `a value moved by ${worst.toFixed(4)}, more than half a level`).toBeLessThanOrEqual(0.5 / 15 + 1e-6);
+  it('packs and unpacks a picture at every size within one quantisation step', () => {
+    for (const size of GRID_SIZES) {
+      const cells = new Float32Array(size * size);
+      for (let i = 0; i < cells.length; i++) cells[i] = (i % 97) / 96;
+      const packed = packGrid(cells, size);
+      expect(packed.length, `a ${size} grid packed to ${packed.length} characters`).toBe(gridChars(size));
+
+      const back = unpackGrid(packed);
+      expect(back, `a freshly packed ${size} grid did not unpack`).not.toBeNull();
+      // The grid carries its own size, which is what lets a link made at one
+      // detail setting still read at another.
+      expect(back!.size, 'the grid forgot what size it was').toBe(size);
+      let worst = 0;
+      for (let i = 0; i < cells.length; i++) worst = Math.max(worst, Math.abs(back!.values[i]! - cells[i]!));
+      expect(worst, `at ${size} a value moved by ${worst.toFixed(4)}, more than half a level`).toBeLessThanOrEqual(
+        0.5 / 15 + 1e-6,
+      );
+    }
 
     expect(unpackGrid(''), 'the empty string is not a picture').toBeNull();
     expect(unpackGrid('not-a-grid'), 'a short string is not a picture').toBeNull();
-    expect(unpackGrid(sampleGrid().replace(/^.{4}/, '****')), 'a grid with foreign characters').toBeNull();
+    expect(unpackGrid(sampleGrid().replace(/^.{5}/, '*****')), 'a grid with foreign characters').toBeNull();
+    // A grid whose marker says one size and whose body is another length is
+    // the failure a bare length check would miss.
+    expect(unpackGrid(sampleGrid().slice(0, -4)), 'a truncated grid').toBeNull();
   });
 });

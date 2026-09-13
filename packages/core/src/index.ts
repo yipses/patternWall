@@ -26,7 +26,7 @@ export {
 } from './palette.js';
 export { curatedPalettes, defaultPalette, getPalette, PALETTE_TAGS, type PaletteTag } from './palettes.js';
 export { createNoise2D, noise1D, type Noise2D } from './noise.js';
-export { packGrid, unpackGrid, isPackedGrid, GRID_SIZE, GRID_LEVELS, GRID_CHARS } from './imagegrid.js';
+export { packGrid, unpackGrid, isPackedGrid, gridSizeOf, gridChars, GRID_SIZE, GRID_SIZES, GRID_LEVELS } from './imagegrid.js';
 export {
   clamp,
   distanceToRect,

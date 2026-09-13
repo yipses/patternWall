@@ -40,8 +40,9 @@ export type ParamSpec =
        * A picture, packed small enough to ride in the share link.
        *
        * The value is a `packGrid` string — see `imagegrid.ts` for why a
-       * photograph reduces to 1,152 bytes without costing anything the solver
-       * can see. An empty string means no picture was given, which generators
+       * photograph reduces to something a URL can carry. The grid names its
+       * own size, so a link made at one detail setting still reads at another.
+       * An empty string means no picture was given, which generators
        * are expected to answer with something of their own rather than with a
        * blank canvas.
        */

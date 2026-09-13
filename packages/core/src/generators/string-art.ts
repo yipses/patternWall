@@ -2,7 +2,7 @@ import { accentAt } from '../palette.js';
 import { hexToOklch, oklchToHex } from '../color.js';
 import { createNoise2D } from '../noise.js';
 import { clamp } from '../geometry.js';
-import { GRID_SIZE, unpackGrid } from '../imagegrid.js';
+import { GRID_SIZES, unpackGrid } from '../imagegrid.js';
 import { el, num, svgRoot } from '../svg.js';
 import { pBool, pNum, pStr, type Generator, type RenderContext } from '../types.js';
 
@@ -15,21 +15,31 @@ What makes it work is the subtraction. Without it the search would pick the same
 
 **Threads** therefore controls the tone as much as the detail. Each one is worth less than the last, so a thousand threads and three thousand threads carry the same total ink and differ in how finely it is distributed. **Nails** sets how many directions are available; below about a hundred the chords visibly snap to a coarse set of angles, and past three hundred the extra choices mostly duplicate each other.
 
-Upload a picture and it becomes the target. Anything you give it is reduced to a 48×48 grid of sixteen darkness levels before the solver sees it, which sounds brutal and costs almost nothing: measured against the full-resolution original, the coarse target scores 0.75 correlation where the full one scores 0.78. That reduction is what lets the whole picture travel in the share link — a string-art link is the portrait, not a reference to one. With no picture given, the target is a field of the seed's own noise, which makes an abstract rather than a portrait.
+Upload a picture and it becomes the target. Whatever you give it is reduced to a square grid of sixteen darkness levels before the solver sees it, because the whole picture has to travel in the share link — a string-art link is the portrait, not a reference to one. **Picture detail** is where that trade is made, and it is a real one: measured against a full-resolution original with detail at several scales, a 48-cell grid scores 0.73 correlation for about 1,500 characters of URL and a 128-cell grid scores 0.79 for about 11,000. Finer than that stops paying — 192 cells costs 24,600 characters and scores *worse*, because the gain is in how finely the solver tracks its own work rather than in how much of the photograph it was handed. With no picture given, the target is a composition of the seed's own making, which is an abstract rather than a portrait.
 `.trim();
 
 /**
- * The grid the solver actually works on.
+ * The grid the solver actually works on, derived from the stored one.
  *
- * The stored target is 48x48, but solving at 48 is a different thing from
- * solving *from* 48: the residual is the solver's memory of what it has
- * already covered, and at 48 cells a single thread darkens a huge fraction of
- * every cell it touches, so the bookkeeping is far coarser than the geometry.
- * Measured, solving on the stored grid scores 0.63 correlation where
- * upsampling it first and solving at 128 scores 0.72 and at 300 scores 0.75.
- * 192 sits where the curve has flattened and costs about a third of a second.
+ * These are two different resolutions doing two different jobs, and the second
+ * one turns out to be the bigger lever. The stored grid is how much of the
+ * photograph survived; the solve grid is the residual, which is the solver's
+ * memory of where it has already put thread. Too coarse a residual and one
+ * chord darkens a huge fraction of every cell it crosses, so the search
+ * loses track of its own work long before it runs out of picture.
+ *
+ * Measured from a 128 grid against a detailed original: solving at 192 scores
+ * 0.755, at 256 scores 0.778 and at 320 scores 0.789 — a bigger gain than
+ * going from a 48 store to a 128 one, and it costs only time. Storing finer
+ * than 128 is the thing that does not pay: a 192 grid is 24,580 characters of
+ * link and scores 0.776, which a 128 grid beats by being solved on more field.
+ *
+ * Two and a half times the stored size, bounded, is where those numbers put
+ * it. The ceiling is a render-time decision: 320 solves in about two seconds.
  */
-const SOLVE_GRID = 192;
+const SOLVE_MULTIPLE = 2.5;
+const SOLVE_MIN = 192;
+const SOLVE_MAX = 320;
 
 /**
  * Nails nearer than this fraction of the ring are not offered as a target.
@@ -58,7 +68,7 @@ export const stringArt: Generator = {
   tags: ['radial', 'flow'],
   description,
   params: [
-    { key: 'image', label: 'Picture', type: 'image', default: '', description: 'The photograph the thread is trying to reproduce, reduced to a 48×48 grid of sixteen darkness levels — small enough that the whole picture travels in the share link. With none given, the target is a field of the seed’s own noise.' },
+    { key: 'image', label: 'Picture', type: 'image', default: '', description: 'The photograph the thread is trying to reproduce, reduced to a grid of sixteen darkness levels — small enough that the whole picture travels in the share link. How fine that grid is comes from Picture detail. With none given, the target is a composition of the seed’s own making.' },
     { key: 'threads', label: 'Threads', type: 'number', min: 300, max: 4000, step: 50, default: 1800, description: 'How many chords are wound. Each is worth less ink than the last, because the total is fixed by how dark the picture is — so this trades boldness for fineness rather than making the image darker.' },
     { key: 'nails', label: 'Nails', type: 'number', min: 60, max: 360, step: 4, default: 240, description: 'How many directions the thread can take. Below about a hundred the chords snap to a visibly coarse set of angles; past three hundred the extra choices mostly duplicate ones already there.' },
     { key: 'diameter', label: 'Diameter', type: 'number', min: 0.4, max: 1.2, step: 0.01, default: 0.92, description: 'The width of the ring as a fraction of the canvas width. Above 1 the nails run off the sides, which crops the disc into the frame.' },
@@ -67,6 +77,7 @@ export const stringArt: Generator = {
     { key: 'thickness', label: 'Thread', type: 'number', min: 0.3, max: 2.5, step: 0.05, default: 1, description: 'How heavy the thread is drawn. It does not change where the threads go — only how much of the board each one covers, so it is the fastest way to lift or flatten the contrast of a finished winding.' },
     { key: 'contrast', label: 'Contrast', type: 'number', min: 0.4, max: 2.5, step: 0.05, default: 1, description: 'A curve on the target before any thread is wound. Below 1 lifts the mid tones so more of the picture gets attention; above 1 drives them down and the thread concentrates on the darkest passages.' },
     { key: 'nailsVisible', label: 'Show nails', type: 'boolean', default: true, description: 'Draws the ring of nails the thread is wound around. They are the one part of the picture that is not thread.' },
+    { key: 'detail', label: 'Picture detail', type: 'select', options: [{ value: '48', label: 'Coarse \u2014 short link' }, { value: '64', label: 'Low' }, { value: '96', label: 'High' }, { value: '128', label: 'Finest \u2014 long link' }], default: '128', description: 'How finely a picture is read when you choose one. The whole picture travels in the share link, so this is a trade rather than a free setting: coarse is about 1,500 characters of URL and finest is about 11,000. It applies to the next picture you pick \u2014 the one already loaded keeps whatever it was read at, since the original is not kept.' },
   ],
 
   render(ctx: RenderContext): string {
@@ -85,10 +96,17 @@ export const stringArt: Generator = {
     const cx = w / 2 + offsetX * w;
     const cy = h / 2 + offsetY * h;
 
-    // The target, on the solver's grid. A given picture is a 48x48 grid
+    // The target, on the solver's grid. A given picture is a stored grid
     // stretched to it; with none, the seed's own noise stands in, so the
     // pattern is still a pattern rather than an empty ring.
     const given = unpackGrid(pStr(params, 'image', ''));
+    // The stored picture names its own size, so a link made at one detail
+    // setting still reads at another; the control only governs what the next
+    // upload is reduced to.
+    const gridSize = given ? given.size : (GRID_SIZES[GRID_SIZES.length - 1] as number);
+    const SOLVE_GRID = Math.round(
+      clamp(gridSize * SOLVE_MULTIPLE, SOLVE_MIN, SOLVE_MAX),
+    );
     const target = new Float32Array(SOLVE_GRID * SOLVE_GRID);
     const noise = createNoise2D(rng);
     for (let j = 0; j < SOLVE_GRID; j++) {
@@ -103,19 +121,20 @@ export const stringArt: Generator = {
           // Bilinear, not nearest: the stored grid is a quarter the solver's
           // resolution each way, and nearest would hand the search a staircase
           // to chase along every tonal edge.
-          const fx = Math.min(GRID_SIZE - 1.001, ((i + 0.5) * GRID_SIZE) / SOLVE_GRID - 0.5);
-          const fy = Math.min(GRID_SIZE - 1.001, ((j + 0.5) * GRID_SIZE) / SOLVE_GRID - 0.5);
+          const g = given.values;
+          const fx = Math.min(gridSize - 1.001, ((i + 0.5) * gridSize) / SOLVE_GRID - 0.5);
+          const fy = Math.min(gridSize - 1.001, ((j + 0.5) * gridSize) / SOLVE_GRID - 0.5);
           const i0 = Math.max(0, Math.floor(fx));
           const j0 = Math.max(0, Math.floor(fy));
           const tx = fx - i0;
           const ty = fy - j0;
-          const i1 = Math.min(GRID_SIZE - 1, i0 + 1);
-          const j1 = Math.min(GRID_SIZE - 1, j0 + 1);
+          const i1 = Math.min(gridSize - 1, i0 + 1);
+          const j1 = Math.min(gridSize - 1, j0 + 1);
           v =
-            (given[j0 * GRID_SIZE + i0] as number) * (1 - tx) * (1 - ty) +
-            (given[j0 * GRID_SIZE + i1] as number) * tx * (1 - ty) +
-            (given[j1 * GRID_SIZE + i0] as number) * (1 - tx) * ty +
-            (given[j1 * GRID_SIZE + i1] as number) * tx * ty;
+            (g[j0 * gridSize + i0] as number) * (1 - tx) * (1 - ty) +
+            (g[j0 * gridSize + i1] as number) * tx * (1 - ty) +
+            (g[j1 * gridSize + i0] as number) * (1 - tx) * ty +
+            (g[j1 * gridSize + i1] as number) * tx * ty;
         } else {
           // No picture given, so the seed supplies one. Plain noise will not
           // do: it is uniform by construction, and a uniform target gives the
@@ -129,7 +148,10 @@ export const stringArt: Generator = {
           const lobes = clamp(noise.fbm(nx * 2.6, ny * 2.6, 3) * 0.5 + 0.5, 0, 1);
           v = clamp(vignette * 0.68 + lobes * 0.5 - 0.12, 0, 1);
         }
-        target[j * SOLVE_GRID + i] = Math.pow(v, contrast);
+        // `Math.pow` is implementation-approximated, and this target feeds a
+        // greedy search that turns one bit of difference into a different
+        // picture, so it is not called unless it has something to do.
+        target[j * SOLVE_GRID + i] = contrast === 1 ? v : Math.pow(v, contrast);
       }
     }
 
@@ -138,14 +160,23 @@ export const stringArt: Generator = {
     // rather than by rescaling coordinates is what makes a thumbnail and an
     // export wind the identical thread.
     const gr = SOLVE_GRID / 2 - 0.5;
-    const gx = new Float64Array(nailCount);
-    const gy = new Float64Array(nailCount);
+    // The solver's nails are whole cells, settled once.
+    //
+    // This is not a rounding convenience, it is what makes the pattern the
+    // same picture everywhere. A greedy search has no tolerance: two engines
+    // that disagree about a chord's length in the last bit choose a different
+    // chord, and from there the two windings share nothing. Integer endpoints
+    // make every length `Math.sqrt` of an exact integer, and `sqrt` is the one
+    // root operation IEEE-754 pins exactly — where `Math.hypot`, which this
+    // used, is explicitly allowed to approximate however an engine likes.
+    const gx = new Int32Array(nailCount);
+    const gy = new Int32Array(nailCount);
     const px = new Float64Array(nailCount);
     const py = new Float64Array(nailCount);
     for (let i = 0; i < nailCount; i++) {
       const a = (i / nailCount) * Math.PI * 2 - Math.PI / 2;
-      gx[i] = SOLVE_GRID / 2 + gr * Math.cos(a);
-      gy[i] = SOLVE_GRID / 2 + gr * Math.sin(a);
+      gx[i] = Math.round(SOLVE_GRID / 2 + gr * Math.cos(a));
+      gy[i] = Math.round(SOLVE_GRID / 2 + gr * Math.sin(a));
       px[i] = cx + radius * Math.cos(a);
       py[i] = cy + radius * Math.sin(a);
     }
@@ -195,7 +226,7 @@ export const stringArt: Generator = {
         const y0 = gy[at] as number;
         const dx = (gx[cand] as number) - x0;
         const dy = (gy[cand] as number) - y0;
-        const steps = Math.max(1, Math.round(Math.hypot(dx, dy)));
+        const steps = Math.max(1, Math.round(Math.sqrt(dx * dx + dy * dy)));
         let sum = 0;
         for (let k = 0; k <= steps; k++) {
           const x = Math.round(x0 + (dx * k) / steps);
@@ -216,7 +247,7 @@ export const stringArt: Generator = {
       const y0 = gy[at] as number;
       const dx = (gx[bestNail] as number) - x0;
       const dy = (gy[bestNail] as number) - y0;
-      const steps = Math.max(1, Math.round(Math.hypot(dx, dy)));
+      const steps = Math.max(1, Math.round(Math.sqrt(dx * dx + dy * dy)));
       for (let k = 0; k <= steps; k++) {
         const x = Math.round(x0 + (dx * k) / steps);
         const y = Math.round(y0 + (dy * k) / steps);

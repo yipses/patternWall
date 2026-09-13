@@ -59,18 +59,18 @@ export function nonBackgroundFraction(pixels: Buffer): number {
  *
  * The image param is the one parameter whose value is a whole picture, and a
  * test that only ever exercises the empty default would not touch the codec,
- * the solver's bilinear read of it, or the share link's ability to carry 1,536
- * characters in one field. A smooth blob is enough to be a picture and is
+ * the solver's bilinear read of it, or the share link's ability to carry ten
+ * thousand characters in one field. A smooth blob is enough to be a picture and is
  * reproducible without a fixture file.
  */
-export function sampleGrid(): string {
-  const cells = new Float32Array(GRID_SIZE * GRID_SIZE);
-  for (let j = 0; j < GRID_SIZE; j++) {
-    for (let i = 0; i < GRID_SIZE; i++) {
-      const nx = (i + 0.5) / GRID_SIZE - 0.5;
-      const ny = (j + 0.5) / GRID_SIZE - 0.5;
-      cells[j * GRID_SIZE + i] = Math.max(0, 1 - Math.hypot(nx, ny) * 2.6);
+export function sampleGrid(size: number = GRID_SIZE): string {
+  const cells = new Float32Array(size * size);
+  for (let j = 0; j < size; j++) {
+    for (let i = 0; i < size; i++) {
+      const nx = (i + 0.5) / size - 0.5;
+      const ny = (j + 0.5) / size - 0.5;
+      cells[j * size + i] = Math.max(0, 1 - Math.hypot(nx, ny) * 2.6);
     }
   }
-  return packGrid(cells);
+  return packGrid(cells, size);
 }

@@ -408,6 +408,12 @@ cannot go wrong.
 
 **An element's structure is a contract the tests read.** Contours were briefly emitted as one group per level *per width bucket*, which says there are six times as many contours as there are — to a reader and to the level-count test, which counts groups. Putting stroke-width on the path and keeping one group per level fixes both. The same test had already been inflated to 17 groups for 13 levels when depression ticks arrived, because those are `fill="none"` groups too, and it broke again when supplementary lines became a third kind that is butt-capped like a tick and dashed like nothing else. Every time a new kind of mark joins the document, the tests that classify marks need the new kind spelled out, or they quietly count the wrong thing.
 
+**A greedy search has no tolerance, and that makes it the one generator where `Math.hypot` and `Math.pow` are a risk.** Every other pattern here turns a float into a coordinate and rounds it for output, so a difference in the last bit disappears. String art feeds its arithmetic back into a decision: the best chord wins, and two engines that disagree about one chord's length by an ULP pick different chords and share nothing from there. `Math.sqrt` is pinned exactly by IEEE-754; `Math.hypot`, `Math.pow`, `Math.cos` and `Math.sin` are all explicitly implementation-approximated. The solver now keeps its nails on whole cells, measures with `sqrt` of an exact integer, and does not call `pow` at all unless contrast is away from 1.
+
+That is a defensible shape regardless, but it is not a diagnosis, and the honest version is worth writing down. `parity.spec.ts` failed once on string-art — browser and Node disagreeing on the rendered length — and after those three changes it passes. Each change was then reverted on its own and parity passed every time, so **none of the three individually explains the failure and it has not reproduced since.** The hypothesis that fits is JIT tiering: an approximated builtin can have different fast and slow paths, the solve runs 1,800 iterations and gets hot partway through, and where that happens differs between the two runtimes. That would make the fault intermittent and dependent on nothing in the source. Treat it like the React #418 note: if it reappears, this is the ground already covered, and the thing to do is capture both strings and find the first differing chord rather than re-guessing which builtin it was.
+
+**Measure a reduction against something that has the detail you are worried about losing.** The string-art grid was set at 48x48 on a measurement that showed quality plateauing by 64 — and the target it was measured against was a face built from a handful of Gaussians, which is low-frequency by construction. A coarse grid caught all of it because there was nothing else to catch, and the number said 96% of full quality for 3% of the bytes. Re-measured against a target carrying detail at several scales, the stored resolution keeps paying well past 64: 0.727 at 48, 0.755 at 128. The reduction had looked free because the test image had already done the reducing.
+
 **A comment can be the last surviving copy of a reverted design.** The arcs
 branch carried four layers of commentary from successive attempts, two of them
 describing code that had been reverted and contradicting the layer below. Each
@@ -520,10 +526,27 @@ have no patterns yet. Truchet and contours are by far the most worked over; the
 rest have had little iteration and should be assumed rougher rather than better.
 
 `string-art` is the only generator that takes an *input*. Its picture is a
-param like any other — an `image` ParamSpec holding a 48x48, 4-bit darkness
-grid packed by `imagegrid.ts` into 1,536 link-safe characters — so a share
-link is the portrait rather than a reference to one, and nothing about the
-upload leaves the browser. The alphabet deliberately excludes `_`, which is
+param like any other — an `image` ParamSpec holding a 4-bit darkness grid
+packed by `imagegrid.ts` into link-safe characters — so a share link is the
+portrait rather than a reference to one, and nothing about the upload leaves
+the browser. The grid names its own size in its first character, so a link
+made at one detail setting still reads at another, and `GRID_SIZES` is the
+set it may take: 48 costs about 1,500 characters of URL and 128 about 11,000.
+
+Two resolutions do two jobs there and the second is the bigger lever. The
+stored grid is how much of the photograph survived; the solve grid is the
+residual, the solver's memory of where it has already put thread, and it is
+derived at two and a half times the stored size. From a 128 grid, solving at
+192 scores 0.755 correlation, at 256 0.778 and at 320 0.789 — more than any
+increase in stored resolution buys. Storing finer than 128 is the thing that
+does not pay: 192 cells is 24,600 characters and scores 0.776.
+
+The first measurement of all this was wrong in a way worth remembering: it
+put the plateau at 64 cells, because the target it measured against was a
+face built from a few Gaussians, which is low-frequency by construction. A
+coarse grid caught all of it because there was nothing else to catch. Measure
+a reduction against something that has the detail you are worried about
+losing, or the reduction will always look free. The alphabet deliberately excludes `_`, which is
 what `share.ts` separates params with. Adding that param kind broke three
 places that assumed "not number, not boolean, therefore select"; if you add a
 fourth kind, expect the same.

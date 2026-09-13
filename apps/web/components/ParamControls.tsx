@@ -1,7 +1,7 @@
 'use client';
 
-import { useId, useRef, useState } from 'react';
-import type { Generator, ParamSpec, ParamValue } from '@patternwall/core';
+import { useEffect, useId, useRef, useState } from 'react';
+import { GRID_SIZE, type Generator, type ParamSpec, type ParamValue } from '@patternwall/core';
 import { loadImageFile } from '../lib/extract';
 import { imageToGrid } from '../lib/to-grid';
 import { Switch, uiStyles as ui } from './ui';
@@ -26,7 +26,7 @@ function formatValue(spec: ParamSpec, value: ParamValue): string {
  * shown here next to the control that caused it rather than thrown into the
  * page's error boundary.
  *
- * What it hands back is not the image: it is the packed 48x48 darkness grid,
+ * What it hands back is not the image: it is the packed darkness grid,
  * which is a parameter like any other and travels in the share link with the
  * rest of them. Nothing anywhere keeps the original file.
  */
@@ -34,16 +34,38 @@ function ImageField({
   id,
   helpId,
   hasPicture,
+  size,
   onPicked,
 }: {
   id: string;
   helpId: string;
   hasPicture: boolean;
+  size: number;
   onPicked: (packed: string) => void;
 }) {
   const input = useRef<HTMLInputElement | null>(null);
+  // The decoded picture is kept for as long as the page lives, so that changing
+  // the detail control re-reads it rather than asking for the file again. It is
+  // deliberately not stored anywhere: reload, or arrive from a link, and the
+  // original is gone — only the packed grid survives, which is the whole point
+  // of packing it.
+  const source = useRef<HTMLImageElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+
+  // Re-pack when the detail changes, but only from an image we still have.
+  const firstSize = useRef(size);
+  useEffect(() => {
+    if (size === firstSize.current) return;
+    firstSize.current = size;
+    const img = source.current;
+    if (!img) return;
+    try {
+      onPicked(imageToGrid(img, size));
+    } catch (err) {
+      setProblem(err instanceof Error ? err.message : 'That picture could not be read.');
+    }
+  }, [size, onPicked]);
 
   return (
     <div>
@@ -63,7 +85,9 @@ function ImageField({
           setBusy(true);
           setProblem(null);
           try {
-            onPicked(imageToGrid(await loadImageFile(file)));
+            const img = await loadImageFile(file);
+            source.current = img;
+            onPicked(imageToGrid(img, size));
           } catch (err) {
             setProblem(err instanceof Error ? err.message : 'That picture could not be read.');
           } finally {
@@ -76,6 +100,7 @@ function ImageField({
           type="button"
           className={`${ui.btn} ${ui.ghost} ${ui.small}`}
           onClick={() => {
+            source.current = null;
             onPicked('');
             if (input.current) input.current.value = '';
           }}
@@ -96,11 +121,20 @@ function ImageField({
 function Control({
   spec,
   value,
+  detail,
   onChange,
   onCommit,
 }: {
   spec: ParamSpec;
   value: ParamValue;
+  /**
+   * The grid size a picture should be read at, from the generator's own
+   * `detail` param where it has one. An image control has to know it, and a
+   * param spec only describes itself — so it is threaded in rather than looked
+   * up, which keeps `ParamControls` the only place that knows the two are
+   * related.
+   */
+  detail: number;
   onChange: (v: ParamValue) => void;
   onCommit: () => void;
 }) {
@@ -157,6 +191,7 @@ function Control({
           id={id}
           helpId={helpId}
           hasPicture={typeof value === 'string' && value.length > 0}
+          size={detail}
           onPicked={(packed) => {
             onChange(packed);
             onCommit();
@@ -194,6 +229,14 @@ export function ParamControls({
   onChange: (key: string, value: ParamValue) => void;
   onCommit: () => void;
 }) {
+  // A generator with a picture may also declare how finely to read one. Only
+  // string art does today, and the lookup is deliberately a lookup rather than
+  // anything the ParamSpec union knows about: a spec describes itself, and one
+  // param needing to see another is a fact about this generator, not about the
+  // type.
+  const declared = params.detail ?? generator.params.find((p) => p.key === 'detail')?.default;
+  const detail = Number(declared);
+
   return (
     <div>
       {generator.params.map((spec) => (
@@ -201,6 +244,7 @@ export function ParamControls({
           key={spec.key}
           spec={spec}
           value={params[spec.key] ?? spec.default}
+          detail={Number.isFinite(detail) && detail > 0 ? detail : GRID_SIZE}
           onChange={(v) => onChange(spec.key, v)}
           onCommit={onCommit}
         />

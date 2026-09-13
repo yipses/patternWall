@@ -55,7 +55,7 @@ test.describe('browser and Node render identically', () => {
         if (spec.type === 'number') params[spec.key] = Number(((spec.min + spec.max) / 2).toFixed(2));
         else if (spec.type === 'boolean') params[spec.key] = !spec.default;
         // A picture, not the empty default: the byte-for-byte claim has to cover
-        // the one parameter that carries 1,536 characters of payload.
+        // the one parameter that carries ten thousand characters of payload.
         else if (spec.type === 'image') params[spec.key] = sampleGrid();
         else params[spec.key] = spec.options[spec.options.length - 1]!.value;
       }

@@ -214,6 +214,8 @@ a non-blank canvas on six palettes, share-link round-tripping, and browser/Node 
   1399px export can differ by a handful of shapes out of several thousand. The test suite holds this
   to half a percent per element type.
 - **Seven generators.** The taxonomy has eight tags; `distortion` and `physics` have no patterns yet.
-- **String art carries its picture in the link, at 48×48.** That is a deliberate trade — the whole
-  portrait travels in a URL rather than living on a server — but it is the only pattern whose input
-  is lossy before you see it, and a photograph with fine detail will lose it.
+- **String art carries its picture in the link.** That is a deliberate trade — the whole portrait
+  travels in a URL rather than living on a server — but it is the only pattern whose input is lossy
+  before you see it, and the Picture detail control is where you pay for it: about 1,500 characters
+  of URL at the coarsest and about 11,000 at the finest. A link that long will survive a browser but
+  not a text message, which is what the rest of the share encoding was designed for.
