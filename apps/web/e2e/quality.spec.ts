@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { settled } from './helpers';
 
@@ -147,5 +149,47 @@ test.describe('layout and accessibility', () => {
       expect(when).toBeGreaterThan(Date.now() - 1000 * 60 * 60 * 24);
       expect(when).toBeLessThan(Date.now() + 1000 * 60 * 5);
     }
+  });
+
+  /**
+   * The build stamp has to be ONE value, not two that happen to agree.
+   *
+   * Next evaluates next.config.mjs more than once per build, and a bare
+   * `new Date()` there gave the prerendered HTML an earlier instant than the
+   * client bundle -- 3.6s to 11.3s earlier, measured over six builds. Since the
+   * footer renders it to the minute, the two agreed almost always and diverged
+   * exactly when the loads straddled a minute boundary: a text hydration
+   * mismatch on roughly 6% of warm builds and 19% of cold ones, which is what
+   * the intermittent React #418 in this suite turned out to be.
+   *
+   * The symptom is a bad thing to test -- it only appears a few percent of the
+   * time. The cause is not: read both stamps out of the built export and
+   * require them to be identical. This fails on every straddled build and, more
+   * usefully, on every non-straddled one too.
+   */
+  test('the build stamp is one value, not two that usually agree', () => {
+    const out = join(__dirname, '..', 'out');
+    const ISO = /20\d\d-\d\d-\d\dT[\d:.]+Z/g;
+
+    const html = readFileSync(join(out, 'index.html'), 'utf8').match(ISO) ?? [];
+    expect(html.length, 'no build stamp found in the prerendered HTML').toBeGreaterThan(0);
+
+    const chunks = join(out, '_next', 'static', 'chunks');
+    const fromJs = new Set<string>();
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.js')) for (const m of readFileSync(full, 'utf8').match(ISO) ?? []) fromJs.add(m);
+      }
+    };
+    walk(chunks);
+    expect(fromJs.size, 'no build stamp found in the client bundle').toBeGreaterThan(0);
+
+    const all = new Set([...html, ...fromJs]);
+    expect(
+      [...all],
+      `the prerendered HTML and the client bundle disagree about the build time: ${[...all].join(' vs ')}`,
+    ).toHaveLength(1);
   });
 });

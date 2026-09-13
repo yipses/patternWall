@@ -13,9 +13,27 @@ const basePath = process.env.PATTERNWALL_BASE_PATH?.replace(/\/$/, '') ?? '';
  * of itself you are looking at. A green deploy is not proof the site changed —
  * that gap cost real debugging time once — so the page carries the answer.
  * GITHUB_SHA is set by Actions; locally there is no commit to name.
+ *
+ * The stamp is stashed on `process.env` rather than being a fresh `new Date()`
+ * each time this module is evaluated, because **Next loads this config more
+ * than once per build** and the loads are seconds apart. The prerendered HTML
+ * was getting an earlier timestamp than the client bundle — 3.6s to 11.3s
+ * earlier, measured over six builds — and `SiteFooter` renders it to the
+ * minute. So whenever the two loads straddled a minute boundary, the server
+ * said one thing and the client's first render said another: a text hydration
+ * mismatch, React error #418, on roughly 6% of warm builds and 19% of cold
+ * ones. It took two sightings and a full investigation to place, because
+ * nothing about the page is nondeterministic — the build was.
+ *
+ * Assigning through the environment makes every later load reuse the first
+ * value, and the child processes Next forks inherit it. Verified by building
+ * repeatedly and diffing the stamp in `out/index.html` against the one in
+ * `out/_next/**.js`: identical every time, where before they never matched.
  */
+process.env.NEXT_PUBLIC_BUILD_TIME ??= new Date().toISOString();
+
 const buildStamp = {
-  NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
+  NEXT_PUBLIC_BUILD_TIME: process.env.NEXT_PUBLIC_BUILD_TIME,
   NEXT_PUBLIC_BUILD_COMMIT: (process.env.GITHUB_SHA ?? '').slice(0, 7),
 };
 
