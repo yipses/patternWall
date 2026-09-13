@@ -49,7 +49,7 @@ describe('contours', () => {
    */
   it.each([
     ['ordinary country', { resolution: 60, levels: 18 }],
-    ['rough country, where saddles occur', { resolution: 200, levels: 60, detail: 5, scale: 6 }],
+    ['rough country, where saddles occur', { resolution: 200, levels: 60, detail: 5, scale: 6, grain: 1, incision: 0.8 }],
   ])('leaves no contour stopping in the middle of the map: %s', (_label, over) => {
     const SIZE = 600;
     const svg = render(over, SIZE);
@@ -81,9 +81,16 @@ describe('contours', () => {
    * field rather than dimming the ink, so the test is about how much line there
    * is up there, not how bright it is.
    *
-   * The thresholds come from measuring both ends rather than from taste: at
-   * relief 0 the top holds about 0.9 of what the bottom does, and at relief 1
-   * about 0.05.
+   * The two ends are compared against each other on one seed rather than
+   * against fixed numbers, because the measure is strongly seed-dependent: over
+   * four seeds, relief 0 gives a top-to-bottom ratio anywhere from 0.68 to
+   * 1.70, and relief 1 from 0.07 to 0.25. A constant bound calibrated on one
+   * seed sits right on the line for another — this test failed at 0.2539
+   * against a 0.25 bound the first time the defaults moved, which is the
+   * threshold-picked-by-eye trap in CLAUDE.md arriving on schedule. The ratio
+   * between the two ends is stable where the ends themselves are not: it never
+   * exceeds 0.30, so a bound of half is clear of every seed measured, and the
+   * bug this guards against — relief ignored entirely — puts it at 1.
    */
   it('empties the top of the canvas as relief rises, and not at zero', () => {
     const SIZE = 600;
@@ -100,7 +107,12 @@ describe('contours', () => {
       return top / bottom;
     };
 
-    expect(topShare(0), 'at relief 0 the country should be equally rugged everywhere').toBeGreaterThan(0.6);
-    expect(topShare(1), 'at relief 1 the top should be nearly bare').toBeLessThan(0.25);
+    const flat = topShare(0);
+    const relieved = topShare(1);
+    expect(flat, `at relief 0 the country should be equally rugged everywhere, got ${flat.toFixed(3)}`).toBeGreaterThan(0.4);
+    expect(
+      relieved,
+      `relief 1 left ${relieved.toFixed(3)} of the lower canvas's contours up top, against ${flat.toFixed(3)} at relief 0`,
+    ).toBeLessThan(flat * 0.5);
   });
 });

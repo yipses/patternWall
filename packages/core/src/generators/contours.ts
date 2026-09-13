@@ -10,6 +10,8 @@ A contour map is a landscape answering one question over and over: where exactly
 
 The heights come from fractal noise — several octaves of a smooth random field, each one half the amplitude and twice the frequency of the last. **Terrain scale** sets how far you are standing back: low values give two or three broad massifs across the width, high values a crowded archipelago. **Detail** is the octave count, and it changes the character rather than the size: at one octave the land is all smooth domes, and each octave after that roughens the coastline without moving the mountains. The two are worth separating because "bigger hills" and "rougher hills" are different requests and a single knob answering both would satisfy neither.
 
+Left there, though, the result is not a landscape. Fractal noise is isotropic — nothing in it prefers a direction — so every landform comes out a rounded blob and the map reads as splodges. Real country is nothing but direction: ridges that run for miles, valleys that branch, the whole surface organised by the water coming off it. **Grain** supplies that by looking the field up at a point the field itself has moved, so the land is dragged through itself and acquires a flow. **Valley incision** supplies the other half. Plain noise domes where water cuts, so the second field mixed in here is ridged noise — folded at its zero crossing so it creases instead of curving — and the contours start kinking upstream in the V that gives a printed sheet away as terrain rather than decoration. Both are easy to overdo: past about a third, the incision stops cutting valleys and starts shattering the map into small closed rings.
+
 The lines are found by marching squares. The field is sampled onto a grid, and every cell of that grid is compared against each height that passes through it: a cell with two corners above the line and two below has the line crossing two of its edges, and where it crosses is worked out by interpolating between the corner heights. Walk every cell and the crossings assemble into closed loops without anything ever having to trace one. **Resolution** is that grid, and it is the honest cost control — it sets how finely the curves are followed and it is the one parameter that decides how long a render takes.
 
 Two cases are genuinely ambiguous: a cell with high corners diagonally opposite each other is either a saddle or a pinch, and the crossings alone cannot say which. Taking the average of the four corners settles it, and the difference is visible — guess wrong and contours join across a pass that should divide them, which is the difference between two hills and one lumpy one.
@@ -24,6 +26,17 @@ Two cases are genuinely ambiguous: a cell with high corners diagonally opposite 
  */
 const COLOR_STEPS = 32;
 
+/**
+ * How far the warp field may drag a sample, in the same units as the terrain
+ * scale. Large enough that ridges genuinely run rather than merely lean;
+ * small enough that the land does not fold back through itself.
+ */
+const WARP_REACH = 0.65;
+
+/** Offsets so the two warp fields are different slices of the same noise. */
+const WARP_X = 11.3;
+const WARP_Y = -7.1;
+
 export const contours: Generator = {
   id: 'contours',
   name: 'Contours',
@@ -32,13 +45,15 @@ export const contours: Generator = {
   description,
   params: [
     { key: 'levels', label: 'Contour lines', type: 'number', min: 6, max: 60, step: 1, default: 22, description: 'How many heights get a line. More lines read as steeper country, because a contour map shows slope as line density.' },
-    { key: 'scale', label: 'Terrain scale', type: 'number', min: 0.6, max: 6, step: 0.1, default: 2.2, description: 'How far back you are standing. Low values give two or three broad massifs across the width; high values an archipelago of small islands.' },
+    { key: 'scale', label: 'Terrain scale', type: 'number', min: 0.6, max: 6, step: 0.1, default: 1.5, description: 'How far back you are standing. Low values give two or three broad massifs across the width; high values an archipelago of small islands.' },
     { key: 'detail', label: 'Detail', type: 'number', min: 1, max: 5, step: 1, default: 3, description: 'Octaves of noise. One gives smooth domes; each one after roughens the coastline without moving the mountains.' },
     { key: 'resolution', label: 'Resolution', type: 'number', min: 40, max: 220, step: 10, default: 130, description: 'The sampling grid the lines are traced on. Low values give an angular, faceted map. This is what a render costs, so it is the knob to reach for if the preview feels slow.' },
     { key: 'weight', label: 'Line weight', type: 'number', min: 0.3, max: 3, step: 0.05, default: 1, description: 'Line width, scaled to the canvas so it looks the same at any export size.' },
     { key: 'indexEvery', label: 'Index contours', type: 'number', min: 0, max: 10, step: 1, default: 5, description: 'Draw every nth line heavier, the way a printed map does, so the eye can count elevation instead of only reading shape. Zero draws every line the same.' },
     { key: 'relief', label: 'Relief', type: 'number', min: 0, max: 1, step: 0.01, default: 0.55, description: 'Flattens the land toward the top of the canvas, so the clock sits on calm ground and the dense contours fall in the lower half. At zero the country is equally rugged everywhere.' },
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.75, description: 'How much of the accent ramp the elevation walks through. At zero every line is the middle of the palette; at one the lowest contour and the highest sit at opposite ends of it.' },
+    { key: 'grain', label: 'Grain', type: 'number', min: 0, max: 1, step: 0.01, default: 0.45, description: 'Gives the country a direction. At zero every hill is a rounded blob, because plain noise has no orientation and the contours come out as splodges; raising it drags the field through itself so ridges run, valleys branch and the whole map acquires the flow of somewhere real.' },
+    { key: 'incision', label: 'Valley incision', type: 'number', min: 0, max: 1, step: 0.01, default: 0.22, description: 'Cuts the valleys rather than rounding them. Blends in ridged noise, which creases where plain noise would dome, so contours kink sharply along the lines water would take \u2014 the V pointing upstream that gives a printed sheet away as terrain and not decoration.' },
   ],
 
   render(ctx: RenderContext): string {
@@ -46,12 +61,14 @@ export const contours: Generator = {
     const noise = createNoise2D(rng);
 
     const levels = Math.max(2, Math.round(pNum(params, 'levels', 22)));
-    const scale = pNum(params, 'scale', 2.2);
+    const scale = pNum(params, 'scale', 1.5);
     const detail = Math.max(1, Math.round(pNum(params, 'detail', 3)));
     const indexEvery = Math.max(0, Math.round(pNum(params, 'indexEvery', 5)));
     const relief = clamp(pNum(params, 'relief', 0.55), 0, 1);
     const colorSpread = clamp(pNum(params, 'colorSpread', 0.75), 0, 1);
     const weight = pNum(params, 'weight', 1);
+    const grain = clamp(pNum(params, 'grain', 0.45), 0, 1);
+    const incision = clamp(pNum(params, 'incision', 0.22), 0, 1);
 
     // The sampling grid is a parameter, never a function of the canvas size.
     // Deriving it from pixels would trace a 108px thumbnail on a coarser grid
@@ -77,7 +94,31 @@ export const contours: Generator = {
       const amp = 1 - relief * (1 - smoothstep(0.02, 0.92, v));
       for (let i = 0; i <= cols; i++) {
         const u = i / cols;
-        const raw = noise.fbm(u * scale, v * scale * aspect, detail) * 0.5 + 0.5;
+        let sx = u * scale;
+        let sy = v * scale * aspect;
+
+        // Domain warp: look the field up at a point the field itself has
+        // moved. Plain fractal noise is isotropic, so every landform comes out
+        // a rounded blob and the contours read as splodges rather than as
+        // country — nothing in it prefers a direction, and real landscapes are
+        // nothing but direction: ridges that run, valleys that branch, drainage
+        // organising the lot. Dragging the sample point through a second field
+        // supplies that grain for the cost of two more lookups. Two octaves is
+        // enough; the warp wants to be smooth, and detail in it only jitters
+        // the result.
+        if (grain > 0) {
+          const reach = grain * WARP_REACH;
+          sx += noise.fbm(sx + WARP_X, sy + WARP_Y, 2) * reach;
+          sy += noise.fbm(sx - WARP_X, sy - WARP_Y, 2) * reach;
+        }
+
+        // Plain noise domes; ridged noise creases. Real slopes are cut by the
+        // water coming off them, so the contours kink upstream in a V instead
+        // of curving smoothly, and that crease is most of what makes a printed
+        // sheet read as terrain. `ridged` already returns 0..1, so the two mix
+        // directly.
+        const domed = noise.fbm(sx, sy, detail) * 0.5 + 0.5;
+        const raw = incision > 0 ? domed * (1 - incision) + noise.ridged(sx, sy, detail) * incision : domed;
         field[j * (cols + 1) + i] = 0.5 + (raw - 0.5) * amp;
       }
     }
