@@ -408,21 +408,39 @@ cannot go wrong.
 
 **An element's structure is a contract the tests read.** Contours were briefly emitted as one group per level *per width bucket*, which says there are six times as many contours as there are — to a reader and to the level-count test, which counts groups. Putting stroke-width on the path and keeping one group per level fixes both. The same test had already been inflated to 17 groups for 13 levels when depression ticks arrived, because those are `fill="none"` groups too, and it broke again when supplementary lines became a third kind that is butt-capped like a tick and dashed like nothing else. Every time a new kind of mark joins the document, the tests that classify marks need the new kind spelled out, or they quietly count the wrong thing.
 
-**A greedy search has no tolerance, and that makes it the one generator where `Math.hypot` and `Math.pow` are a risk.** Every other pattern here turns a float into a coordinate and rounds it for output, so a difference in the last bit disappears. String art feeds its arithmetic back into a decision: the best chord wins, and two engines that disagree about one chord's length by an ULP pick different chords and share nothing from there. `Math.sqrt` is pinned exactly by IEEE-754; `Math.hypot`, `Math.pow`, `Math.cos` and `Math.sin` are all explicitly implementation-approximated. The solver now keeps its nails on whole cells, measures with `sqrt` of an exact integer, and does not call `pow` at all unless contrast is away from 1.
+**Which builtins are exactly specified matters wherever arithmetic feeds a decision rather than a coordinate.** Every other pattern here turns a float into a coordinate and rounds it for output, so a difference in the last bit disappears. String art's old greedy solver fed its arithmetic straight back into a choice — the best chord wins, and two engines disagreeing about one chord's length by an ULP pick different chords and share nothing from there. `Math.sqrt` is pinned exactly by IEEE-754; `Math.hypot`, `Math.pow`, `Math.cos` and `Math.sin` are all explicitly implementation-approximated.
 
-That is a defensible shape regardless, but it is not a diagnosis, and the honest version is worth writing down. `parity.spec.ts` failed once on string-art — browser and Node disagreeing on the rendered length — and after those three changes it passes. Each change was then reverted on its own and parity passed every time, so **none of the three individually explains the failure and it has not reproduced since.** The hypothesis that fits is JIT tiering: an approximated builtin can have different fast and slow paths, the solve runs 1,800 iterations and gets hot partway through, and where that happens differs between the two runtimes. That would make the fault intermittent and dependent on nothing in the source. Treat it like the React #418 note: if it reappears, this is the ground already covered, and the thing to do is capture both strings and find the first differing chord rather than re-guessing which builtin it was.
+That solver is gone, but the rule outlived it and the rebuild is held to it: thresholds come from a histogram walk, contour crossings from linear interpolation, and the nested tone fractions from repeated halving rather than `Math.pow`, because every one of those numbers decides something rather than merely positioning it. Sines and cosines appear only in the seeded stand-in subject, where they set a field value and no comparison reads them.
 
-**Measure a reduction against something that has the detail you are worried about losing.** The string-art grid was set at 48x48 on a measurement that showed quality plateauing by 64 — and the target it was measured against was a face built from a handful of Gaussians, which is low-frequency by construction. A coarse grid caught all of it because there was nothing else to catch, and the number said 96% of full quality for 3% of the bytes. Re-measured against a target carrying detail at several scales, the stored resolution keeps paying well past 64: 0.727 at 48, 0.755 at 128. The reduction had looked free because the test image had already done the reducing.
+The honest footnote, kept because it was never resolved. `parity.spec.ts` failed once on the old string-art — browser and Node disagreeing on the rendered length — and passed after three changes. Each was then reverted on its own and parity passed every time, so **none of the three individually explained the failure and it never reproduced.** The hypothesis that fitted was JIT tiering: an approximated builtin can have different fast and slow paths, the solve ran 1,800 iterations and got hot partway through, and where that happens differs between runtimes. If something like it reappears, capture both strings and find the first difference rather than re-guessing which builtin it was.
+
+**Measure a reduction against something that has the detail you are worried about losing.** The string-art grid was set at 48x48 on a measurement that showed quality plateauing by 64 — and the target it was measured against was a face built from a handful of Gaussians, which is low-frequency by construction. A coarse grid caught all of it because there was nothing else to catch, and the number said 96% of full quality for 3% of the bytes. Re-measured against a target carrying detail at several scales, the stored resolution kept paying well past 64: 0.727 at 48, 0.755 at 128. The reduction had looked free because the test image had already done the reducing.
+
+Those correlation numbers belonged to the greedy solver and went with it. The grid is still adjustable and still the thing a link carries, and what reads it now is a blur and a set of quantile thresholds, which wants stored resolution for a different reason: an outline traced from a coarse grid is a smooth curve with the small features already gone, and no amount of tracing puts them back.
 
 **Subpaths of one `<path>` do not composite with each other, and a medium made of overlap cannot survive that.** String art draws a winding of two thousand chords, and the first version drew it as a single path — because a wound board really is one continuous thread, and saying so in the drawing cost two thousand elements less. It also made the picture impossible. SVG strokes a path as one shape and *then* applies its opacity, so where the path crosses itself it does not accumulate: ten overlapping strokes at 30% render at 178 on a 0-255 scale against 179 for a single stroke, where ten separate elements give 8.
 
-Tone in string art is made of crossings — a region is dark because forty threads went through it, not because those threads are darker. With one path, tone could only come from how much *area* was covered, which saturates almost at once, and every render came out one flat grey with a hint of a face in it. As separate elements the same solve goes from 0.69 correlation with its target to 0.85. The generator now emits one `<line>` per chord and is 117kB instead of 30kB, which is the right trade and was never a choice worth making the other way.
+Tone in string art is made of crossings — a region is dark because forty threads went through it, not because those threads are darker. With one path, tone could only come from how much *area* was covered, which saturates almost at once, and every render came out one flat grey with a hint of a face in it. As separate elements the same solve went from 0.69 correlation with its target to 0.85. The generator emits one `<line>` per chord and costs a few hundred kilobytes for it, which is the right trade and was never a choice worth making the other way. It survived the rebuild unchanged and for the same reason: whatever chooses the chords, a shaded region is still a stack of overlapping strokes.
 
 Worth noticing how long it hid: the test suite was green throughout, and one of the tests *asserted the bug* — "the whole winding is one continuous path", written approvingly, with a comment about how elegant it was. The replacement asserts the property the medium actually needs, that the darkest point of a render is several threads deep rather than one.
 
-**A solver's model and the paint have to agree, and alpha is not linear.** The solver subtracts a fixed ink per pass, so N passes over a cell mean N times the ink; paint leaves 1-(1-a)^N, which is always less. A thread drawn at exactly its budgeted worth therefore arrives lighter than the picture asked for — measured, mean darkness 0.686 against a target of 0.783, corrected to 0.814 by drawing at 1.4 times the budget. The same mismatch applies to width: the solver accounts a chord one grid cell wide, so a stroke narrower than that cell leaves gaps it believes it filled. Both are compositing facts rather than taste, and both were fudge factors before they were derived.
+**A model of the paint and the paint have to agree, and alpha is not linear.** String art's solver subtracted a fixed ink per pass, so N passes over a cell meant N times the ink; paint leaves 1-(1-a)^N, which is always less. A thread drawn at exactly its budgeted worth therefore arrived lighter than the picture asked for — measured, mean darkness 0.686 against a target of 0.783, corrected to 0.814 by drawing at 1.4 times the budget.
 
-**A palette's mid accent cannot carry a tonal medium.** Full coverage of one thread colour is the darkest a string-art render can go, and across the curated palettes `ink` carries two to three times the contrast against the paper that the middle of the accent ramp does — 15.7 against 6.8 on Paper. Anything whose whole job is reproducing a photograph's range should be drawn in the ink and tinted toward the accent, not the other way round.
+No code holds that compensation any more, because nothing here keeps a running model of what it has already painted. It is recorded because the next thing that does will need it, and because the correction spent a while as a fudge factor before anybody worked out what it was compensating for.
+
+**A palette's mid accent cannot carry a tonal medium.** Full coverage of one thread colour is the darkest a string-art render can go, and across the curated palettes `ink` carries two to three times the contrast against the paper that the middle of the accent ramp does — 15.7 against 6.8 on Paper. Anything whose whole job is reproducing a photograph's range should be drawn in the ink and tinted toward the accent, not the other way round. The rebuild keeps that and gives it something to do: each tone is mixed a different distance toward the ink, so the deepest is nearly all of it and the shallowest keeps most of its accent, which is what the white and the gold are doing on a real two-thread board.
+
+**A pattern cannot make a thing it has no representation of, and tuning will never reveal that.** String art was built as a greedy tonal solver: nails at uniform angles around a circular rim, two thousand chords chosen by which one covered the most remaining darkness. It was measured, corrected, and shipped, and it was never going to make the pictures it was asked for. Every reference anyone reaches for when they say "string art" — the helmet, the mask, the letterforms — is built the other way round: nails driven along the subject's *outlines*, internal features included, and thread wound inside each bounded region to shade it. The nails carry the drawing and the thread carries only tone.
+
+The solver had no representation of an edge at any point in it. It knew how dark a point was, and nothing else, so the only thing it could produce was a soft average of the target — and because a chord runs the full width of the disc, buying darkness in one place meant accepting ink everywhere else along it. Four rounds went into the picture quality; not one of them could have helped, because "make the edges crisp" was not a request the data structure could hear. The tell was there in the reported symptom: the complaint was never "the tone is off", it was that the result did not look like the thing.
+
+This is the same shape as the truchet `quietTop` entry above and the contours cell-budget one, and it is the most expensive version of it in this repo. Before tuning a mechanism, name the thing being asked for and find where it is represented. If you cannot point at it, no parameter is going to produce it. The rebuilt version traces thresholds with marching squares, drives nails along the rings at a fixed spacing, and winds star polygons inside them; it also renders in about 30ms against the solver's 1,000, because outlines are a description and a search is a search.
+
+**Two controls that fight, again — and the second time it was reach against density.** The rebuild gave each region two free quantities: how far in the star-polygon families reach, and how many families are wound inside that reach. A fixed chord budget was spent by widening the stride between families until it fitted. So raising `shading` raised the reach, which spread the same budget over more area: at 1 a render carried 1,539 chords in visibly separated bands where 0.55 carried 1,653. The control ran backwards, and every individual line of it was correct.
+
+The truchet entry says to derive the implied quantity. The extra step here is picking *which* one, and the rule that settles it is the one from the arc-spacing note: ask which property a person actually sees. Nobody looks at a board and reads off how far in the families reach; they see how much thread is on it. So reach is fixed by the tone and `shading` buys passes within it, and the budget is spent by thinning every region together rather than by stretching anything. A budget applied to the wrong one of two coupled quantities is indistinguishable from a broken control.
+
+**A budget enforced by a rounded-down divisor is not a budget.** The stride between families is the reach divided by the passes afforded, and rounding it down overshoots: a reach of 44 with fifteen passes gives a stride of two and twenty-one families, 40% over. Measured across a render it put 7,895 chords against a ceiling of 6,000. Rounding up gives back at most one family per shape and makes the ceiling true. Any time a count is enforced by dividing to get a step, the rounding direction is the difference between a cap and a suggestion.
 
 **A comment can be the last surviving copy of a reverted design.** The arcs
 branch carried four layers of commentary from successive attempts, two of them
@@ -542,24 +560,36 @@ portrait rather than a reference to one, and nothing about the upload leaves
 the browser. The grid names its own size in its first character, so a link
 made at one detail setting still reads at another, and `GRID_SIZES` is the
 set it may take: 48 costs about 1,500 characters of URL and 128 about 11,000.
+The alphabet deliberately excludes `_`, which is what `share.ts` separates
+params with. Adding that param kind broke three places that assumed "not
+number, not boolean, therefore select"; if you add a fourth kind, expect the
+same.
 
-Two resolutions do two jobs there and the second is the bigger lever. The
-stored grid is how much of the photograph survived; the solve grid is the
-residual, the solver's memory of where it has already put thread, and it is
-derived at two and a half times the stored size. From a 128 grid, solving at
-192 scores 0.755 correlation, at 256 0.778 and at 320 0.789 — more than any
-increase in stored resolution buys. Storing finer than 128 is the thing that
-does not pay: 192 cells is 24,600 characters and scores 0.776.
+It is built in two movements, and keeping them separate is the whole design.
+The picture is blurred, thresholded at nested quantiles — the darkest
+`coverage`, then half of that, then half again — and each threshold is traced
+into closed rings by marching squares. Nails are driven along every ring at a
+fixed *spacing*, so a big shape gets more of them rather than the same number
+spread thinner. Only then does thread go on, wound as star polygons inside
+each ring, and a chord that would leave its region is dropped after being
+tested along its own length. Edges come from where the nails are; the thread
+only shades.
 
-The first measurement of all this was wrong in a way worth remembering: it
-put the plateau at 64 cells, because the target it measured against was a
-face built from a few Gaussians, which is low-frequency by construction. A
-coarse grid caught all of it because there was nothing else to catch. Measure
-a reduction against something that has the detail you are worried about
-losing, or the reduction will always look free. The alphabet deliberately excludes `_`, which is
-what `share.ts` separates params with. Adding that param kind broke three
-places that assumed "not number, not boolean, therefore select"; if you add a
-fourth kind, expect the same.
+Three things about it are load-bearing and easy to undo by accident. The
+thresholds are **quantiles, not values** — a fixed darkness is a different
+control on every photograph, and on a backlit one it traces nothing at all.
+The trace grid is **fixed at 128 and is not the stored grid's size**, so
+raising picture detail changes how much of the photograph feeds the outlines
+rather than changing their shape. And **reach and density are not both free**:
+see the entry above about which of two coupled quantities a budget may be
+spent on.
+
+It replaced a greedy tonal solver that wound chords across a circular loom.
+That version is worth knowing about only as the bug note above records it —
+its params are all gone, so links made before the rebuild decode into the new
+slots and read as nonsense. Nothing outside this repo had one; the next such
+change will not be free, and the encoding still has neither a version nor
+named keys.
 
 `chevron-blocks` is the only one that covers the canvas completely, which is
 worth knowing before reasoning about its colour: a full-bleed field of accent
