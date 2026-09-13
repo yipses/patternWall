@@ -367,6 +367,10 @@ setting and nowhere else, which is the argument for running that test at an
 extreme at all. Keying the graph by (level, edge) instead costs a map lookup and
 cannot go wrong.
 
+**Fractal noise does not use its nominal range, so anything reading a height as a fraction of 0..1 reads mostly empty air.** Contours took its levels and its sea level as fractions of 0..1. Measured, the raw field ran 0.337 to 0.695 at the defaults — barely a third of that range — so of twenty-two contour lines, eight drew and fourteen fell outside the terrain entirely, and the sea level default of 0.32 sat below the lowest ground on the map. Neither looked broken from outside: the map simply came out about a third as fine as the number claimed, and the water slider did nothing at all until two thirds of its travel. The field is now stretched to its own range before any height is read off it. The general form: a control expressed as a fraction of a field's *possible* values is a different control from one expressed as a fraction of its *actual* ones, and fBm makes the gap large.
+
+**A test asking a question about lines must not be shown the fills.** The contours curve test asserts no run of `L` commands survives, which is exactly right for a traced contour and exactly wrong for the water, which is a filled region built from straight-edged cell polygons by construction. Adding the water failed the test against correct output. The fix is to scope the assertion to the `<g fill="none">` groups rather than the whole document — the same care the truchet colour test needed about keying a mark on its own midpoint. When new output joins a document, check what the existing assertions think they are looking at.
+
 **A comment can be the last surviving copy of a reverted design.** The arcs
 branch carried four layers of commentary from successive attempts, two of them
 describing code that had been reverted and contradicting the layer below. Each
