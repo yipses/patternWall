@@ -110,17 +110,58 @@ describe('string-art', () => {
   });
 
   /**
-   * One thread, so one path. Not an aesthetic point: a wound board really is
-   * a single continuous string, and the drawing says so — which is also why a
-   * two-thousand-chord render is thirty kilobytes rather than two thousand
-   * elements.
+   * Where the thread crosses itself, it gets darker. That is the whole medium.
+   *
+   * This generator drew its winding as a single `<path>` at first, because a
+   * wound board really is one continuous thread and saying so cost two
+   * thousand elements less. It also made the picture impossible, and the bug
+   * was invisible from any angle except this one: SVG strokes a path as one
+   * shape and applies opacity to the result, so a path that crosses itself
+   * does not composite with itself. Ten overlapping strokes at 30% rendered
+   * at 178 on a 0-255 scale where one stroke gives 179; as ten elements, 8.
+   *
+   * With no accumulation, tone can only come from how much *area* is covered,
+   * which saturates almost immediately — every render came out one flat grey
+   * with a hint of a face in it. So the assertion is about depth, not shape:
+   * the darkest place in a render has to be far darker than a single thread,
+   * which is only true if crossings add up.
    */
-  it('draws the whole winding as one continuous path', () => {
-    const svg = render({ image: blob(false) });
-    const paths = svg.match(/<path /g) ?? [];
-    expect(paths.length, 'the winding is not a single path').toBe(1);
-    const moves = (svg.match(/M-?[\d.]/g) ?? []).length;
-    expect(moves, 'the path lifts off the board and starts again').toBe(1);
+  it('darkens where the thread crosses itself', () => {
+    const svg = render({ image: blob(false), threads: 1200 });
+    const { pixels } = rasterize(svg, SIZE);
+
+    const paper = TEST_PALETTES[0]!.background;
+    const [pr, pg, pb] = [1, 3, 5].map((i) => parseInt(paper.slice(i, i + 2), 16)) as [number, number, number];
+    const paperLum = (0.2126 * pr + 0.7152 * pg + 0.0722 * pb) / 255;
+
+    // How far from the paper each pixel got, and how many distinct depths
+    // there are. A render with no accumulation has essentially two: paper, and
+    // one thread's worth.
+    const depths = new Set<number>();
+    let deepest = 0;
+    for (let y = 0; y < SIZE; y++) {
+      for (let x = 0; x < SIZE; x++) {
+        const r = Math.hypot((x + 0.5) / SIZE - 0.5, (y + 0.5) / SIZE - 0.5) * 2;
+        if (r > 0.85) continue;
+        const o = (y * SIZE + x) * 4;
+        const lum =
+          (0.2126 * (pixels[o] as number) + 0.7152 * (pixels[o + 1] as number) + 0.0722 * (pixels[o + 2] as number)) /
+          255;
+        const depth = Math.abs(lum - paperLum);
+        if (depth > deepest) deepest = depth;
+        depths.add(Math.round(depth * 40));
+      }
+    }
+
+    const single = Number(/stroke-opacity="([\d.]+)"/.exec(svg)?.[1] ?? '1');
+    expect(single, 'no thread opacity to compare against').toBeGreaterThan(0);
+    // One thread lays `single` of the way from paper to thread colour. The
+    // deepest point of a real winding is many threads on top of each other.
+    expect(
+      deepest / single,
+      `the darkest point is ${(deepest / single).toFixed(1)} threads deep, so crossings are not accumulating`,
+    ).toBeGreaterThan(3);
+    expect(depths.size, `only ${depths.size} distinct depths in the whole render`).toBeGreaterThan(12);
   });
 
   /**

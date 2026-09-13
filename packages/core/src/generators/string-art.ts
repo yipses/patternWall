@@ -1,5 +1,5 @@
 import { accentAt } from '../palette.js';
-import { hexToOklch, oklchToHex } from '../color.js';
+import { hexToOklch, mixOklch, oklchToHex } from '../color.js';
 import { createNoise2D } from '../noise.js';
 import { clamp } from '../geometry.js';
 import { GRID_SIZES, unpackGrid } from '../imagegrid.js';
@@ -13,7 +13,7 @@ The picture is made by a greedy search, which is the whole of the algorithm. Sta
 
 What makes it work is the subtraction. Without it the search would pick the same darkest chord forever; with it, every thread makes its own line slightly less attractive and the next one has to go somewhere else. How much each thread supplies is not a setting — it is derived. Add up all the darkness the picture asks for, divide by the number of threads and the length of an average chord, and that is what one thread is worth. Get it wrong and the failure is total rather than subtle: too much and the search fills the whole disc solid before it gets to the detail, too little and it never commits to the shadows at all.
 
-**Threads** therefore controls the tone as much as the detail. Each one is worth less than the last, so a thousand threads and three thousand threads carry the same total ink and differ in how finely it is distributed. **Nails** sets how many directions are available; below about a hundred the chords visibly snap to a coarse set of angles, and past three hundred the extra choices mostly duplicate each other.
+**Threads** therefore controls the fineness rather than the darkness. Each one is worth less than the last, because the total is fixed by the picture, so a thousand threads and three thousand carry the same ink and differ in how finely it is divided — though more of them do resolve more, because tone here is made of crossings and more threads means more places to cross. **Nails** sets how many directions are available; below about a hundred the chords visibly snap to a coarse set of angles, and past three hundred the extra choices mostly duplicate each other.
 
 Upload a picture and it becomes the target. Whatever you give it is reduced to a square grid of sixteen darkness levels before the solver sees it, because the whole picture has to travel in the share link — a string-art link is the portrait, not a reference to one. **Picture detail** is where that trade is made, and it is a real one: measured against a full-resolution original with detail at several scales, a 48-cell grid scores 0.73 correlation for about 1,500 characters of URL and a 128-cell grid scores 0.79 for about 11,000. Finer than that stops paying — 192 cells costs 24,600 characters and scores *worse*, because the gain is in how finely the solver tracks its own work rather than in how much of the photograph it was handed. With no picture given, the target is a composition of the seed's own making, which is an abstract rather than a portrait.
 `.trim();
@@ -51,12 +51,31 @@ const SOLVE_MAX = 320;
 const MIN_SPAN = 0.04;
 
 /**
- * The thread count the drawn opacity is calibrated against, and the alpha it
- * gets there. Away from it the alpha moves inversely, so that the same total
- * ink reaches the board however finely it is divided.
+ * How wide a thread is drawn, in solver cells.
+ *
+ * The solver's model is a chord one cell wide, so one cell is the honest
+ * width — and measured, 1.4 of them is better: 0.853 correlation against
+ * 0.814 at exactly one. A stroke narrower than the cell it is accounted
+ * against leaves gaps the solver thinks it filled.
  */
-const REFERENCE_THREADS = 1800;
-const REFERENCE_ALPHA = 0.5;
+const THREAD_CELLS = 1.4;
+
+/** Score every nth pixel of a candidate chord. See the note at its use. */
+const SCORE_STRIDE = 2;
+
+/**
+ * What the drawn thread is worth, against what the solver budgeted.
+ *
+ * The solver adds darkness linearly: N passes over a cell subtract N times the
+ * ink. Paint does not work that way — N strokes at alpha a leave 1-(1-a)^N,
+ * which is always less — so a thread drawn at exactly its budgeted worth
+ * arrives lighter than the picture asked for. Measured, alpha at the budget
+ * gives a mean darkness of 0.686 against a target of 0.783; at 1.4 times it,
+ * 0.814, and correlation is unmoved either way (0.813 against 0.800). This is
+ * that compensation and nothing more: it is a fact about compositing, not a
+ * knob for taste.
+ */
+const ALPHA_OVER_INK = 1.4;
 
 /** Mean chord length of a circle of radius 1, used to derive the ink. */
 const MEAN_CHORD = 4 / Math.PI;
@@ -69,7 +88,7 @@ export const stringArt: Generator = {
   description,
   params: [
     { key: 'image', label: 'Picture', type: 'image', default: '', description: 'The photograph the thread is trying to reproduce, reduced to a grid of sixteen darkness levels — small enough that the whole picture travels in the share link. How fine that grid is comes from Picture detail. With none given, the target is a composition of the seed’s own making.' },
-    { key: 'threads', label: 'Threads', type: 'number', min: 300, max: 4000, step: 50, default: 1800, description: 'How many chords are wound. Each is worth less ink than the last, because the total is fixed by how dark the picture is — so this trades boldness for fineness rather than making the image darker.' },
+    { key: 'threads', label: 'Threads', type: 'number', min: 300, max: 4000, step: 50, default: 2500, description: 'How many chords are wound. Each is worth less ink than the last, because the total is fixed by how dark the picture is — so this trades boldness for fineness rather than making the image darker.' },
     { key: 'nails', label: 'Nails', type: 'number', min: 60, max: 360, step: 4, default: 240, description: 'How many directions the thread can take. Below about a hundred the chords snap to a visibly coarse set of angles; past three hundred the extra choices mostly duplicate ones already there.' },
     { key: 'diameter', label: 'Diameter', type: 'number', min: 0.4, max: 1.2, step: 0.01, default: 0.92, description: 'The width of the ring as a fraction of the canvas width. Above 1 the nails run off the sides, which crops the disc into the frame.' },
     { key: 'offsetX', label: 'Offset across', type: 'number', min: -0.5, max: 0.5, step: 0.01, default: 0, description: 'Moves the ring left or right from the middle, as a fraction of the canvas width.' },
@@ -83,7 +102,7 @@ export const stringArt: Generator = {
   render(ctx: RenderContext): string {
     const { width: w, height: h, palette, params, rng } = ctx;
 
-    const threads = Math.round(clamp(pNum(params, 'threads', 1800), 300, 4000));
+    const threads = Math.round(clamp(pNum(params, 'threads', 2500), 300, 4000));
     const nailCount = Math.round(clamp(pNum(params, 'nails', 240), 60, 360));
     const diameter = clamp(pNum(params, 'diameter', 0.92), 0.4, 1.2);
     const offsetX = clamp(pNum(params, 'offsetX', 0), -0.5, 0.5);
@@ -186,11 +205,7 @@ export const stringArt: Generator = {
     // the number the whole thing turns on: a constant here fills the disc solid
     // at high thread counts and never reaches the shadows at low ones.
     let wanted = 0;
-    let boardCells = 0;
-    for (let i = 0; i < target.length; i++) {
-      wanted += target[i] as number;
-      if ((target[i] as number) > 0) boardCells += 1;
-    }
+    for (let i = 0; i < target.length; i++) wanted += target[i] as number;
     const ink = wanted / Math.max(1, threads * gr * MEAN_CHORD);
     // The same budget has to govern the *drawn* thread as well as the solver's
     // bookkeeping, or the two disagree about what the picture is. Deriving only
@@ -202,8 +217,11 @@ export const stringArt: Generator = {
     // So the alpha moves inversely with the count, against a fixed reference,
     // and scales with how dark the picture is — a pale target gets a fainter
     // thread rather than the same thread wound fewer times.
-    const meanDark = boardCells > 0 ? wanted / boardCells : 0.5;
-    const alpha = clamp((REFERENCE_ALPHA * meanDark * REFERENCE_THREADS) / (0.5 * threads), 0.05, 0.9);
+    // The drawn thread is worth what the solver said it was worth. That only
+    // became a meaningful statement once chords stopped sharing one path — see
+    // the note on the emission below — because before it, overlapping strokes
+    // did not accumulate and the alpha only set an overall level.
+    const alpha = clamp(ink * ALPHA_OVER_INK, 0.01, 0.9);
 
     const residual = Float32Array.from(target);
     const minSpan = Math.max(1, Math.round(nailCount * MIN_SPAN));
@@ -227,13 +245,21 @@ export const stringArt: Generator = {
         const dx = (gx[cand] as number) - x0;
         const dy = (gy[cand] as number) - y0;
         const steps = Math.max(1, Math.round(Math.sqrt(dx * dx + dy * dy)));
+        // Scored on every second pixel. The search runs threads x nails x
+        // chord length, which at the top of both sliders is half a billion
+        // reads, and it is choosing between chords rather than measuring one:
+        // a mean taken over half the pixels ranks them the same way. The
+        // subtraction below still walks every pixel, because that *is* a
+        // measurement and a gap in it would be a gap in the picture.
         let sum = 0;
-        for (let k = 0; k <= steps; k++) {
+        let taken = 0;
+        for (let k = 0; k <= steps; k += SCORE_STRIDE) {
           const x = Math.round(x0 + (dx * k) / steps);
           const y = Math.round(y0 + (dy * k) / steps);
           if (x >= 0 && y >= 0 && x < SOLVE_GRID && y < SOLVE_GRID) sum += residual[y * SOLVE_GRID + x] as number;
+          taken += 1;
         }
-        const score = sum / (steps + 1);
+        const score = sum / taken;
         if (score > bestScore) {
           bestScore = score;
           bestNail = cand;
@@ -260,45 +286,71 @@ export const stringArt: Generator = {
       at = bestNail;
     }
 
-    // One path, because it is one thread. That is both the truth of the object
-    // and the cheapest possible document: two thousand chords are two thousand
-    // coordinate pairs, not two thousand elements.
-    let d = '';
-    for (let i = 0; i < order.length; i++) {
-      const n = order[i] as number;
-      d += `${i === 0 ? 'M' : 'L'}${num(px[n] as number, 1)} ${num(py[n] as number, 1)}`;
+    // One element per chord, and this is the thing the whole pattern turned on.
+    //
+    // It was a single `<path>` first, because a wound board really is one
+    // continuous thread and saying so in the drawing was pleasing and cheap:
+    // two thousand chords as one path instead of two thousand elements. It
+    // also made the picture impossible. SVG strokes a path as one shape and
+    // *then* applies its opacity, so where a path crosses itself it does not
+    // composite with itself — ten overlapping strokes at 30% render exactly as
+    // dark as one, measured at 178 against 179 on a 0-255 scale, where ten
+    // separate elements give 8.
+    //
+    // Tone in string art is made of crossings. A region gets dark because
+    // forty threads passed through it, not because the threads there are
+    // darker. With one path, tone could only come from how much *area* was
+    // covered, which saturates almost at once and flattens the whole disc to
+    // one grey. As separate elements the same solve goes from 0.69 correlation
+    // with its target to 0.85.
+    let body = '';
+    for (let i = 1; i < order.length; i++) {
+      const a = order[i - 1] as number;
+      const b = order[i] as number;
+      body += el('line', {
+        x1: num(px[a] as number, 1),
+        y1: num(py[a] as number, 1),
+        x2: num(px[b] as number, 1),
+        y2: num(py[b] as number, 1),
+      });
     }
 
-    const paper = hexToOklch(palette.background);
-    const thread = hexToOklch(accentAt(palette, 0.5));
-    // The thread is drawn well short of opaque, because the picture is made of
-    // overlap: a chord that crosses fifty others has to read darker than one
-    // that crosses five, and at full strength every chord is the same black and
-    // the tone collapses to a silhouette.
-    const strokeWidth = (w / 900) * thickness;
-    const threadHex = oklchToHex({
-      ...thread,
-      l: clamp(paper.l + (thread.l - paper.l) * 1.1, 0.03, 0.97),
-    });
+    // The thread is mostly the palette's ink, with a little accent in it.
+    //
+    // String art is a tonal medium and the darkest it can go is whatever one
+    // thread colour is: full coverage of a mid accent simply cannot reach the
+    // dark end of a photograph. Measured across the curated palettes, `ink`
+    // carries two to three times the contrast against the paper that the
+    // middle of the accent ramp does — 15.7 against 6.8 on Paper, 12.4 against
+    // 4.7 on Riso Pink — and that ratio is the tonal range this pattern has to
+    // work in. Keeping a third of the accent in it is what stops every palette
+    // rendering the same grey thread.
+    const thread = mixOklch(hexToOklch(palette.ink), hexToOklch(accentAt(palette, 0.5)), 0.35);
 
-    let body = el('rect', { x: 0, y: 0, width: w, height: h, fill: palette.background });
-    body += el('path', {
-      d,
-      fill: 'none',
-      stroke: threadHex,
-      'stroke-width': num(strokeWidth, 3),
-      'stroke-opacity': num(alpha, 3),
-      'stroke-linecap': 'round',
-    });
+    const strokeWidth = (w / SOLVE_GRID) * THREAD_CELLS * thickness;
+    const threadHex = oklchToHex(thread);
+
+    let out = el('rect', { x: 0, y: 0, width: w, height: h, fill: palette.background });
+    out += el(
+      'g',
+      {
+        stroke: threadHex,
+        'stroke-width': num(strokeWidth, 3),
+        'stroke-opacity': num(alpha, 4),
+        'stroke-linecap': 'round',
+        fill: 'none',
+      },
+      body,
+    );
 
     if (nailsVisible) {
       let nails = '';
       for (let i = 0; i < nailCount; i++) {
         nails += el('circle', { cx: num(px[i] as number, 1), cy: num(py[i] as number, 1), r: num(strokeWidth * 1.1, 3) });
       }
-      body += el('g', { fill: palette.ink, 'fill-opacity': '0.55' }, nails);
+      out += el('g', { fill: palette.ink, 'fill-opacity': '0.55' }, nails);
     }
 
-    return svgRoot(w, h, `${stringArt.name} wallpaper`, body);
+    return svgRoot(w, h, `${stringArt.name} wallpaper`, out);
   },
 };
