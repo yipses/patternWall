@@ -85,17 +85,16 @@ export const truchet: Generator = {
     const tintTop = oklchToHex({ ...bg, l: clamp(bg.l + (palette.mode === 'dark' ? 0.018 : -0.014), 0, 1) });
     const tintBottom = oklchToHex(mixOklch(bg, hexToOklch(accentAt(palette, 0.75)), palette.mode === 'dark' ? 0.1 : 0.07));
 
-    // Painting every tile a flat colour is what makes the palette read as
-    // blocks: however many intermediate hues the ramp is resolved into, the
-    // boundary between two neighbouring tiles is still an edge, because each
-    // tile is one colour from edge to edge. The only way to get a continuous
-    // blend is for the paint itself to vary across the canvas, so above zero
-    // the marks are stroked with a gradient spanning the whole image and the
-    // per-tile colour is not used at all.
+    // A vertical wash behind the tiling, and nothing else. It is the only
+    // gradient in this generator: the marks themselves are stroked with flat
+    // band colours.
     //
-    // Blend sets how much of the accent ramp that gradient covers: a narrow
-    // slice around the middle is a subtle wash, the full width runs the
-    // palette end to end.
+    // Two layers of commentary used to sit here describing designs that were
+    // tried and reverted — one claiming the marks were stroked with a gradient
+    // spanning the image and the per-tile colour unused, one arguing for
+    // exactly one band per accent with no interpolation at all. Both were true
+    // when written and neither describes this code, which is the trap CLAUDE.md
+    // warns about; they contradicted each other and the block below them.
     const defs = el(
       'defs',
       {},
@@ -108,11 +107,8 @@ export const truchet: Generator = {
 
     // Tiles are grouped by colour so the SVG carries one fill/stroke per group
     // rather than per shape.
-    // One band per accent rather than a continuous ramp: a Truchet grid shows
-    // large flat areas of each colour, and interpolated in-between hues would
-    // quietly replace the palette the person chose with a gradient they did
-    // not.
-    // Tiles are bucketed by colour and each bucket emitted as one group, so
+    //
+    // Marks are bucketed by colour and each bucket emitted as one group, so
     // the number of buckets is also the colour resolution. At zero blend there
     // is one bucket per accent and the tiling reads as flat areas of exactly
     // the colours in the palette; raising it interpolates intermediate steps

@@ -302,9 +302,25 @@ wrong direction for smoothstep, which deliberately steepens the middle. Average
 over one cell before reading a profile, and when a metric and the picture
 disagree, believe the picture: crop the region and look at it.
 
-**Flat fills cannot blend.** A per-shape colour meets its neighbour at an edge
-however finely the palette is resolved into steps. Continuous colour needs the
-paint to vary across the canvas — a gradient — not more buckets.
+**Flat fills cannot blend at the scale of the shape — so shrink the shape.**
+This entry used to end "continuous colour needs the paint to vary across the
+canvas — a gradient — not more buckets", and the code says otherwise: truchet's
+`colorBlend` is more buckets (3 distinct stroke colours at 0, 18 at 0.5, 31 at
+1, measured) and it works. The gradient was tried and reverted; a comment
+describing it survived in the source for a while afterwards, which is its own
+lesson.
+
+What was actually wrong was the *unit* being filled, not the number of steps.
+Colour was sampled once per tile, so a whole cell was one flat colour and the
+grid boundary showed as an edge however finely the ramp was resolved — that is
+the case the original note was written from, and for that case it is right.
+Sampling per mark, at each mark's own midpoint, makes the flat unit small
+enough that quantising it stops being visible, and then more buckets is exactly
+what helps. Both halves matter: per-mark sampling with three buckets still
+bands, and 31 buckets sampled per tile still shows the grid.
+
+So the question to ask is "how big is the area I am painting one colour", not
+"how many colours have I got".
 
 **One hash cannot be both an identity and a value — `hashSeed` was.** FNV-1a
 ends on a multiply, so two strings differing only in their final character land
