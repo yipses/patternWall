@@ -455,10 +455,18 @@ from this build environment. Do not quietly upgrade a guess to a fact.
 
 ## Current state
 
-Four generators: `flow-dots`, `truchet`, `phyllotaxis`, `ridgelines`. Three
-taxonomy tags — `isometric`, `distortion`, `physics` — have no patterns yet.
-Truchet is by far the most worked over; the other three have had almost no
-iteration and should be assumed rougher rather than better.
+Five generators: `flow-dots`, `truchet`, `phyllotaxis`, `ridgelines`,
+`contours`. Three taxonomy tags — `isometric`, `distortion`, `physics` — have
+no patterns yet. Truchet is by far the most worked over; the rest have had
+little iteration and should be assumed rougher rather than better.
+
+`contours` and `ridgelines` are the same idea seen from two directions, and the
+distinction is worth keeping straight: ridgelines is terrain in elevation, a
+stack of height profiles with the front ones occluding the back, and contours is
+the same sort of field in plan, traced as iso-lines by marching squares. Both
+already sample noise in two dimensions — that was never what separated them.
+Asking ridgelines for closed loops around a peak is asking a side view for a
+plan, which no parameter can answer.
 Client-only: no server rendering, no database, no accounts. The render service,
 short config IDs and per-config iCloud shortcuts are the next phase.
 

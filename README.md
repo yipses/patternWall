@@ -204,5 +204,5 @@ a non-blank canvas on six palettes, share-link round-tripping, and browser/Node 
   canvas edge can fall inside at one resolution and outside at another, so a 108px thumbnail and a
   1399px export can differ by a handful of shapes out of several thousand. The test suite holds this
   to half a percent per element type.
-- **Four generators.** The taxonomy has eight tags; `isometric`, `distortion` and `physics` have no
+- **Five generators.** The taxonomy has eight tags; `isometric`, `distortion` and `physics` have no
   patterns yet.
