@@ -72,6 +72,51 @@ test.describe('layout and accessibility', () => {
     await expect(zones).toHaveAttribute('aria-checked', 'false');
   });
 
+  /**
+   * The WAI-ARIA tabs pattern, which the hand-rolled strips did not follow:
+   * every tab was a tab stop, aria-controls pointed at panels that are only in
+   * the DOM when selected, and the panels were not focusable.
+   */
+  test('the tab strip is one tab stop and the arrows move between tabs', async ({ page }) => {
+    await page.goto('/p/flow-dots');
+    await settled(page);
+
+    // Scoped to the editor's own strip: opening the Palette panel reveals a
+    // second tablist inside it, and both are legitimately selected.
+    const strip = page.getByRole('tablist', { name: 'Editor panels' });
+    const selected = () => strip.locator('[role="tab"][aria-selected="true"]');
+    await expect(selected()).toHaveText('Pattern');
+
+    // One stop for the whole strip: the unselected tabs are not tabbable.
+    const tabStops = await strip.locator('[role="tab"]').evaluateAll((els) =>
+      els.map((el) => (el as HTMLElement).tabIndex),
+    );
+    expect(tabStops.filter((t) => t === 0), `tab stops in the strip: ${tabStops.join(',')}`).toHaveLength(1);
+
+    // Arrows move selection and carry focus with it.
+    await selected().focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(selected()).toHaveText('Palette');
+    await expect(selected()).toBeFocused();
+    await page.keyboard.press('End');
+    await expect(selected()).toHaveText('Export');
+    await page.keyboard.press('Home');
+    await expect(selected()).toHaveText('Pattern');
+    // Wrapping, so the strip has no dead end.
+    await page.keyboard.press('ArrowLeft');
+    await expect(selected()).toHaveText('Export');
+
+    // aria-controls only where it resolves, and the panel it names is focusable.
+    const controls = await selected().getAttribute('aria-controls');
+    expect(controls, 'the selected tab names no panel').toBeTruthy();
+    const panel = page.locator(`#${controls}`);
+    await expect(panel).toHaveAttribute('role', 'tabpanel');
+    await expect(panel).toHaveAttribute('tabindex', '0');
+    for (const el of await strip.locator('[role="tab"][aria-selected="false"]').all()) {
+      expect(await el.getAttribute('aria-controls'), 'an unselected tab points at a panel that is not rendered').toBeNull();
+    }
+  });
+
   test('every page has a title, a description and one h1', async ({ page }) => {
     for (const path of PAGES) {
       await page.goto(path);

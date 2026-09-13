@@ -39,7 +39,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Skip to content
         </a>
         <SiteHeader />
-        <main id="main">{children}</main>
+        {/* tabIndex -1 so the skip link actually moves focus. Without it the
+            hash changes and the next Tab continues from wherever focus already
+            was, which is the header the link exists to skip. */}
+        <main id="main" tabIndex={-1}>
+          {children}
+        </main>
         <SiteFooter />
         <RenderBridge />
       </body>

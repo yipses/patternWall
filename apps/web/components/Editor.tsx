@@ -18,7 +18,7 @@ import { PatternImage } from './PatternImage';
 import { ParamControls } from './ParamControls';
 import { PalettePanel } from './PalettePanel';
 import { ExportPanel } from './ExportPanel';
-import { Button, Notice, Switch, Tag, uiStyles as ui } from './ui';
+import { Button, Notice, Switch, TabList, Tag, uiStyles as ui } from './ui';
 import { renderProse } from '../lib/prose';
 import { collectionKey, loadCollected, saveCollected } from '../lib/storage';
 import type { RenderSpec } from '../lib/render';
@@ -274,7 +274,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
 
           <div className={styles.underPreview}>
             <div className={ui.labelRow}>
-              <span className={ui.label} id="zones-label">
+              <span className={ui.label}>
                 Safe zones
               </span>
               <Switch checked={showZones} onChange={setShowZones} label="Show the iOS safe zone outlines" />
@@ -345,25 +345,19 @@ export function Editor({ generatorId }: { generatorId: string }) {
         </div>
 
         <div className={styles.controlsCol}>
-          <div className={styles.tabs} role="tablist" aria-label="Editor panels">
-            {PANELS.map((p) => (
-              <button
-                key={p.value}
-                type="button"
-                role="tab"
-                id={`tab-${p.value}`}
-                aria-selected={panel === p.value}
-                aria-controls={`panel-${p.value}`}
-                className={panel === p.value ? `${styles.tab} ${styles.tabOn}` : styles.tab}
-                onClick={() => setPanel(p.value)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+          <TabList
+            label="Editor panels"
+            tabs={PANELS}
+            value={panel}
+            onChange={setPanel}
+            idFor={(v) => `tab-${v}`}
+            panelIdFor={(v) => `panel-${v}`}
+            className={styles.tabs}
+            tabClassName={(on) => (on ? `${styles.tab} ${styles.tabOn}` : styles.tab)}
+          />
 
           {panel === 'pattern' ? (
-            <div role="tabpanel" id="panel-pattern" aria-labelledby="tab-pattern">
+            <div role="tabpanel" id="panel-pattern" aria-labelledby="tab-pattern" tabIndex={0}>
               <ParamControls
                 generator={generator}
                 params={params}
@@ -385,7 +379,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
           ) : null}
 
           {panel === 'palette' ? (
-            <div role="tabpanel" id="panel-palette" aria-labelledby="tab-palette">
+            <div role="tabpanel" id="panel-palette" aria-labelledby="tab-palette" tabIndex={0}>
               <PalettePanel
                 palette={palette}
                 onChange={(p) => {
@@ -397,7 +391,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
           ) : null}
 
           {panel === 'export' ? (
-            <div role="tabpanel" id="panel-export" aria-labelledby="tab-export">
+            <div role="tabpanel" id="panel-export" aria-labelledby="tab-export" tabIndex={0}>
               <ExportPanel
                 subject={{
                   generatorId: generator.id,

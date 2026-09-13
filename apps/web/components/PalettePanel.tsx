@@ -13,7 +13,7 @@ import {
   type Palette,
   type PaletteTag,
 } from '@patternwall/core';
-import { Button, Chip, Notice, uiStyles as ui } from './ui';
+import { Button, Chip, Notice, TabList, uiStyles as ui } from './ui';
 import { HARMONY_SCHEMES, harmonyPalette, type HarmonyScheme } from '../lib/harmony';
 import { extractPalette, loadImageFile } from '../lib/extract';
 import { loadSavedPalettes, removePalette, savePalette } from '../lib/storage';
@@ -299,25 +299,19 @@ export function PalettePanel({ palette, onChange }: { palette: Palette; onChange
         ) : null}
       </div>
 
-      <div className={styles.tabs} role="tablist" aria-label="Palette tools">
-        {TABS.map((t) => (
-          <button
-            key={t.value}
-            role="tab"
-            type="button"
-            id={`ptab-${t.value}`}
-            aria-selected={tab === t.value}
-            aria-controls={`ppanel-${t.value}`}
-            className={tab === t.value ? `${styles.tab} ${styles.tabOn}` : styles.tab}
-            onClick={() => setTab(t.value)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <TabList
+        label="Palette tools"
+        tabs={TABS}
+        value={tab}
+        onChange={setTab}
+        idFor={(v) => `ptab-${v}`}
+        panelIdFor={(v) => `ppanel-${v}`}
+        className={styles.tabs}
+        tabClassName={(on) => (on ? `${styles.tab} ${styles.tabOn}` : styles.tab)}
+      />
 
       {tab === 'library' ? (
-        <div role="tabpanel" id="ppanel-library" aria-labelledby="ptab-library">
+        <div role="tabpanel" id="ppanel-library" aria-labelledby="ptab-library" tabIndex={0}>
           <div className={styles.search}>
             <input
               className={ui.input}
@@ -379,7 +373,7 @@ export function PalettePanel({ palette, onChange }: { palette: Palette; onChange
       ) : null}
 
       {tab === 'edit' ? (
-        <div role="tabpanel" id="ppanel-edit" aria-labelledby="ptab-edit">
+        <div role="tabpanel" id="ppanel-edit" aria-labelledby="ptab-edit" tabIndex={0}>
           <p className={styles.hint}>
             Hex is what you paste; OKLCH is what you tune. Moving L alone changes only how light a colour is, which is the
             control you actually want when a mark is disappearing into the background.
@@ -415,7 +409,7 @@ export function PalettePanel({ palette, onChange }: { palette: Palette; onChange
       ) : null}
 
       {tab === 'harmony' ? (
-        <div role="tabpanel" id="ppanel-harmony" aria-labelledby="ptab-harmony">
+        <div role="tabpanel" id="ppanel-harmony" aria-labelledby="ptab-harmony" tabIndex={0}>
           <p className={styles.hint}>
             Pick one colour you like and take the rest from the hue wheel. Each set also walks lightness, so the accents stay
             apart once iOS blurs and dims them behind the app grid.
@@ -470,7 +464,7 @@ export function PalettePanel({ palette, onChange }: { palette: Palette; onChange
       ) : null}
 
       {tab === 'photo' ? (
-        <div role="tabpanel" id="ppanel-photo" aria-labelledby="ptab-photo">
+        <div role="tabpanel" id="ppanel-photo" aria-labelledby="ptab-photo" tabIndex={0}>
           <p className={styles.hint}>
             The image is scaled down to about 120 pixels on its long edge, converted to OKLCH and clustered into five stops.
             Clustering perceptually rather than in RGB is the difference between getting the colours you can see in the
