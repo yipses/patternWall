@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
-import { renderSpec, svgToDataUrl, type RenderSpec } from '../lib/render';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { type RenderSpec } from '../lib/render';
+import { renderDataUrl, renderDataUrlAsync } from '../lib/render-client';
 
 /**
  * A spec's content, as a string, so the render below can be memoised on what
@@ -49,13 +50,63 @@ export function PatternImage({
 }) {
   // Keyed on the spec's content rather than on `spec` itself. See specKey.
   const key = specKey(spec);
-  const result = useMemo(() => {
+
+  /**
+   * The first picture is drawn here, on whichever thread is asking; every one
+   * after it is drawn in the worker.
+   *
+   * That split is not a compromise, it is the only arrangement that keeps both
+   * things this component has to be true. The static export prerenders these
+   * to data URLs baked into the HTML, so the page has its pictures before any
+   * script runs -- and React then hydrates against that HTML, so the client's
+   * *first* render has to produce the identical `src` or it is a hydration
+   * mismatch. This app has already been bitten once by exactly that class of
+   * bug, and the note in `next.config.mjs` is the scar.
+   *
+   * So the initial value stays synchronous and identical on both sides, and
+   * the worker takes over from the first change onward -- which is where all
+   * the cost actually is, since a spec changes on every pointermove of a drag
+   * and the initial render happens once.
+   */
+  const initial = useMemo(() => {
     try {
-      return { url: svgToDataUrl(renderSpec(spec)), error: null as string | null };
+      return { url: renderDataUrl(spec), error: null as string | null };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'This pattern could not be drawn.';
-      return { url: null, error: message };
+      return { url: null, error: err instanceof Error ? err.message : 'This pattern could not be drawn.' };
     }
+  }, []);
+
+  const [result, setResult] = useState(initial);
+  const firstKey = useRef(key);
+
+  useEffect(() => {
+    if (key === firstKey.current) return;
+    let live = true;
+    renderDataUrlAsync(spec)
+      .then((url) => {
+        if (live) setResult({ url, error: null });
+      })
+      .catch((err: Error) => {
+        if (!live) return;
+        // A worker that could not start is not a broken pattern. Draw it here
+        // instead, and let the client fall back for the rest of the session.
+        if (err.message === 'render worker unavailable') {
+          try {
+            setResult({ url: renderDataUrl(spec), error: null });
+            return;
+          } catch (inner) {
+            setResult({ url: null, error: inner instanceof Error ? inner.message : 'This pattern could not be drawn.' });
+            return;
+          }
+        }
+        setResult({ url: null, error: err.message });
+      });
+    return () => {
+      // The worker finishes what it started -- a synchronous render cannot be
+      // interrupted from outside -- but a picture that is already out of date
+      // must not be allowed to land.
+      live = false;
+    };
   }, [key]);
 
   if (result.error) {

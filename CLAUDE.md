@@ -516,9 +516,20 @@ plan, which no parameter can answer.
 Client-only: no server rendering, no database, no accounts. The render service,
 short config IDs and per-config iCloud shortcuts are the next phase.
 
-Known weak points are listed at the end of the README. The main ones: rendering
-is synchronous on the main thread, and PNG quantisation works on pixels rather
-than on the palette the generator used.
+Known weak points are listed at the end of the README. The main ones now: the
+PNG export path is still synchronous, and PNG quantisation works on pixels
+rather than on the palette the generator used.
+
+Previews render in a worker (`apps/web/lib/render.worker.ts`), with one
+deliberate exception: the *first* render of any `PatternImage` is inline. The
+static export bakes its pictures into the HTML as data URLs and React hydrates
+against that, so the client's opening render must produce the identical `src`
+or it is a text hydration mismatch — the same class of bug as the build-stamp
+one recorded in `next.config.mjs`. Everything after the first render goes
+through the worker. `worker.spec.ts` asserts a worker actually starts, because
+the client falls back to rendering inline whenever one cannot be had and a
+silently broken worker is indistinguishable from a working one by looking at
+the pictures.
 
 One unresolved intermittent: `quality.spec.ts`'s "nothing is written to the
 console" test has twice failed with React error #418, a text hydration

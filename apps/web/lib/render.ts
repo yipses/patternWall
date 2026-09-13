@@ -30,14 +30,18 @@ export function renderSpec(spec: RenderSpec): string {
 }
 
 const utf8ToBase64 = (s: string): string => {
-  if (typeof window === 'undefined') return Buffer.from(s, 'utf8').toString('base64');
+  // `btoa` rather than `window.btoa`: this runs on the main thread, inside the
+  // render worker, and under Node during the static export's prerender, and
+  // only the first of those has a `window`. Testing for the global that is
+  // actually used keeps all three on the same path.
+  if (typeof btoa === 'undefined') return Buffer.from(s, 'utf8').toString('base64');
   const bytes = new TextEncoder().encode(s);
   let bin = '';
   const CHUNK = 0x8000;
   for (let i = 0; i < bytes.length; i += CHUNK) {
     bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
   }
-  return window.btoa(bin);
+  return btoa(bin);
 };
 
 /**

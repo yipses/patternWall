@@ -185,9 +185,12 @@ a non-blank canvas on six palettes, share-link round-tripping, and browser/Node 
   reach `support.apple.com` directly, so Apple's guide was consulted through search results quoting
   it. Labels confirmed against Apple's own wording are marked as such on the page; three toggle names
   that only community sources attest to are flagged as needing checking on your device.
-- **Rendering is synchronous on the main thread.** A dense `flow-dots` configuration emits tens of
-  thousands of circles, and while the preview is debounced and drops to a lower resolution during a
-  drag, a very heavy configuration can still cost a frame. A worker would fix this properly.
+- **The first render of a page is still synchronous.** Previews are drawn in a worker, but the
+  *first* one is not: the static export bakes its pictures into the HTML, and React hydrates against
+  that, so the client's opening render has to produce the identical `src` or it is a hydration
+  mismatch. Everything after it — every slider drag, seed change and palette switch — is off-thread.
+- **PNG export is still synchronous.** The export path renders and rasterises on the main thread;
+  only the preview goes through the worker so far.
 - **Batch export is chunked, not parallel.** A collection of full-resolution renders takes a while; the work
   yields a frame between each so the UI stays live, but it is one core doing one image at a time.
 - **PNG quantisation happens after rasterisation.** UPNG's quantiser is good but it works on pixels,
