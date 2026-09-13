@@ -29,6 +29,13 @@ type TileKind = 'arcs' | 'diagonals' | 'triangles';
 const COLOR_FIELD = 1.6;
 
 /**
+ * The longest a single piece of a diagonal chord may be, as a fraction of the
+ * canvas width. The colour field cycles COLOR_FIELD times across the image, so
+ * this keeps one flat piece to roughly a tenth of a cycle.
+ */
+const MAX_SEGMENT = 0.06;
+
+/**
  * Triangles are laid down just short of opaque, so a mass of them keeps some of
  * the background's depth rather than going flat. This is what the old
  * expression settled on for a full-size tile in the unquieted part of the
@@ -399,14 +406,29 @@ export const truchet: Generator = {
       const perp = step * 0.70710678;
       const lineSw = lines > 1 ? Math.min(sw, perp * 0.68) : sw;
 
-      // One path per chord, each coloured from the field at its own midpoint,
-      // the way the arcs are. Colouring the whole cell from its centre was
-      // right when a cell held one line through that centre, and became wrong
-      // the moment the count filled the cell with a family: every chord got the
-      // one step of the ramp, so the colour changed only at cell boundaries and
-      // the grid read as blocks of flat colour. Raising the blend cannot help
-      // that — it only gives each block a finer flat colour — which is what
-      // "the colour blend is broken" looks like.
+      // Each chord is cut into pieces that take their own colour, rather than
+      // carrying one colour end to end.
+      //
+      // Sampling once per chord fixed the cell-sized blocks and left a subtler
+      // version of the same fault. A colour boundary can then only fall in the
+      // gap *between* two chords, and every chord in the grid runs at 45°, so
+      // the field's contours get snapped onto a lattice of parallel lines and
+      // come out as straight-edged diamond facets — hard patches across a
+      // render that should be a smooth wash. The resolution is fine across the
+      // family, where the spacing is s/n, and coarse along it, where nothing
+      // changes for the chord's whole 1.41s length. Facets are what that
+      // anisotropy looks like.
+      //
+      // The piece count is derived rather than fixed, because the fault scales
+      // with cell size: a chord spans 1.41/cols of the canvas and the colour
+      // field cycles COLOR_FIELD times across it, so the pieces needed fall off
+      // as the grid gets finer. At 26 columns a chord is already short enough
+      // to need none, which is exactly where paying for them would hurt most —
+      // that render is 35,000 marks before anything is cut.
+      //
+      // Keyed on the column count, never on pixels: a thumbnail and an export
+      // must cut their chords the same way or they stop being the same picture.
+      const segments = Math.max(1, Math.min(12, Math.ceil(1.4142 / (cols * MAX_SEGMENT))));
       for (let k = -kMax; k <= kMax; k++) {
         const o = k * step;
         // Each chord is written from its top-most end so that the single-line
@@ -418,12 +440,24 @@ export const truchet: Generator = {
           : k <= 0
             ? [x0 + s + o, y0, x0, y0 + s + o]
             : [x0 + s, y0 + o, x0 + o, y0 + s];
-        const d = `M${num(px, 1)} ${num(py, 1)}L${num(qx, 1)} ${num(qy, 1)}`;
-        const my = (py + qy) / 2;
-        const chordBand = lines === 1 ? band : bandAt((px + qx) / 2, my);
-        (strokeBuckets[chordBand] as string[]).push(
-          el('path', { d: d + (k === kMax ? extra : ''), 'stroke-width': num(lineSw, 2) }),
-        );
+        for (let j = 0; j < segments; j++) {
+          const t0 = j / segments;
+          const t1 = (j + 1) / segments;
+          const ax = px + (qx - px) * t0;
+          const ay = py + (qy - py) * t0;
+          const bx = px + (qx - px) * t1;
+          const by = py + (qy - py) * t1;
+          // Collinear pieces under a round linecap: the join is invisible, and
+          // the stroke is the same width either side of it.
+          const d = `M${num(ax, 1)} ${num(ay, 1)}L${num(bx, 1)} ${num(by, 1)}`;
+          const segBand = bandAt((ax + bx) / 2, (ay + by) / 2);
+          (strokeBuckets[segBand] as string[]).push(
+            el('path', {
+              d: d + (k === kMax && j === segments - 1 ? extra : ''),
+              'stroke-width': num(lineSw, 2),
+            }),
+          );
+        }
       }
     };
 

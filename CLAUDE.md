@@ -401,6 +401,19 @@ result. Each was arrived at by breaking it first.
   neighbour; with it gone every cell is the same size and the lattice holds
   everywhere.
 
+- **A chord is cut into pieces for colour, and the count is derived.** Sampling
+  once per chord fixed the cell-sized blocks and left a subtler version of the
+  same fault: a colour boundary can then only fall in the gap *between* chords,
+  and every chord runs at 45°, so the field's contours snap onto a lattice of
+  parallel lines and come out as straight-edged diamond facets. The resolution
+  is fine across the family, where the spacing is `s/n`, and coarse along it,
+  where nothing changes for the chord's whole `1.41s`. That anisotropy is what
+  a facet is. Pieces are sized so none carries one colour across more than 6%
+  of the canvas width — `ceil(1.4142 / (cols * 0.06))`, keyed on the column
+  count and never on pixels. It costs nothing where it is not needed: past
+  about 23 columns a chord is already short enough to want a single piece,
+  which is exactly where the render is heaviest.
+
 - **Triangles divide on that same lattice.** Every rotation lists its
   right-angle corner first, so scaling about that vertex sweeps the hypotenuse
   across the cell and a slice at `k/n` lands on the chord `k*(s/n)`. Fill every

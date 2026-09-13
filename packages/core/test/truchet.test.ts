@@ -309,6 +309,47 @@ describe('truchet triangles', () => {
   });
 });
 
+/**
+ * No diagonal mark may carry one colour across more than 6% of the canvas
+ * width.
+ *
+ * This is the property behind a fault that survived the earlier per-mark fix.
+ * Sampling once per chord stopped whole cells being one flat colour, but a
+ * colour boundary could then only fall in the gap *between* chords — and every
+ * chord runs at 45°, so the field's contours snapped onto a lattice of parallel
+ * lines and came out as straight-edged diamond facets across what should be a
+ * smooth wash. Resolution was fine across the family (spacing s/n) and coarse
+ * along it (nothing changes for the chord's whole 1.41s length).
+ *
+ * The bound is the anisotropy stated as a number, so it fails wherever a chord
+ * is long relative to the colour field, not only at the density someone
+ * happened to look at. Before the fix, a chord spans 1.41/cols of the canvas:
+ * 0.47 at three columns, 0.18 at the default eight, and the bound is only met
+ * by accident past about 23 columns.
+ */
+describe('truchet diagonal colour resolution', () => {
+  const MAX_SEGMENT = 0.06;
+
+  for (const density of [3, 6, 8, 12, 26]) {
+    it(`keeps a single-colour piece under ${MAX_SEGMENT * 100}% of the canvas at density ${density}`, () => {
+      const W = 900;
+      const svg = render({ tileSet: 'diagonals', density, arcCount: 4, colorBlend: 1 }, W);
+      // Measure the first line segment of every path; the one path that also
+      // carries the corner spur is measured on its chord piece alone.
+      const lengths: number[] = [];
+      for (const m of svg.matchAll(/d="M([-\d.]+) ([-\d.]+)L([-\d.]+) ([-\d.]+)/g)) {
+        lengths.push(Math.hypot(Number(m[3]) - Number(m[1]), Number(m[4]) - Number(m[2])));
+      }
+      expect(lengths.length, 'no diagonal marks to measure').toBeGreaterThan(20);
+      const worst = Math.max(...lengths) / W;
+      expect(
+        worst,
+        `a mark carries one colour across ${(worst * 100).toFixed(1)}% of the canvas at density ${density}`,
+      ).toBeLessThanOrEqual(MAX_SEGMENT * 1.02);
+    });
+  }
+});
+
 describe('truchet colour resolution', () => {
   const SIZE = 600;
   const COLS = 6;
