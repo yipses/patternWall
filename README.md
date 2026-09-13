@@ -129,12 +129,16 @@ palette does not contain, which quietly replaces the chosen palette with a gradi
 bottom controls — already offset for the export bleed. A generator whose density varies across the
 canvas takes a `quietTop` parameter and multiplies its local density, weight or opacity by
 `quietFactor(...)`, so one honest control governs how far the pattern gets out of the clock's way.
-Detail and contrast are pushed into the lower canvas, where the app grid and dock live. Two
-generators are exceptions. Truchet is one deliberately: a tiling is uniform by construction, and
-dimming its upper third read as a horizontal seam rather than as breathing room, so the control was
-removed rather than tuned. Contours is the other by choice rather than by nature — it flattened the
-terrain toward the top instead of dimming it, which avoided the seam, and the control was dropped
-when its upper range proved not to earn its slot.
+Detail and contrast are pushed into the lower canvas, where the app grid and dock live.
+
+Dimming is not the only way to do it, and on some patterns it is the wrong one. Chevron-blocks
+takes the structural route instead — its `skyline` control grows the stacks toward the bottom and
+flattens them toward the top, so there is genuinely less relief where the clock sits rather than the
+same relief painted fainter. Truchet has no such control at all, deliberately: a tiling is uniform
+by construction, and dimming its upper third read as a horizontal seam rather than as breathing
+room, so the control was removed rather than tuned. Contours composed structurally too until its
+control was dropped for spending its range on settings nobody wanted, and it currently makes no
+allowance for the clock zone.
 
 ### Bleed
 

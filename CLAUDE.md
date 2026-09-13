@@ -525,17 +525,26 @@ is a bright wallpaper whatever the palette says its background is, so its
 blocks are anchored a fixed lightness distance from the paper rather than
 painted at accent strength.
 
-Two of the five now compose uniformly across the canvas rather than holding the
+Two of the six now compose uniformly across the canvas rather than holding the
 clock zone back, and for different reasons. Truchet never could: a tiling is
 uniform by construction and any factor keyed on height draws a band across it.
-Contours could and no longer does — `relief` flattened the field toward the top
-so that fewer heights were crossed up there, which worked, and was removed on
-request because the range above its default did little. The consequence is
-plain in an A/B and worth knowing before anyone calls it a bug: the top third
-now carries the same contour density as the bottom. If the clock zone needs to
-come back, `relief` is the mechanism to restore rather than a new one to invent
-— it flattens terrain instead of dimming ink, which is why it never left the
-seam that `quietTop` did on truchet.
+Contours could and no longer does — its `relief` param flattened the field
+toward the top so that fewer heights were crossed up there, which worked, and
+was removed on request because the range above its default did little. The
+consequence is plain in an A/B and worth knowing before anyone calls it a bug:
+the top third now carries the same contour density as the bottom.
+
+So the repo now holds the clock zone back three different ways and, in contours,
+not at all. `quietFactor` dims what is drawn, which is right where density
+varies and wrong on a uniform tiling. The other two are structural — they change
+how much there is to draw up there rather than how it is painted — and that is
+the family contours' `relief` belonged to: chevron-blocks' `skyline` is the
+surviving example, growing its stacks toward the bottom and flattening them
+toward the top. If contours ever wants its quiet top back, that is the shape of
+the answer, and reinstating its old `relief` beats inventing something new.
+Mind the collision when reading either file: chevron-blocks has a param of its
+own called `relief`, and it means the height spread between stacks, which is a
+different thing entirely.
 
 `contours` and `ridgelines` are the same idea seen from two directions, and the
 distinction is worth keeping straight: ridgelines is terrain in elevation, a
