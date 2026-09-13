@@ -56,7 +56,7 @@ export const flowDots: Generator = {
     const f2 = f1 * 2.718; // non-harmonic on purpose
     const stepLen = minDim * 0.005;
     const rBase = minDim * 0.0039 * dotSize;
-    const gap = Math.max(rBase * 1.2, rBase * 2 * spacing);
+    const requestedGap = Math.max(rBase * 1.2, rBase * 2 * spacing);
 
     const angleAt = (x: number, y: number): number => {
       const a = noise.fbm(x * f1, y * f1, 3, 2.03, 0.55);
@@ -95,6 +95,27 @@ export const flowDots: Generator = {
 
     let emitted = 0;
     const maxDots = 22000;
+
+    // The dot budget is spent by widening the spacing, not by cutting the
+    // particle list short.
+    //
+    // The cap used to sit on the seeding loop, and particles are seeded on a
+    // stratified grid walked top to bottom, so running out of budget meant the
+    // last rows were never seeded at all. At the two sliders' maxima (density
+    // 900, trail 220) the lowest dot on the canvas sat at 73% of its height and
+    // the bottom two deciles held nothing — a bare black third exactly where
+    // this generator is supposed to put its detail.
+    //
+    // One quantity is implied by the others, so derive it, the way truchet's
+    // arc spacing is derived from its count. Each particle lays down about
+    // `trail * stepLen / gap` dots, so the whole field wants
+    // `density * trail * stepLen / gap`; scale the gap by however much that
+    // overruns. Every particle still gets seeded and the thinning falls evenly
+    // across the canvas instead of all at the bottom. maxDots stays as a
+    // backstop, since speed varies along a streamline and the projection is an
+    // estimate rather than a guarantee.
+    const projected = (density * trail * stepLen) / requestedGap;
+    const gap = projected > maxDots ? requestedGap * (projected / maxDots) : requestedGap;
 
     for (let p = 0; p < density && emitted < maxDots; p++) {
       // Seed on a jittered stratified grid so particles cover the frame evenly
@@ -137,7 +158,13 @@ export const flowDots: Generator = {
             r *= 0.4 + 0.6 * env;
             o *= 0.3 + 0.7 * env;
           }
-          if (r < minDim * 0.0006) continue;
+          // Clamped, not culled. `r` already carries the depth ramp and the
+          // quiet-top factor, both of which are smallest at the top of the
+          // canvas, so an absolute floor applied as a `continue` deleted every
+          // dot up there rather than making it small: at the minimum dot size
+          // the top three deciles were empty. quietTop is meant to thin the
+          // clock zone, not clear it. Opacity still carries the fade.
+          r = Math.max(r, minDim * 0.0006);
 
           // A crossfade between the two sources, not a sum of them. Adding
           // them overflowed: at spread 1 the old expression reached 1.6 and the

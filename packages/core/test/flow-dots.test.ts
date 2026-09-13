@@ -27,6 +27,63 @@ function bandShares(colorSpread: number): number[] {
   return counts.map((n) => n / total);
 }
 
+/** How many dots land in each tenth of the canvas height. */
+function verticalDeciles(over: Record<string, number | string | boolean>): number[] {
+  const H = 932;
+  const svg = renderToSvg({
+    generator: flowDots,
+    width: 430,
+    height: H,
+    palette: TEST_PALETTES[0]!,
+    params: { ...baseParams(flowDots), ...over },
+    seed: 'cap',
+    bleed: 0.08,
+  });
+  const deciles = new Array(10).fill(0) as number[];
+  for (const m of svg.matchAll(/<circle cx="[-\d.]+" cy="([-\d.]+)"/g)) {
+    const d = Math.min(9, Math.max(0, Math.floor((Number(m[1]) / H) * 10)));
+    (deciles[d] as number) += 1;
+  }
+  return deciles;
+}
+
+/**
+ * Two ways this generator used to leave a third of the wallpaper blank, both
+ * reachable by putting a slider at its end, and neither visible to
+ * `raster.test.ts` because that only measures ink at default parameters.
+ *
+ * An empty decile is the assertion because that is the actual failure: not
+ * "fewer dots than we would like" but "no dots at all across a tenth of the
+ * canvas". Both cases produced hard zeros, so no threshold judgement is
+ * involved.
+ */
+describe('flow-dots coverage at the slider extremes', () => {
+  // The 22,000-dot cap used to sit on the seeding loop, and particles are
+  // seeded on a stratified grid walked top to bottom, so exhausting the budget
+  // meant the last rows were never created. At both maxima the lowest dot sat
+  // at 73% of the canvas height and the bottom two deciles were empty.
+  it('fills the bottom of the canvas at maximum density and trail', () => {
+    const deciles = verticalDeciles({ density: 900, trail: 220 });
+    expect(deciles.filter((n) => n === 0), `empty bands, deciles: ${deciles.join(',')}`).toHaveLength(0);
+  });
+
+  // The minimum-radius floor was applied as a `continue`, against a radius that
+  // already carries the depth ramp and the quiet-top factor -- both smallest at
+  // the top. At the minimum dot size that deleted every dot in the upper third
+  // rather than making it small.
+  it('fills the top of the canvas at the minimum dot size', () => {
+    const deciles = verticalDeciles({ dotSize: 0.3 });
+    expect(deciles.filter((n) => n === 0), `empty bands, deciles: ${deciles.join(',')}`).toHaveLength(0);
+  });
+
+  // The two together were the worst case: four sliders at an end, and a render
+  // with two strands in the upper third and nothing else.
+  it('fills the canvas with every slider at an extreme', () => {
+    const deciles = verticalDeciles({ density: 900, trail: 220, spacing: 1, dotSize: 0.3 });
+    expect(deciles.filter((n) => n === 0), `empty bands, deciles: ${deciles.join(',')}`).toHaveLength(0);
+  });
+});
+
 describe('flow-dots colour spread', () => {
   /**
    * The control used to add its two sources rather than crossfade between them,
