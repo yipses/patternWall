@@ -129,10 +129,12 @@ palette does not contain, which quietly replaces the chosen palette with a gradi
 bottom controls — already offset for the export bleed. A generator whose density varies across the
 canvas takes a `quietTop` parameter and multiplies its local density, weight or opacity by
 `quietFactor(...)`, so one honest control governs how far the pattern gets out of the clock's way.
-Detail and contrast are pushed into the lower canvas, where the app grid and dock live. Truchet is
-the exception and deliberately so: a tiling is uniform by construction, and dimming its upper third
-read as a horizontal seam rather than as breathing room, so the control was removed rather than
-tuned.
+Detail and contrast are pushed into the lower canvas, where the app grid and dock live. Two
+generators are exceptions. Truchet is one deliberately: a tiling is uniform by construction, and
+dimming its upper third read as a horizontal seam rather than as breathing room, so the control was
+removed rather than tuned. Contours is the other by choice rather than by nature — it flattened the
+terrain toward the top instead of dimming it, which avoided the seam, and the control was dropped
+when its upper range proved not to earn its slot.
 
 ### Bleed
 
