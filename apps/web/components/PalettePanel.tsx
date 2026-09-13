@@ -88,6 +88,10 @@ function ColourSlot({
 
   const apply = (value: string): boolean => {
     const v = value.startsWith('#') ? value : `#${value}`;
+    // isHex still accepts four and eight digits, and oklchToHex round-trips the
+    // alpha, so the blur path has to refuse them too or it would put back what
+    // the typing path just declined to take.
+    if (v.length === 5 || v.length === 9) return false;
     if (!isHex(v)) return false;
     setBad(false);
     onChange(oklchToHex(hexToOklch(v)));
@@ -102,10 +106,15 @@ function ColourSlot({
    * `#11aa22b3c` in the field, flagged invalid.
    *
    * So the live commit waits for a length that cannot be a prefix of something
-   * longer: six digits, or eight with alpha. The shorthand still works, on
-   * blur or Enter, which is also where anything unparseable reverts. Nothing is
-   * marked invalid while it is still being typed — an incomplete colour is not
-   * a wrong one.
+   * longer: six digits. The three-digit shorthand still works, on blur or
+   * Enter, which is also where anything unparseable reverts. Nothing is marked
+   * invalid while it is still being typed — an incomplete colour is not a wrong
+   * one.
+   *
+   * Eight digits used to be accepted here. Alpha is not carried through the
+   * renderer or the share encoding, so offering it meant a colour that looked
+   * one way in the preview and another through its own link. It is now refused
+   * at the field, which is the only place it could be typed.
    */
   const commitWhileTyping = (value: string) => {
     const digits = (value.startsWith('#') ? value.slice(1) : value).trim();
@@ -115,8 +124,8 @@ function ColourSlot({
     // on the way past three characters is what the old commit-per-keystroke
     // did. This keeps the invalid state meaningful rather than leaving it
     // permanently off.
-    setBad(digits.length > 8 || !/^[0-9a-fA-F]*$/.test(digits));
-    if (digits.length === 6 || digits.length === 8) apply(value);
+    setBad(digits.length > 6 || !/^[0-9a-fA-F]*$/.test(digits));
+    if (digits.length === 6) apply(value);
   };
 
   const commitFinal = () => {

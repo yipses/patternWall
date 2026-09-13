@@ -3,10 +3,13 @@ import {
   createRng,
   curatedPalettes,
   decodeConfig,
+  defaultPalette,
   defaultParams,
   encodeConfig,
   generators,
   initialConfig,
+  normalizePalette,
+  packPalette,
   renderToSvg,
   unpackPalette,
   type ParamValue,
@@ -86,6 +89,73 @@ describe('share links', () => {
     const bogus = decodeConfig('no-such-pattern', '');
     expect(bogus.notes.length).toBeGreaterThan(0);
     expect(bogus.config.generatorId).toBe(generators[0]!.id);
+  });
+
+  /**
+   * A palette that has been through the front door must survive its own link.
+   *
+   * It did not. The Colours tab accepted eight-digit hex, `oklchToHex`
+   * round-tripped the alpha, `mixOklch` carried it into two generators'
+   * background gradients — and `packHex` truncated it, so the link rendered a
+   * different picture from the editor that produced it. A four-digit hex was
+   * worse: it fell through to '000000' and turned the colour black.
+   *
+   * Alpha is now dropped at the door instead, and shorthand is expanded, so
+   * every colour has one spelling that the whole chain can carry. The cases
+   * below are exactly the ones that used to break.
+   */
+  it('round-trips a palette whose colours arrived in every accepted spelling', () => {
+    const p = normalizePalette(
+      {
+        id: 'spellings',
+        name: 'Spellings',
+        background: '#171520f7', // 8-digit, alpha
+        ink: '#fff', //             3-digit shorthand
+        accents: ['#ff7a3daa', '#0af', '#1234', '#112233'],
+        mode: 'dark',
+        tags: [],
+      },
+      defaultPalette,
+    );
+
+    // Normalisation is what makes the round trip possible: six digits, no alpha.
+    for (const hex of [p.background, p.ink, ...p.accents]) {
+      expect(hex, `${hex} is not a plain six-digit colour`).toMatch(/^#[0-9a-f]{6}$/);
+    }
+    // Specifically: alpha dropped, not truncated into a different colour, and
+    // the four-digit case not blackened.
+    expect(p.background).toBe('#171520');
+    expect(p.accents[2]).toBe('#112233');
+
+    const back = unpackPalette(packPalette(p));
+    expect(back).not.toBeNull();
+    expect(back!.background).toBe(p.background);
+    expect(back!.ink).toBe(p.ink);
+    expect(back!.accents).toEqual(p.accents);
+  });
+
+  /**
+   * packPalette is exported and does not normalise what it is handed —
+   * saveCollected, for one, stores whatever palette the config carried. So its
+   * own handling of a four-digit hex matters: it used to fall through to
+   * '000000', turning a colour black in the link rather than merely losing its
+   * transparency. Normalisation now expands shorthand before it gets here,
+   * which is why this exercises packPalette directly rather than through it.
+   */
+  it('does not blacken a four-digit hex it is handed unnormalised', () => {
+    const packed = packPalette({
+      id: 'raw',
+      name: 'Raw',
+      background: '#1234',
+      ink: '#ffffff',
+      accents: ['#f00a'],
+      mode: 'dark',
+      tags: [],
+    });
+    const back = unpackPalette(packed);
+    expect(back).not.toBeNull();
+    expect(back!.background, 'a four-digit background packed to black').toBe('#112233');
+    expect(back!.accents[0], 'a four-digit accent packed to black').toBe('#ff0000');
   });
 
   it('rejects palette tokens that are the wrong shape', () => {

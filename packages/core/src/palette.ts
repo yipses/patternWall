@@ -182,9 +182,30 @@ export function checkPalette(p: Palette): PaletteWarning[] {
 }
 
 /** A palette is valid enough to render if it has the three required fields. */
+/**
+ * Colours arriving from outside, made into colours this system can carry all
+ * the way through.
+ *
+ * Alpha is dropped rather than kept. It used to be accepted here and then only
+ * half-honoured: `mixOklch` preserves it so it reached two generators'
+ * background gradients, `accentAt` and `mixOklab` discard it, and `packHex`
+ * truncated it, so a palette with a transparent accent rendered one way and its
+ * own share link rendered another. Half-support was the worst of the three
+ * options. If alpha is ever wanted, it has to go through the whole chain —
+ * ramp, mix and pack — not just the parts that happen to pass it along.
+ */
 export function normalizePalette(p: Partial<Palette> & { id?: string }, fallback: Palette): Palette {
-  const hex = (v: unknown, d: string): string =>
-    typeof v === 'string' && /^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(v.trim()) ? v.trim().toLowerCase() : d;
+  const hex = (v: unknown, d: string): string => {
+    if (typeof v !== 'string') return d;
+    const t = v.trim().toLowerCase();
+    if (!/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.test(t)) return d;
+    // Six digits, always, so one colour has exactly one spelling. #0af and
+    // #00aaff are the same colour and used to survive as different strings,
+    // which matters because collectionKey builds an item's identity out of
+    // these — the same configuration could be collected twice under two names.
+    if (t.length === 4 || t.length === 5) return `#${t[1]!}${t[1]!}${t[2]!}${t[2]!}${t[3]!}${t[3]!}`;
+    return t.slice(0, 7);
+  };
   const accents = Array.isArray(p.accents) && p.accents.length > 0
     ? p.accents.slice(0, 4).map((a, i) => hex(a, accent(fallback, i)))
     : fallback.accents.slice();

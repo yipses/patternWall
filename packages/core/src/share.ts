@@ -28,9 +28,19 @@ export interface DecodeResult {
 
 const HEX6 = /^[0-9a-f]{6}$/;
 
+/**
+ * Six hex digits, always. The share encoding has no room for alpha and the
+ * renderer does not carry it anyway, so it is dropped here as it is on the way
+ * in — see `normalizePalette`.
+ *
+ * The four-digit case used to fall through to '000000', which turned a colour
+ * into black in a share link rather than losing only its transparency. It could
+ * not come from the UI, but a stored or hand-edited palette could hold one.
+ */
 function packHex(hex: string): string {
   const s = hex.trim().replace(/^#/, '').toLowerCase();
-  if (s.length === 3) return s[0]! + s[0]! + s[1]! + s[1]! + s[2]! + s[2]!;
+  // #rgb and #rgba both expand from their first three digits.
+  if (s.length === 3 || s.length === 4) return s[0]! + s[0]! + s[1]! + s[1]! + s[2]! + s[2]!;
   if (s.length >= 6) return s.slice(0, 6);
   return '000000';
 }
