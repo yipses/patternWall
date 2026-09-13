@@ -7,10 +7,15 @@ import { renderSpec, svgToDataUrl, type RenderSpec } from './render';
  *
  * Every pattern here is drawn synchronously into a string, and the expensive
  * ones are expensive enough to be felt: a dense flow-dots emits tens of
- * thousands of circles, contours traces a field twice over at ~110ms, and the
- * string-art solver runs a greedy search that is several hundred milliseconds
- * on its own. All of that used to happen between two paints of the editor,
- * which is why dragging a slider on the heavier patterns stuttered.
+ * thousands of circles, and contours traces a field twice over at ~110ms. All
+ * of that used to happen between two paints of the editor, which is why
+ * dragging a slider on the heavier patterns stuttered.
+ *
+ * The case that originally paid for this was string art, whose greedy solver
+ * took most of a second; rebuilding it around traced outlines took it to about
+ * 30ms, so it is no longer the reason. The worker stays because the reason was
+ * never one pattern — a render that happens where the UI is not waiting is the
+ * right shape whatever the current slowest thing is.
  *
  * The worker changes nothing about what is drawn. It is the same `renderSpec`
  * the main thread calls, over the same core package, so the string it returns

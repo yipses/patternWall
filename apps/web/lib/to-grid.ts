@@ -1,11 +1,12 @@
 import { GRID_SIZE, packGrid } from '@patternwall/core';
 
 /**
- * A photograph, reduced to what the string-art solver actually reads.
+ * A photograph, reduced to what string art actually reads.
  *
- * The solver only ever asks the target how dark it is around a point, so
- * everything else about a picture — its colour, its resolution, its aspect —
- * is thrown away here rather than carried through the app. What comes out is
+ * The pattern only ever asks the picture how dark it is around a point — it
+ * thresholds that darkness into shapes and traces their outlines — so
+ * everything else about a picture, its colour and its resolution and its
+ * aspect, is thrown away here rather than carried through the app. What comes out is
  * `size` squared darkness values, packed into a string short enough to travel
  * in a share link. The size is the caller's choice, because the whole picture
  * goes in that link and finer costs characters: 48 is about 1,500 of them and
@@ -24,10 +25,15 @@ import { GRID_SIZE, packGrid } from '@patternwall/core';
  * which for anything with texture in it is noise, not tone.
  *
  * **Normalised to its own range.** A photograph rarely spans black to white,
- * and the solver's ink budget is derived from how much darkness the target
- * asks for, so a flat original would simply be under-drawn. Stretching to the
- * range actually present means an evenly-lit snapshot and a high-contrast
- * studio shot both arrive with something to work with.
+ * and a grid crushed into a narrow band gives the four-bit quantisation below
+ * almost nothing to store: an evenly-lit snapshot that runs 0.35 to 0.65
+ * arrives with five of its sixteen levels used. Stretching to the range
+ * actually present spends all sixteen on the tones that are there.
+ *
+ * The thresholds the pattern reads off this are taken by *quantile* rather
+ * than by value, so it would survive an unstretched grid — but it would
+ * survive it at a third of the tonal resolution, which is a different kind of
+ * loss and not one the pattern can undo.
  */
 export function imageToGrid(img: HTMLImageElement | ImageBitmap, size: number = GRID_SIZE): string {
   const sw = 'naturalWidth' in img ? img.naturalWidth : img.width;
