@@ -349,6 +349,24 @@ The general lesson is the reusable part: before judging a hash, ask which of its
 uses reads the bits and which only seeds with them. Those want different things,
 and one function cannot be frozen and improvable at once.
 
+**A stamped scratch array is only safe if the loop order matches what it is
+stamped by.** Contours chains marching-squares fragments into whole curves, and
+the first version held the per-level graph in arrays indexed by grid edge,
+reusing them across levels with a level stamp instead of clearing them. The
+outer loop is cells and the inner loop is levels, so by the time a level was
+traced, every edge it shared with a later level had had its adjacency
+overwritten — the state was stamped per level while the traversal that filled it
+ran per cell.
+
+It looked fine. An edge is usually crossed by only one height, because its two
+corners rarely span more than one, so at the default settings the conflict
+almost never arose and the map rendered correctly. In rough country at sixty
+levels a single edge is crossed many times over, and there the contours
+shattered into 28,319 two-point fragments. The test caught it at the extreme
+setting and nowhere else, which is the argument for running that test at an
+extreme at all. Keying the graph by (level, edge) instead costs a map lookup and
+cannot go wrong.
+
 **A comment can be the last surviving copy of a reverted design.** The arcs
 branch carried four layers of commentary from successive attempts, two of them
 describing code that had been reverted and contradicting the layer below. Each

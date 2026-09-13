@@ -2,7 +2,7 @@ import { accentAt } from '../palette.js';
 import { hexToOklch, mixOklch, oklchToHex } from '../color.js';
 import { createNoise2D } from '../noise.js';
 import { clamp, smoothstep } from '../geometry.js';
-import { el, num, svgRoot } from '../svg.js';
+import { el, num, smoothPath, svgRoot } from '../svg.js';
 import { pNum, type Generator, type RenderContext } from '../types.js';
 
 const description = `
@@ -12,7 +12,9 @@ The heights come from fractal noise — several octaves of a smooth random field
 
 Left there, though, the result is not a landscape. Fractal noise is isotropic — nothing in it prefers a direction — so every landform comes out a rounded blob and the map reads as splodges. Real country is nothing but direction: ridges that run for miles, valleys that branch, the whole surface organised by the water coming off it. **Grain** supplies that by looking the field up at a point the field itself has moved, so the land is dragged through itself and acquires a flow. **Valley incision** supplies the other half. Plain noise domes where water cuts, so the second field mixed in here is ridged noise — folded at its zero crossing so it creases instead of curving — and the contours start kinking upstream in the V that gives a printed sheet away as terrain rather than decoration. Both are easy to overdo: past about a third, the incision stops cutting valleys and starts shattering the map into small closed rings.
 
-The lines are found by marching squares. The field is sampled onto a grid, and every cell of that grid is compared against each height that passes through it: a cell with two corners above the line and two below has the line crossing two of its edges, and where it crosses is worked out by interpolating between the corner heights. Walk every cell and the crossings assemble into closed loops without anything ever having to trace one. **Resolution** is that grid, and it is the honest cost control — it sets how finely the curves are followed and it is the one parameter that decides how long a render takes.
+The lines are found by marching squares. The field is sampled onto a grid, and every cell of that grid is compared against each height that passes through it: a cell with two corners above the line and two below has the line crossing two of its edges, and where it crosses is worked out by interpolating between the corner heights. That gives a heap of disconnected two-point fragments, which are then chained back into the curves they belong to — each crossing sits on one grid edge, and an edge is shared by exactly two cells, so the fragments join without any guessing about which end meets which — and drawn as a smooth curve through the crossings rather than as a run of straight hops between them.
+
+Chaining is what makes **resolution** a fair control rather than a tax. Drawn fragment by fragment, the only route to a smooth curve is a finer grid, and the grid is the one thing a render actually costs. Interpolated, a coarse grid gives a curve just as smooth; what it costs instead is memory of small things, so islands vanish and narrow inlets round off before anything ever looks angular. The default sits where the small islands survive.
 
 Two cases are genuinely ambiguous: a cell with high corners diagonally opposite each other is either a saddle or a pinch, and the crossings alone cannot say which. Taking the average of the four corners settles it, and the difference is visible — guess wrong and contours join across a pass that should divide them, which is the difference between two hills and one lumpy one.
 
@@ -47,7 +49,7 @@ export const contours: Generator = {
     { key: 'levels', label: 'Contour lines', type: 'number', min: 6, max: 60, step: 1, default: 22, description: 'How many heights get a line. More lines read as steeper country, because a contour map shows slope as line density.' },
     { key: 'scale', label: 'Terrain scale', type: 'number', min: 0.6, max: 6, step: 0.1, default: 1.5, description: 'How far back you are standing. Low values give two or three broad massifs across the width; high values an archipelago of small islands.' },
     { key: 'detail', label: 'Detail', type: 'number', min: 1, max: 5, step: 1, default: 3, description: 'Octaves of noise. One gives smooth domes; each one after roughens the coastline without moving the mountains.' },
-    { key: 'resolution', label: 'Resolution', type: 'number', min: 40, max: 220, step: 10, default: 130, description: 'The sampling grid the lines are traced on. Low values give an angular, faceted map. This is what a render costs, so it is the knob to reach for if the preview feels slow.' },
+    { key: 'resolution', label: 'Resolution', type: 'number', min: 40, max: 220, step: 10, default: 90, description: 'The sampling grid the lines are traced on. Since the crossings are chained and smoothed, low values do not make the curves angular \u2014 they make the map forget small things, dropping islands and rounding off narrow inlets. This is what a render costs, so it is the knob to reach for if the preview feels slow.' },
     { key: 'weight', label: 'Line weight', type: 'number', min: 0.3, max: 3, step: 0.05, default: 1, description: 'Line width, scaled to the canvas so it looks the same at any export size.' },
     { key: 'indexEvery', label: 'Index contours', type: 'number', min: 0, max: 10, step: 1, default: 5, description: 'Draw every nth line heavier, the way a printed map does, so the eye can count elevation instead of only reading shape. Zero draws every line the same.' },
     { key: 'relief', label: 'Relief', type: 'number', min: 0, max: 1, step: 0.01, default: 0.55, description: 'Flattens the land toward the top of the canvas, so the clock sits on calm ground and the dense contours fall in the lower half. At zero the country is equally rugged everywhere.' },
@@ -74,7 +76,7 @@ export const contours: Generator = {
     // Deriving it from pixels would trace a 108px thumbnail on a coarser grid
     // than a 1399px export and hand back a different map — the preview has to
     // be the thing you download.
-    const cols = Math.max(8, Math.round(pNum(params, 'resolution', 130)));
+    const cols = Math.max(8, Math.round(pNum(params, 'resolution', 90)));
     const rows = Math.max(8, Math.round((cols * h) / Math.max(1, w)));
 
     const minDim = Math.min(w, h);
@@ -123,13 +125,63 @@ export const contours: Generator = {
       }
     }
 
-    // One path per contour height, built as a run of two-point segments. The
-    // segments of a level share a stroke, so they share a group and a single
-    // `d` — a level is one element however many cells it crosses.
-    const paths: string[] = new Array(levels).fill('');
-
+    // Contours are traced as whole curves, not emitted cell by cell.
+    //
+    // Marching squares naturally produces a heap of disconnected two-point
+    // segments — 7,414 of them in an export-size render — and drawing them
+    // straight out means the only way to a smooth curve is a finer grid, which
+    // is also the only thing a render costs. Chaining the segments back into
+    // the curves they belong to breaks that trade: the same grid gives a
+    // smoothed cubic through the crossings, so the map gets smoother and
+    // cheaper at once, and the file shrinks because a whole contour is one
+    // path instead of a hundred.
+    //
+    // Every crossing sits on exactly one grid edge, so the edge is the natural
+    // identity for it: an integer, exact, and shared by precisely the two cells
+    // that meet there. Keying the graph on coordinates would need a tolerance,
+    // because `i * cw + cw` and `(i + 1) * cw` are not reliably the same float.
     const cw = w / cols;
     const ch = h / rows;
+    const HCOUNT = cols * (rows + 1);
+    const EDGES = HCOUNT + (cols + 1) * rows;
+
+    // Keyed by level *and* edge, not by edge alone.
+    //
+    // The first version of this stamped adjacency into arrays indexed by edge
+    // and reused them per level. That is wrong here, because the loop below
+    // walks cells on the outside and levels on the inside: by the time a level
+    // is traced, every edge it shares with a later level has had its adjacency
+    // overwritten. It survived the default settings because an edge is usually
+    // crossed by only one height — its two corners rarely span more than one —
+    // and fell apart in rough country at sixty levels, where a single edge is
+    // crossed many times over. A slot per (level, edge) costs a map lookup and
+    // cannot go wrong.
+    const slotOf = new Map<number, number>();
+    const sx: number[] = [];
+    const sy: number[] = [];
+    const sa: number[] = [];
+    const sb: number[] = [];
+    const touched: number[][] = Array.from({ length: levels }, () => []);
+
+    const slot = (id: number, L: number, x: number, y: number): number => {
+      const key = L * EDGES + id;
+      const found = slotOf.get(key);
+      if (found !== undefined) return found;
+      const n = sx.length;
+      slotOf.set(key, n);
+      sx.push(x);
+      sy.push(y);
+      sa.push(-1);
+      sb.push(-1);
+      (touched[L] as number[]).push(n);
+      return n;
+    };
+    const link = (p: number, q: number): void => {
+      if (sa[p] === -1) sa[p] = q;
+      else if (sb[p] === -1) sb[p] = q;
+      if (sa[q] === -1) sa[q] = p;
+      else if (sb[q] === -1) sb[q] = p;
+    };
 
     for (let j = 0; j < rows; j++) {
       const y0 = j * ch;
@@ -152,6 +204,12 @@ export const contours: Generator = {
         let first = Math.floor(lo * levels) + 1;
         if (first < 1) first = 1;
         const last = Math.min(levels - 1, Math.floor(hi * levels));
+        if (last < first) continue;
+
+        const tE = j * cols + i;
+        const bE = (j + 1) * cols + i;
+        const lE = HCOUNT + j * (cols + 1) + i;
+        const rE = lE + 1;
 
         for (let L = first; L <= last; L++) {
           const iso = L / levels;
@@ -165,36 +223,83 @@ export const contours: Generator = {
           const bx = x0 + cw * ((iso - e) / (c - e || 1e-9));
           const ly = y0 + ch * ((iso - a) / (e - a || 1e-9));
 
-          const T = `${num(tx, 1)} ${num(y0, 1)}`;
-          const R = `${num(x1, 1)} ${num(ry, 1)}`;
-          const B = `${num(bx, 1)} ${num(y1, 1)}`;
-          const Lf = `${num(x0, 1)} ${num(ly, 1)}`;
-
-          let d = '';
           switch (idx) {
-            case 1: case 14: d = `M${Lf}L${B}`; break;
-            case 2: case 13: d = `M${B}L${R}`; break;
-            case 3: case 12: d = `M${Lf}L${R}`; break;
-            case 4: case 11: d = `M${T}L${R}`; break;
-            case 6: case 9: d = `M${T}L${B}`; break;
-            case 7: case 8: d = `M${T}L${Lf}`; break;
+            case 1: case 14:
+              link(slot(lE, L, x0, ly), slot(bE, L, bx, y1)); break;
+            case 2: case 13:
+              link(slot(bE, L, bx, y1), slot(rE, L, x1, ry)); break;
+            case 3: case 12:
+              link(slot(lE, L, x0, ly), slot(rE, L, x1, ry)); break;
+            case 4: case 11:
+              link(slot(tE, L, tx, y0), slot(rE, L, x1, ry)); break;
+            case 6: case 9:
+              link(slot(tE, L, tx, y0), slot(bE, L, bx, y1)); break;
+            case 7: case 8:
+              link(slot(tE, L, tx, y0), slot(lE, L, x0, ly)); break;
             // The two ambiguous cells. Diagonally opposite corners are above
             // the line, and the crossings alone cannot say whether this is one
             // ridge pinching through or two that pass without touching. The
             // average of the four corners settles it: guess wrong and contours
             // join across a saddle that should divide them, which turns two
             // hills into one lumpy one.
-            case 5:
-              d = (a + b + c + e) / 4 > iso ? `M${T}L${R}M${Lf}L${B}` : `M${T}L${Lf}M${B}L${R}`;
+            case 5: case 10: {
+              const tS = slot(tE, L, tx, y0);
+              const rS = slot(rE, L, x1, ry);
+              const bS = slot(bE, L, bx, y1);
+              const lS = slot(lE, L, x0, ly);
+              const high = (a + b + c + e) / 4 > iso;
+              if (idx === 5 ? high : !high) {
+                link(tS, rS);
+                link(lS, bS);
+              } else {
+                link(tS, lS);
+                link(bS, rS);
+              }
               break;
-            case 10:
-              d = (a + b + c + e) / 4 > iso ? `M${T}L${Lf}M${B}L${R}` : `M${T}L${R}M${Lf}L${B}`;
-              break;
+            }
             default: break;
           }
-          if (d) paths[L] += d;
         }
       }
+    }
+
+    // Walk each level's crossings into curves. Open chains are started from
+    // their ends first, so a contour running off the canvas is traced in one
+    // piece rather than from somewhere in its middle; whatever is left is a
+    // closed ring and can be started anywhere.
+    const seen = new Uint8Array(sx.length);
+    const chain: number[] = [];
+    const traceFrom = (start: number): string => {
+      chain.length = 0;
+      let prev = -1;
+      let cur = start;
+      for (;;) {
+        seen[cur] = 1;
+        chain.push(cur);
+        let next = sa[cur] as number;
+        if (next === prev || next === -1 || seen[next] === 1) {
+          const alt = sb[cur] as number;
+          next = alt !== prev && alt !== -1 && seen[alt] !== 1 ? alt : -1;
+        }
+        if (next === -1) break;
+        prev = cur;
+        cur = next;
+      }
+      if (chain.length < 2) return '';
+      const tail = chain[chain.length - 1] as number;
+      const ring = chain.length >= 3 && (sa[tail] === start || sb[tail] === start);
+      const pts: [number, number][] = chain.map((n) => [sx[n] as number, sy[n] as number]);
+      return smoothPath(pts, 1, 1, ring);
+    };
+
+    const paths: string[] = new Array(levels).fill('');
+    for (let L = 1; L < levels; L++) {
+      const ids = touched[L] as number[];
+      if (ids.length === 0) continue;
+      let d = '';
+      for (const id of ids) if (seen[id] === 0 && sb[id] === -1) d += traceFrom(id);
+      for (const id of ids) if (seen[id] === 0) d += traceFrom(id);
+      paths[L] = d;
     }
 
     const bg = hexToOklch(palette.background);

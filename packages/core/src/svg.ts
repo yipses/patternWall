@@ -165,9 +165,36 @@ export function points(pts: readonly (readonly [number, number])[], dp = 2): str
  * interpolating beats sampling at 800 points and connecting them with lines,
  * both for file size and for how the curve reads at the crest.
  */
-export function smoothPath(pts: readonly (readonly [number, number])[], tension = 1, dp = 2): string {
+export function smoothPath(
+  pts: readonly (readonly [number, number])[],
+  tension = 1,
+  dp = 2,
+  closed = false,
+): string {
   if (pts.length === 0) return '';
   const first = pts[0] as readonly [number, number];
+
+  // A closed ring wraps its neighbour lookups instead of clamping them, so the
+  // curve carries through the join rather than flattening either side of it.
+  // Clamping is right for an open curve, which genuinely has ends; on a ring it
+  // puts a visible corner at whichever point the walk happened to start from,
+  // and on a contour map that start point is arbitrary.
+  if (closed && pts.length >= 3) {
+    const n = pts.length;
+    const wrap = (i: number): readonly [number, number] =>
+      pts[((i % n) + n) % n] as readonly [number, number];
+    let ring = `M${num(first[0], dp)} ${num(first[1], dp)}`;
+    const k = tension / 6;
+    for (let i = 0; i < n; i++) {
+      const p0 = wrap(i - 1);
+      const p1 = wrap(i);
+      const p2 = wrap(i + 1);
+      const p3 = wrap(i + 2);
+      ring += `C${num(p1[0] + (p2[0] - p0[0]) * k, dp)} ${num(p1[1] + (p2[1] - p0[1]) * k, dp)} ${num(p2[0] - (p3[0] - p1[0]) * k, dp)} ${num(p2[1] - (p3[1] - p1[1]) * k, dp)} ${num(p2[0], dp)} ${num(p2[1], dp)}`;
+    }
+    return `${ring}Z`;
+  }
+
   if (pts.length < 3) {
     return pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${num(p[0], dp)} ${num(p[1], dp)}`).join('');
   }

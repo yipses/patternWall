@@ -16,11 +16,19 @@ function render(over: Record<string, number | string | boolean>, size = 600): st
   });
 }
 
-/** Every `M x y L x y` in the render, as its two endpoints. */
-function segments(svg: string): [string, string][] {
-  const out: [string, string][] = [];
-  for (const m of svg.matchAll(/M([-\d.]+) ([-\d.]+)L([-\d.]+) ([-\d.]+)/g)) {
-    out.push([`${m[1]},${m[2]}`, `${m[3]},${m[4]}`]);
+/** Each subpath of the render: its first point, last point, and whether it closes. */
+function subpaths(svg: string): { start: [number, number]; end: [number, number]; closed: boolean; points: number }[] {
+  const out: { start: [number, number]; end: [number, number]; closed: boolean; points: number }[] = [];
+  for (const chunk of svg.split(/M(?=[-\d])/).slice(1)) {
+    const body = chunk.replace(/".*$/s, '');
+    const nums = (body.match(/-?[\d.]+/g) ?? []).map(Number);
+    if (nums.length < 4) continue;
+    out.push({
+      start: [nums[0] as number, nums[1] as number],
+      end: [nums[nums.length - 2] as number, nums[nums.length - 1] as number],
+      closed: body.trimEnd().endsWith('Z'),
+      points: (body.match(/C/g) ?? []).length,
+    });
   }
   return out;
 }
@@ -30,49 +38,54 @@ describe('contours', () => {
    * A contour is a closed curve, or it runs off the canvas. It cannot stop in
    * the middle of the map.
    *
-   * That is the one property marching squares can break silently. Every
-   * crossing point sits on an edge shared by two cells, so each cell that
-   * touches it must contribute a segment end: the ends pair up, and a contour
-   * with an odd end somewhere in the interior means a cell answered the wrong
-   * case. The picture still looks like a map when this is wrong — it just has
-   * lines that stop dead — which is exactly the kind of fault that ships.
-   *
-   * Points on the canvas border are excluded: a contour running off the edge is
-   * genuinely unpaired there, and has nowhere to be paired from.
+   * That is the one property marching squares can break silently, and since the
+   * crossings are chained into whole curves it can now be asserted directly:
+   * every subpath either closes with a Z or has both of its ends on the canvas
+   * border. An earlier version of this test counted unpaired segment endpoints,
+   * which said the same thing about the raw fragments; this says it about the
+   * curves that actually get drawn, so it also covers the chaining.
    *
    * Run at two settings on purpose. The first is ordinary country; the second
-   * is rough, finely sampled and small-scale, which is the only place the
-   * ambiguous saddle cells occur at all — measured, they are 0% of crossings at
-   * the default and 0.41% here. Testing only the ordinary case left the saddle
-   * handling with no coverage whatsoever: collapsing it to a single segment
-   * passed, which is the "test that cannot fail" trap in its purest form.
+   * is rough, finely sampled and small-scale, which is where the ambiguous
+   * saddle cells occur — measured, they are a fraction of a percent of
+   * crossings. Testing only the ordinary case once left the saddle handling
+   * with no coverage at all: collapsing it to a single segment passed, which is
+   * the "test that cannot fail" trap in its purest form.
    */
   it.each([
     ['ordinary country', { resolution: 60, levels: 18 }],
     ['rough country, where saddles occur', { resolution: 200, levels: 60, detail: 5, scale: 6, grain: 1, incision: 0.8 }],
   ])('leaves no contour stopping in the middle of the map: %s', (_label, over) => {
     const SIZE = 600;
-    const svg = render(over, SIZE);
-    const segs = segments(svg);
-    expect(segs.length, 'no contour segments to check').toBeGreaterThan(500);
+    const paths = subpaths(render(over, SIZE));
+    expect(paths.length, 'no contours to check').toBeGreaterThan(20);
 
-    const ends = new Map<string, number>();
-    for (const [p, q] of segs) {
-      ends.set(p, (ends.get(p) ?? 0) + 1);
-      ends.set(q, (ends.get(q) ?? 0) + 1);
-    }
-
-    const onBorder = (key: string): boolean => {
-      const [x, y] = key.split(',').map(Number) as [number, number];
-      const eps = 0.2;
+    const onBorder = ([x, y]: [number, number]): boolean => {
+      const eps = 0.3;
       return x <= eps || y <= eps || x >= SIZE - eps || y >= SIZE - eps;
     };
 
-    const dangling = [...ends.entries()].filter(([key, n]) => n % 2 === 1 && !onBorder(key));
+    const dangling = paths.filter((p) => !p.closed && !(onBorder(p.start) && onBorder(p.end)));
     expect(
       dangling.length,
-      `${dangling.length} contour ends stop in the interior, e.g. ${dangling.slice(0, 3).map(([k]) => k).join(' ')}`,
+      `${dangling.length} contours stop in the interior, e.g. ${dangling
+        .slice(0, 3)
+        .map((p) => `${p.start.map((n) => n.toFixed(1)).join(',')}->${p.end.map((n) => n.toFixed(1)).join(',')}`)
+        .join(' ')}`,
     ).toBe(0);
+  });
+
+  /**
+   * The curves are interpolated, so a coarse grid should cost small features
+   * rather than smoothness. Every contour is drawn as cubic segments; a run of
+   * straight hops would mean the chaining or the smoothing stopped happening,
+   * which is the regression that would quietly put the faceting back.
+   */
+  it('draws curves rather than straight hops', () => {
+    const svg = render({ resolution: 60, levels: 18 }, 600);
+    expect(svg).not.toMatch(/L-?[\d.]+ -?[\d.]+L/);
+    const curvy = subpaths(svg).filter((p) => p.points > 0).length;
+    expect(curvy / subpaths(svg).length, 'most contours should be curves').toBeGreaterThan(0.9);
   });
 
   /**
@@ -94,14 +107,20 @@ describe('contours', () => {
    */
   it('empties the top of the canvas as relief rises, and not at zero', () => {
     const SIZE = 600;
+    // Counted as points on the drawn curves: the contours are cubics now, so
+    // there are no segments to take midpoints of, and how many points a band
+    // of the canvas holds tracks how much contour runs through it.
     const topShare = (relief: number): number => {
-      const segs = segments(render({ relief, resolution: 60 }, SIZE));
+      const svg = render({ relief, resolution: 60 }, SIZE);
       let top = 0;
       let bottom = 0;
-      for (const [p, q] of segs) {
-        const y = (Number(p.split(',')[1]) + Number(q.split(',')[1])) / 2;
-        if (y < SIZE * 0.25) top += 1;
-        else if (y > SIZE * 0.75) bottom += 1;
+      for (const d of svg.matchAll(/ d="([^"]+)"/g)) {
+        const nums = ((d[1] as string).match(/-?[\d.]+/g) ?? []).map(Number);
+        for (let i = 1; i < nums.length; i += 2) {
+          const y = nums[i] as number;
+          if (y < SIZE * 0.25) top += 1;
+          else if (y > SIZE * 0.75) bottom += 1;
+        }
       }
       expect(bottom, 'no contours in the lower canvas to compare against').toBeGreaterThan(50);
       return top / bottom;
