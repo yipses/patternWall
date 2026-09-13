@@ -15,6 +15,7 @@ import {
   type ParamValue,
   type PatternConfig,
 } from '../src/index.js';
+import { sampleGrid } from './helpers.js';
 
 describe('share links', () => {
   it('round-trips the default configuration for every generator', () => {
@@ -39,6 +40,7 @@ describe('share links', () => {
           const steps = Math.max(1, Math.round((spec.max - spec.min) / spec.step));
           params[spec.key] = Number((spec.min + rng.int(0, steps) * spec.step).toFixed(4));
         } else if (spec.type === 'boolean') params[spec.key] = rng.bool();
+        else if (spec.type === 'image') params[spec.key] = rng.bool() ? sampleGrid() : '';
         else params[spec.key] = rng.pick(spec.options).value;
       }
       const palette = rng.pick(curatedPalettes);

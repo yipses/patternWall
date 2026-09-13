@@ -242,12 +242,22 @@ test.describe('editor', () => {
   });
 
   test('related patterns link onward', async ({ page }) => {
-    await page.goto('/p/flow-dots');
+    // Which pattern is related to which comes from the registry, not from
+    // here. Naming one made this test a hostage to the tag list: adding a
+    // pattern that shares a tag with flow-dots pushed the expected one out of
+    // the top three and failed a test about navigation for a reason that had
+    // nothing to do with navigation.
+    const from = generators.find((g) => g.id === 'flow-dots')!;
+    const target = generators
+      .filter((g) => g.id !== from.id)
+      .map((g) => ({ g, shared: g.tags.filter((t) => from.tags.includes(t)).length }))
+      .sort((a, b) => b.shared - a.shared || a.g.name.localeCompare(b.g.name))[0]!.g;
+
+    await page.goto(`/p/${from.id}`);
     await settled(page);
-    const related = page.getByRole('heading', { name: 'Related patterns' });
-    await expect(related).toBeVisible();
-    await page.getByRole('link', { name: /Ridgelines/ }).first().click();
-    await expect(page).toHaveURL(/\/p\/ridgelines/);
+    await expect(page.getByRole('heading', { name: 'Related patterns' })).toBeVisible();
+    await page.getByRole('link', { name: new RegExp(target.name) }).first().click();
+    await expect(page).toHaveURL(new RegExp(`/p/${target.id}`));
   });
 
   test('copy link puts a restorable URL on the clipboard', async ({ page, context }) => {

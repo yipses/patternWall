@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { GRID_SIZE, packGrid } from '@patternwall/core';
 import { curatedPalettes, defaultParams, generators, renderToSvg } from '@patternwall/core';
 
 /**
@@ -53,6 +54,9 @@ test.describe('browser and Node render identically', () => {
       for (const spec of g.params) {
         if (spec.type === 'number') params[spec.key] = Number(((spec.min + spec.max) / 2).toFixed(2));
         else if (spec.type === 'boolean') params[spec.key] = !spec.default;
+        // A picture, not the empty default: the byte-for-byte claim has to cover
+        // the one parameter that carries 1,536 characters of payload.
+        else if (spec.type === 'image') params[spec.key] = sampleGrid();
         else params[spec.key] = spec.options[spec.options.length - 1]!.value;
       }
       const input = { generatorId: g.id, seed: 'mid', width: 220, height: 476, bleed: 0, paletteId: 'riso-pink', params };
@@ -63,3 +67,22 @@ test.describe('browser and Node render identically', () => {
     }
   });
 });
+
+/**
+ * A deterministic sample picture, the same one the core suite builds.
+ *
+ * Kept as a local copy rather than imported from the core test helpers,
+ * because those are not part of the published package and this suite compiles
+ * against the package rather than the workspace's test tree.
+ */
+function sampleGrid(): string {
+  const cells = new Float32Array(GRID_SIZE * GRID_SIZE);
+  for (let j = 0; j < GRID_SIZE; j++) {
+    for (let i = 0; i < GRID_SIZE; i++) {
+      const nx = (i + 0.5) / GRID_SIZE - 0.5;
+      const ny = (j + 0.5) / GRID_SIZE - 0.5;
+      cells[j * GRID_SIZE + i] = Math.max(0, 1 - Math.hypot(nx, ny) * 2.6);
+    }
+  }
+  return packGrid(cells);
+}

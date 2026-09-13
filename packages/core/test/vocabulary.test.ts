@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ALLOWED_ELEMENTS, renderToSvg, validateSvgVocabulary } from '../src/index.js';
-import { ALL_GENERATORS, baseParams, TEST_PALETTES } from './helpers.js';
+import { ALL_GENERATORS, baseParams, TEST_PALETTES , sampleGrid } from './helpers.js';
 
 describe('SVG vocabulary', () => {
   it('rejects things it is supposed to reject', () => {
@@ -35,6 +35,8 @@ describe('SVG vocabulary', () => {
         for (const spec of g.params) {
           if (spec.type === 'number') params[spec.key] = extreme === 'min' ? spec.min : spec.max;
           else if (spec.type === 'boolean') params[spec.key] = extreme === 'max';
+          // Both ends of an image param: no picture, and a picture.
+          else if (spec.type === 'image') params[spec.key] = extreme === 'min' ? '' : sampleGrid();
           else params[spec.key] = (extreme === 'min' ? spec.options[0]! : spec.options[spec.options.length - 1]!).value;
         }
         const svg = renderToSvg({ generator: g, width: 240, height: 520, palette, params, seed: 'x', bleed: 0.08 });

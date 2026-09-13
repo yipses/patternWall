@@ -102,6 +102,9 @@ function packParams(generatorId: string, params: Record<string, ParamValue>): st
         return Number(n.toFixed(decimalsOf(spec.step))).toString();
       }
       if (spec.type === 'boolean') return v === true ? '1' : '0';
+      // A packed grid is already link-safe by construction: its alphabet
+      // deliberately excludes the `_` this join uses, and `+`, `/` and `=`.
+      if (spec.type === 'image') return typeof v === 'string' ? v : spec.default;
       const idx = spec.options.findIndex((o) => o.value === v);
       return String(idx < 0 ? spec.options.findIndex((o) => o.value === spec.default) : idx);
     })
@@ -125,6 +128,8 @@ function unpackParams(generatorId: string, token: string, notes: string[]): Reco
       if (Number.isFinite(n)) out[spec.key] = Math.min(spec.max, Math.max(spec.min, n));
     } else if (spec.type === 'boolean') {
       out[spec.key] = raw === '1';
+    } else if (spec.type === 'image') {
+      out[spec.key] = raw;
     } else {
       const idx = Number(raw);
       const opt = Number.isInteger(idx) ? spec.options[idx] : undefined;

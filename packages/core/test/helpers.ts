@@ -1,5 +1,5 @@
 import { Resvg } from '@resvg/resvg-js';
-import { curatedPalettes, defaultParams, generators, type Generator, type Palette } from '../src/index.js';
+import { curatedPalettes, defaultParams, generators, GRID_SIZE, packGrid, type Generator, type Palette } from '../src/index.js';
 
 export const TEST_PALETTES: Palette[] = ['obsidian', 'paper', 'riso-pink', 'crt-green', 'fog', 'neon-rain']
   .map((id) => curatedPalettes.find((p) => p.id === id))
@@ -52,4 +52,25 @@ export function nonBackgroundFraction(pixels: Buffer): number {
     if (dr + dg + db > 12) hit++;
   }
   return n === 0 ? 0 : hit / n;
+}
+
+/**
+ * A packed picture for tests, built rather than pasted.
+ *
+ * The image param is the one parameter whose value is a whole picture, and a
+ * test that only ever exercises the empty default would not touch the codec,
+ * the solver's bilinear read of it, or the share link's ability to carry 1,536
+ * characters in one field. A smooth blob is enough to be a picture and is
+ * reproducible without a fixture file.
+ */
+export function sampleGrid(): string {
+  const cells = new Float32Array(GRID_SIZE * GRID_SIZE);
+  for (let j = 0; j < GRID_SIZE; j++) {
+    for (let i = 0; i < GRID_SIZE; i++) {
+      const nx = (i + 0.5) / GRID_SIZE - 0.5;
+      const ny = (j + 0.5) / GRID_SIZE - 0.5;
+      cells[j * GRID_SIZE + i] = Math.max(0, 1 - Math.hypot(nx, ny) * 2.6);
+    }
+  }
+  return packGrid(cells);
 }

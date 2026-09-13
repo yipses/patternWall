@@ -1,6 +1,7 @@
 import type { Palette } from './palette.js';
 import type { Rng } from './rng.js';
 import type { SafeZones } from './geometry.js';
+import { isPackedGrid } from './imagegrid.js';
 
 /** The fixed tag taxonomy. Generators pick from this list and nothing else. */
 export const TAXONOMY = ['grid', 'radial', 'noise', 'flow', 'isometric', 'organic', 'distortion', 'physics'] as const;
@@ -32,6 +33,22 @@ export type ParamSpec =
       label: string;
       type: 'boolean';
       default: boolean;
+      description: string;
+    }
+  | {
+      /**
+       * A picture, packed small enough to ride in the share link.
+       *
+       * The value is a `packGrid` string — see `imagegrid.ts` for why a
+       * photograph reduces to 1,152 bytes without costing anything the solver
+       * can see. An empty string means no picture was given, which generators
+       * are expected to answer with something of their own rather than with a
+       * blank canvas.
+       */
+      key: string;
+      label: string;
+      type: 'image';
+      default: string;
       description: string;
     };
 
@@ -87,6 +104,12 @@ export function coerceParams(g: Generator, input: Record<string, unknown> | unde
     } else if (spec.type === 'select') {
       const s = String(raw);
       if (spec.options.some((o) => o.value === s)) out[spec.key] = s;
+    } else if (spec.type === 'image') {
+      // Empty is meaningful — it says "no picture" — and anything that is not
+      // a grid this build can read falls back to the default rather than
+      // reaching a generator that would have to validate it.
+      const s = String(raw);
+      if (s === '' || isPackedGrid(s)) out[spec.key] = s;
     } else {
       out[spec.key] = raw === true || raw === 'true' || raw === 1 || raw === '1';
     }

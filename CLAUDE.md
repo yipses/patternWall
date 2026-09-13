@@ -495,10 +495,19 @@ from this build environment. Do not quietly upgrade a guess to a fact.
 
 ## Current state
 
-Six generators: `flow-dots`, `truchet`, `phyllotaxis`, `ridgelines`,
-`contours`, `chevron-blocks`. Two taxonomy tags — `distortion` and `physics` —
+Seven generators: `flow-dots`, `truchet`, `phyllotaxis`, `ridgelines`,
+`contours`, `chevron-blocks`, `string-art`. Two taxonomy tags — `distortion` and `physics` —
 have no patterns yet. Truchet and contours are by far the most worked over; the
 rest have had little iteration and should be assumed rougher rather than better.
+
+`string-art` is the only generator that takes an *input*. Its picture is a
+param like any other — an `image` ParamSpec holding a 48x48, 4-bit darkness
+grid packed by `imagegrid.ts` into 1,536 link-safe characters — so a share
+link is the portrait rather than a reference to one, and nothing about the
+upload leaves the browser. The alphabet deliberately excludes `_`, which is
+what `share.ts` separates params with. Adding that param kind broke three
+places that assumed "not number, not boolean, therefore select"; if you add a
+fourth kind, expect the same.
 
 `chevron-blocks` is the only one that covers the canvas completely, which is
 worth knowing before reasoning about its colour: a full-bleed field of accent
