@@ -134,3 +134,57 @@ export function secondaryParams(g: Generator): ParamSpec[] {
   const claimed = new Set([primary.tap, primary.x, primary.y]);
   return g.params.filter((p) => !claimed.has(p.key));
 }
+
+/**
+ * The spec a control is actually working to, given the rest of the params.
+ *
+ * Identical to the declared spec unless the generator limits this parameter by
+ * another one's value. Everything that shows or sets a value should go through
+ * here rather than reading `spec.max` directly, or the slider offers a range
+ * the render will not honour.
+ */
+export function effectiveSpec(g: Generator, spec: ParamSpec, params: Record<string, ParamValue>): ParamSpec {
+  const limit = g.limits?.[spec.key];
+  if (!limit || spec.type !== 'number') return spec;
+  const ceiling = limit.max[String(params[limit.when])];
+  if (ceiling === undefined || ceiling >= spec.max) return spec;
+  return { ...spec, max: ceiling, default: Math.min(spec.default, ceiling) };
+}
+
+/**
+ * Values carried across a change that moved their range.
+ *
+ * Switching truchet from quarter arcs to diagonals takes divisions from a
+ * ceiling of twelve to one of six, and clamping alone would answer that badly:
+ * eleven of the twelve settings would land on the same place, so tapping
+ * through the tile sets would mean losing where you were and getting it back
+ * as "the top" whatever you had chosen. Scaled instead, half way along stays
+ * half way along — six of twelve becomes three of six, and three of six comes
+ * back as six of twelve.
+ *
+ * Kept proportional to the ceiling rather than across the range, because that
+ * is the reading that survives a round trip: with a floor of one, scaling the
+ * span would send six to three and three back to five, and tapping twice
+ * through the sets would walk the value downward a step at a time.
+ *
+ * Only for a change somebody made. A decoded link carries both values
+ * explicitly and rescaling it would rewrite what it says.
+ */
+export function retuneParams(
+  g: Generator,
+  before: Record<string, ParamValue>,
+  after: Record<string, ParamValue>,
+): Record<string, ParamValue> {
+  if (!g.limits) return after;
+  let out = after;
+  for (const spec of g.params) {
+    if (!g.limits[spec.key] || spec.type !== 'number') continue;
+    const was = effectiveSpec(g, spec, before);
+    const now = effectiveSpec(g, spec, after);
+    if (was.type !== 'number' || now.type !== 'number' || was.max === now.max) continue;
+    const value = typeof before[spec.key] === 'number' ? (before[spec.key] as number) : spec.default;
+    if (out === after) out = { ...after };
+    out[spec.key] = quantise(now, (value * now.max) / was.max);
+  }
+  return out;
+}

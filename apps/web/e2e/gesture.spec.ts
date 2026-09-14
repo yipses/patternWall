@@ -154,6 +154,32 @@ test.describe('gesture', () => {
     ).toBe('460');
   });
 
+  test('tapping to a tile set with a tighter range carries the value across', async ({ page }) => {
+    await page.goto('/p/truchet');
+    await settled(page);
+
+    const divisions = page.getByLabel('Divisions');
+    await divisions.fill('6');
+    await divisions.blur();
+    await settled(page);
+    await expect(divisions).toHaveAttribute('max', '12');
+
+    // Diagonals draw 2n-1 chords a cell, so the count stops at six there. Half
+    // way along has to stay half way along, or tapping round the tile sets
+    // would lose where you were and hand back the ceiling whatever you had.
+    await tapPreview(page);
+    await settled(page);
+    await expect(page.getByLabel('Tile set')).toHaveValue('diagonals');
+    await expect(divisions, 'the slider still offers a range the render will not honour').toHaveAttribute('max', '6');
+    await expect(divisions).toHaveValue('3');
+
+    await tapPreview(page);
+    await settled(page);
+    await expect(page.getByLabel('Tile set')).toHaveValue('triangles');
+    await expect(divisions).toHaveAttribute('max', '12');
+    await expect(divisions, 'the value did not come back where it started').toHaveValue('6');
+  });
+
   test('a pattern that has not chosen its three is left alone', async ({ page }) => {
     await page.goto('/p/phyllotaxis');
     await settled(page);

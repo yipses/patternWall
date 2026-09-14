@@ -94,6 +94,26 @@ export interface Primaries {
   y: string;
 }
 
+/**
+ * A range that depends on what another parameter is set to.
+ *
+ * Some controls mean different things in different modes, and a range that
+ * suits one mode can be useless in another: truchet's divisions draw 2n-1
+ * chords per cell on diagonals, so twelve is twenty-three lines through a cell
+ * and unreadable, while the same twelve on quarter arcs is exactly the point.
+ *
+ * Declared on the generator rather than on the spec, for the reason string
+ * art's picture-and-detail lookup gives: a spec describes itself, and one
+ * parameter's range depending on another's value is a fact about the pattern
+ * they both belong to. `ParamSpec` stays a description of one control.
+ */
+export interface ParamLimit {
+  /** The parameter whose value decides the range. */
+  when: string;
+  /** The ceiling for each value of it. Anything unlisted keeps the declared max. */
+  max: Record<string, number>;
+}
+
 export interface Generator {
   /** Slug, e.g. 'flow-dots'. Also the URL key and the registry key. */
   id: string;
@@ -108,6 +128,8 @@ export interface Generator {
   render(ctx: RenderContext): string;
   /** The three controls this pattern is driven by, if they have been chosen. */
   primary?: Primaries;
+  /** Ranges that depend on another parameter's value, keyed by the one limited. */
+  limits?: Record<string, ParamLimit>;
 }
 
 /**
@@ -163,6 +185,23 @@ export function coerceParams(g: Generator, input: Record<string, unknown> | unde
     } else {
       out[spec.key] = raw === true || raw === 'true' || raw === 1 || raw === '1';
     }
+  }
+  // A second pass, and it has to be second: a ceiling that depends on another
+  // parameter cannot be applied until that parameter has been settled, and the
+  // two are in whatever order the share encoding happens to put them.
+  //
+  // Clamping here rather than leaving it to the generator is the same argument
+  // the rest of this function makes — a generator should never have to
+  // validate anything — and it means the slider, the link and the picture
+  // agree about what the value is, instead of the control showing a ceiling
+  // the render is quietly ignoring.
+  for (const [key, limit] of Object.entries(g.limits ?? {})) {
+    const spec = g.params.find((p) => p.key === key);
+    if (!spec || spec.type !== 'number') continue;
+    const ceiling = limit.max[String(out[limit.when])];
+    if (ceiling === undefined) continue;
+    const v = out[key];
+    if (typeof v === 'number' && v > ceiling) out[key] = ceiling;
   }
   return out;
 }

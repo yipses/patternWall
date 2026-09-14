@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  coerceParams,
   cycleValue,
+  effectiveSpec,
+  retuneParams,
   decimalsOf,
   decodeConfig,
   encodeConfig,
@@ -12,6 +15,7 @@ import {
   secondaryParams,
   stepCount,
   defaultParams,
+  type Generator,
   type NumberSpec,
   type ParamSpec,
   type SelectSpec,
@@ -161,6 +165,111 @@ describe('controls', () => {
         expect(secondary.some((p) => p.key === key), `${g.id} shows '${key}' twice`).toBe(false);
       }
     }
+  });
+
+  /**
+   * A range that depends on another control, and what happens when it moves.
+   *
+   * Truchet's divisions draw 2n-1 chords per cell on diagonals, so twelve is
+   * twenty-three lines through one cell and the tiling reads as grey. Six is
+   * the ceiling there and twelve everywhere else.
+   *
+   * The half worth testing hardest is the carry-across. Clamping alone would
+   * put eleven of the twelve settings on the same place, so tapping through
+   * the tile sets would lose where you were and hand back "the top" whatever
+   * you had. Scaled to the ceiling, half way along stays half way along.
+   */
+  it('limits divisions on diagonals, and carries the value across proportionally', () => {
+    const spec = truchet.params.find((p) => p.key === 'arcCount') as NumberSpec;
+    expect(spec.max, 'the declared ceiling is unchanged').toBe(12);
+
+    const on = (tileSet: string): number => {
+      const eff = effectiveSpec(truchet, spec, { ...defaultParams(truchet), tileSet });
+      return eff.type === 'number' ? eff.max : Number.NaN;
+    };
+    expect(on('diagonals')).toBe(6);
+    expect(on('arcs')).toBe(12);
+    expect(on('triangles')).toBe(12);
+
+    const at = (tileSet: string, arcCount: number): Record<string, ParamValue> => ({
+      ...defaultParams(truchet),
+      tileSet,
+      arcCount,
+    });
+    const moved = (from: Record<string, ParamValue>, tileSet: string): number =>
+      Number(retuneParams(truchet, from, { ...from, tileSet }).arcCount);
+
+    expect(moved(at('arcs', 6), 'diagonals'), 'half of twelve should be half of six').toBe(3);
+    expect(moved(at('diagonals', 3), 'arcs'), 'and back again').toBe(6);
+    expect(moved(at('arcs', 12), 'diagonals')).toBe(6);
+    expect(moved(at('diagonals', 6), 'triangles')).toBe(12);
+    expect(moved(at('arcs', 1), 'diagonals'), 'the floor stays the floor').toBe(1);
+
+    // Round trips, which is the whole reason this is proportional to the
+    // ceiling rather than across the range. Scaling the span would send six to
+    // three and three back to five, so tapping twice round the tile sets would
+    // walk the value down a step at a time and never say so.
+    for (let v = 1; v <= 12; v++) {
+      const there = moved(at('arcs', v), 'diagonals');
+      const back = moved(at('diagonals', there), 'arcs');
+      expect(Math.abs(back - v), `${v} -> ${there} -> ${back} drifted`).toBeLessThanOrEqual(1);
+    }
+
+    // A change that moves nothing leaves everything alone, including a change
+    // to the limited control itself.
+    const same = at('arcs', 9);
+    expect(retuneParams(truchet, same, { ...same, arcCount: 4 }).arcCount).toBe(4);
+    expect(retuneParams(truchet, same, { ...same, weight: 0.3 }).arcCount).toBe(9);
+  });
+
+  /**
+   * A link that asks for more than the mode allows is clamped, not obeyed.
+   *
+   * `coerceParams` is where untrusted input is made safe, and a conditional
+   * ceiling belongs there for the same reason the unconditional one does: a
+   * generator should never have to validate anything, and the slider, the link
+   * and the picture should agree about what the value is rather than the
+   * control showing a ceiling the render quietly ignores.
+   *
+   * It has to be a second pass. The ceiling depends on `tileSet`, and the two
+   * sit in whatever order the share encoding put them.
+   */
+  it('clamps a link that asks for more divisions than its tile set allows', () => {
+    expect(coerceParams(truchet, { tileSet: 'diagonals', arcCount: 12 }).arcCount).toBe(6);
+    expect(coerceParams(truchet, { tileSet: 'arcs', arcCount: 12 }).arcCount).toBe(12);
+    expect(coerceParams(truchet, { tileSet: 'diagonals', arcCount: 4 }).arcCount).toBe(4);
+
+    // Truchet happens to declare its tile set before its divisions, so a
+    // single pass would work here by luck and prove nothing. This is the case
+    // that is actually being claimed: the parameter a ceiling depends on
+    // declared *after* the one it limits, which is the order a future
+    // generator will reach for the moment it appends a mode switch to a list
+    // it already had. Nothing stops it, since `params` is append-only.
+    const backwards: Generator = {
+      id: 'backwards',
+      name: 'Backwards',
+      tagline: 'A ceiling whose condition is declared after it.',
+      tags: ['grid'],
+      description: '',
+      params: [
+        { key: 'count', label: 'Count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: '' },
+        {
+          key: 'mode',
+          label: 'Mode',
+          type: 'select',
+          options: [
+            { value: 'wide', label: 'Wide' },
+            { value: 'narrow', label: 'Narrow' },
+          ],
+          default: 'wide',
+          description: '',
+        },
+      ],
+      limits: { count: { when: 'mode', max: { narrow: 6 } } },
+      render: () => '',
+    };
+    expect(coerceParams(backwards, { count: 12, mode: 'narrow' }).count).toBe(6);
+    expect(coerceParams(backwards, { count: 12, mode: 'wide' }).count).toBe(12);
   });
 
   /** A generator that has chosen nothing is left exactly as it was. */

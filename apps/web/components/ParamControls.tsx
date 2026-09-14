@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import {
   GRID_SIZE,
+  effectiveSpec,
   resolvePrimaries,
   secondaryParams,
   type Generator,
@@ -291,7 +292,13 @@ export function ParamControls({
   }, []);
   const open = choice === 'auto' ? wide : choice === 'open';
 
-  const control = (spec: ParamSpec, gesture?: PrimaryRole) => (
+  // Every control is rendered against the spec it is actually working to, not
+  // the one it declared: a range that depends on another param would otherwise
+  // offer a ceiling the render clamps away, and the slider and the picture
+  // would disagree about what the value is.
+  const control = (declared: ParamSpec, gesture?: PrimaryRole) => {
+    const spec = effectiveSpec(generator, declared, params);
+    return (
     <Control
       key={spec.key}
       spec={spec}
@@ -301,7 +308,8 @@ export function ParamControls({
       onChange={(v) => onChange(spec.key, v)}
       onCommit={onCommit}
     />
-  );
+    );
+  };
 
   // A pattern that has not chosen its three is left exactly as it was: one
   // flat list, no disclosure, nothing hidden.

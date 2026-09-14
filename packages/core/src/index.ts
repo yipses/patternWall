@@ -28,8 +28,10 @@ export { curatedPalettes, defaultPalette, getPalette, PALETTE_TAGS, type Palette
 export { createNoise2D, noise1D, type Noise2D } from './noise.js';
 export {
   cycleValue,
+  effectiveSpec,
   quantise,
   resolvePrimaries,
+  retuneParams,
   scrubTo,
   secondaryParams,
   stepCount,
@@ -73,6 +75,7 @@ export {
   TAXONOMY,
   type Generator,
   type ParamSpec,
+  type ParamLimit,
   type ParamValue,
   type Primaries,
   type RenderContext,

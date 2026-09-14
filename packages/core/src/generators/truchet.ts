@@ -111,6 +111,17 @@ export const truchet: Generator = {
    */
   primary: { tap: 'tileSet', x: 'weight', y: 'arcCount' },
 
+  /**
+   * Divisions stops at six on diagonals.
+   *
+   * The count means a different amount of ink on each tile set. A diagonal
+   * becomes a family of 2n-1 parallel chords, so twelve is twenty-three lines
+   * crossing one cell and the tiling reads as grey rather than as a pattern —
+   * where twelve concentric quarter arcs, which is n rings, is the whole point
+   * of raising it. Six is where the chords stop being countable.
+   */
+  limits: { arcCount: { when: 'tileSet', max: { diagonals: 6 } } },
+
   render(ctx: RenderContext): string {
     const { width: w, height: h, palette, params, rng } = ctx;
     const noise = createNoise2D(rng);

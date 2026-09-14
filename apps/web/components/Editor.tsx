@@ -6,12 +6,14 @@ import {
   DEFAULT_BLEED,
   cycleValue,
   decodeConfig,
+  effectiveSpec,
   defaultParams,
   encodeConfig,
   generators,
   getGenerator,
   initialConfig,
   resolvePrimaries,
+  retuneParams,
   type Palette,
   type ParamValue,
 } from '@patternwall/core';
@@ -165,7 +167,25 @@ export function Editor({ generatorId }: { generatorId: string }) {
    * Absent for a pattern that has not chosen its three, in which case the
    * preview is inert and every control is where it always was.
    */
-  const bindings = useMemo(() => resolvePrimaries(generator), [generator]);
+  const bindings = useMemo(
+    () =>
+      resolvePrimaries(generator).map((b) => (b.spec ? { ...b, spec: effectiveSpec(generator, b.spec, params) } : b)),
+    [generator, params],
+  );
+
+  /**
+   * One parameter change, with anything whose range moved carried across.
+   *
+   * Every interactive path goes through here -- a slider, a select, the tap --
+   * and nothing else does. A decoded share link deliberately does not: it
+   * carries every value explicitly and rescaling one would rewrite what the
+   * link says.
+   */
+  const changeParam = useCallback(
+    (key: string, value: ParamValue): Record<string, ParamValue> =>
+      retuneParams(generator, latestParams.current, { ...latestParams.current, [key]: value }),
+    [generator],
+  );
   const [scrubbing, setScrubbing] = useState(false);
 
   /**
@@ -192,7 +212,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
       const v = latestParams.current[key];
       return typeof v === 'number' ? v : 0;
     },
-    onScrub: (key, value) => scrubParams({ ...latestParams.current, [key]: value }),
+    onScrub: (key, value) => scrubParams(changeParam(key, value)),
     onTap: () => {
       const tap = bindings.find((b) => b.role === 'tap');
       if (!tap) return;
@@ -204,7 +224,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
         return;
       }
       const spec = tap.spec;
-      scrubParams({ ...latestParams.current, [spec.key]: cycleValue(spec, latestParams.current[spec.key] ?? spec.default) });
+      scrubParams(changeParam(spec.key, cycleValue(spec, latestParams.current[spec.key] ?? spec.default)));
     },
     onStart: () => setScrubbing(true),
     onEnd: () => setScrubbing(false),
@@ -425,7 +445,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
               <ParamControls
                 generator={generator}
                 params={params}
-                onChange={(key, value) => applyParams({ ...latestParams.current, [key]: value }, 110)}
+                onChange={(key, value) => applyParams(changeParam(key, value), 110)}
                 onCommit={() => settle({ params: latestParams.current }, 0)}
               />
               <Button

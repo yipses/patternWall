@@ -454,6 +454,18 @@ Two things had to move with it, and both are the same lesson in different clothe
 
 Both of those were found by instrumenting rather than by reasoning. Three plausible diagnoses were tried and shipped nothing; dumping per-ring counts found it in one run.
 
+**A control can mean a different amount in different modes, and one range cannot serve both.** Truchet's divisions draw n concentric rings on quarter arcs, where twelve is the point of raising it, and 2n-1 parallel chords on diagonals, where twelve is twenty-three lines through one cell and the tiling reads as grey. The same slider, the same number, two unrelated amounts of ink.
+
+`Generator.limits` states a ceiling that depends on another param's value, and it is on the generator rather than on the spec for the reason string art's picture-and-detail lookup gives: a spec describes itself, and one parameter's range depending on another's is a fact about the pattern they both belong to.
+
+Two things about it are easy to get wrong, and both were tested by breaking them:
+
+**Clamping is not carrying across.** Moving from a ceiling of twelve to one of six puts eleven of the twelve settings on the same place, so tapping through the tile sets loses where you were and hands back "the top" whatever you had chosen. The value is scaled instead — and scaled to the *ceiling*, not across the range, because that is the reading that round-trips. With a floor of one, scaling the span sends six to three and three back to five, so tapping twice round the sets walks the value downward a step at a time and never says so.
+
+**The clamp has to be a second pass in `coerceParams`.** A ceiling cannot be applied before the parameter it depends on has been settled, and the two sit in whatever order the share encoding put them. Truchet declares its tile set before its divisions, so a single pass works there by luck and proves nothing — the test uses a fabricated generator with the condition declared *after* the thing it limits, which is the order the next generator will reach for the moment it appends a mode switch to a list it already had. `params` is append-only, so nothing stops it.
+
+The cost, stated rather than discovered: a link that asked for twelve divisions on diagonals now decodes to six. That is the "narrowing a range" hazard from the invariants section arriving through a different door, and it is the right trade here — the alternative is a slider showing a ceiling the render quietly ignores.
+
 **A dead control is survivable until you bind it to a gesture.** `weight` did nothing at all on truchet's triangles for as long as the generator existed. They are filled and it sets a stroke width, so there was nothing for it to apply itself to — and rather than being treated as a bug it was written down twice as a known limitation, in this file and in the parameter's own description. That is what made it last: a slider that is inert on one of three settings is easy to look past, and documenting it felt like honesty rather than deferral.
 
 What ended it was promoting the three primaries. `weight` is truchet's horizontal drag now, so a dead control became a dead *gesture* — a third of the way a person drives the pattern doing nothing on a third of its tile sets — and it was reported within the week. The general form: promoting a control raises the cost of every compromise already in it, so the moment you decide which three carry a pattern, re-examine what those three actually do at every setting of the others. The file's own rule says a control that is inert in some mode is a smell; this is the one it was written about, left standing.
@@ -546,9 +558,14 @@ result. Each was arrived at by breaking it first.
   same expression at full fill, which is why every test but the one about
   corner counts passes either way.
 
+- **Divisions stops at six on diagonals**, through `limits`, because the count
+  is a different amount of ink on each set: n rings on arcs against 2n-1 chords
+  on diagonals. Tapping between sets scales the value to the new ceiling rather
+  than clamping it, so half way along stays half way along.
+
 Controls: density, tileSet, weight, colorSpread,
-arcCount (labelled Divisions; governs all three tile sets), arcSpacing (spread;
-quarter arcs only), colorBlend. Removed as not worth their slots: `mixed`, row
+arcCount (labelled Divisions; max 6 on diagonals, 12 elsewhere), arcSpacing
+(spread; quarter arcs only), colorBlend. Removed as not worth their slots: `mixed`, row
 weight variation, `gap`, `subdivide`, `quietTop` and `openEnds`. The last four
 went together and each had the same shape of problem — a knob whose effect was
 either invisible (`gap`), a band across a uniform grid (`quietTop`), a patch
