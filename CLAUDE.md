@@ -482,6 +482,22 @@ What ended it was promoting the three primaries. `weight` is truchet's horizonta
 
 The fix is worth recording too, because the obvious reading was wrong. "Make the mark thinner" for a filled triangle means the band fills less of its pitch — but only if it is anchored at its corner-side edge. Centre it on itself instead and an undivided tile stops being a triangle and becomes a strip across the middle of the cell, joined to none of its neighbours, and the two are the *same expression* at full fill so nothing but a test about corner counts can tell them apart.
 
+**A threshold on the larger of two quantities does not tell you which of them
+is larger.** The gesture surface claims an axis once a drag has moved, and the
+first version claimed whichever direction was ahead the moment *either* passed
+ten pixels. Eleven across and four down passes that test, and the answer it
+gives — across — is right about that sample and wrong about the gesture: a
+thumb swiping up a phone pivots from the knuckle and travels sideways first.
+The wrong axis then held for the rest of the swipe, so the control the person
+was watching never moved. It was reported as "swipe up and down doesn't seem to
+be registering consistently", and the inconsistency is the whole tell — whether
+it happened depended on where round the arc the tenth pixel fell. The claim is
+on the *lead* now, `abs(dx) - abs(dy)` past the threshold, with a second larger
+distance at which an even diagonal has to pick one anyway. The test that
+matters replays the arc, because a straight vertical drag passes under both
+rules, which is exactly why this shipped with a vertical-drag test already
+green.
+
 **A comment can be the last surviving copy of a reverted design.** The arcs
 branch carried four layers of commentary from successive attempts, two of them
 describing code that had been reverted and contradicting the layer below. Each

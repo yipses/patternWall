@@ -38,13 +38,29 @@ const TRAVEL_MIN = 140;
 const TRAVEL_MAX = 520;
 
 /**
- * How far a pointer moves before it has chosen an axis.
+ * How far a pointer moves before it has chosen an axis, and how far before it
+ * has to choose whether it wants to or not.
  *
- * Below this nothing happens at all, which is what makes a tap a tap: a finger
- * never lands perfectly still, and without a threshold every tap would also
- * nudge whichever axis it drifted toward.
+ * Below the first of these nothing happens at all, which is what makes a tap a
+ * tap: a finger never lands perfectly still, and without a threshold every tap
+ * would also nudge whichever axis it drifted toward.
+ *
+ * What the threshold is measured on is the part that matters, and getting it
+ * wrong is what made vertical swipes miss. The first version locked to
+ * whichever axis was larger the moment *either* passed ten pixels — so a drag
+ * that had gone eleven across and four down locked to across, which is correct
+ * for that sample and wrong for the gesture. A thumb swiping up on a phone
+ * pivots from the knuckle and travels sideways first; the intent is only
+ * visible a little later. The wrong axis then held for the whole gesture and
+ * the control the person was watching never moved, intermittently, depending
+ * on how they happened to sweep.
+ *
+ * So the axis is claimed on the *lead* — one direction must be ahead of the
+ * other by the threshold — and an even diagonal simply keeps waiting. It
+ * cannot wait forever, so past the second distance the larger one takes it.
  */
 const AXIS_LOCK_PX = 10;
+const AXIS_FORCE_PX = 26;
 
 /** A press held longer than this is not a tap, however still it was. */
 const TAP_MS = 500;
@@ -69,6 +85,8 @@ interface Drag {
   axis: 'x' | 'y' | null;
   /** True once an axis was claimed and `onStart` was announced. */
   started: boolean;
+  /** Furthest the pointer has been from where it landed. */
+  moved: number;
   spec: NumberSpec | null;
   key: string;
   /** The value the axis held when it was claimed. */
@@ -139,6 +157,7 @@ export function useScrub(options: {
         startedAt: Date.now(),
         axis: null,
         started: false,
+        moved: 0,
         spec: null,
         key: '',
         from: 0,
@@ -154,11 +173,18 @@ export function useScrub(options: {
       const d = drag.current;
       if (!d || d.pointerId !== e.pointerId) return;
 
+      const dx0 = e.clientX - d.x0;
+      const dy0 = e.clientY - d.y0;
+      d.moved = Math.max(d.moved, Math.sqrt(dx0 * dx0 + dy0 * dy0));
+
       if (d.axis === null) {
-        const dx = e.clientX - d.x0;
-        const dy = e.clientY - d.y0;
-        if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) return;
-        const axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
+        const adx = Math.abs(dx0);
+        const ady = Math.abs(dy0);
+        // One direction has to be clearly ahead of the other, or the gesture is
+        // still a diagonal and committing to either is a guess.
+        const decided = Math.abs(adx - ady) >= AXIS_LOCK_PX || Math.max(adx, ady) >= AXIS_FORCE_PX;
+        if (!decided) return;
+        const axis = adx >= ady ? 'x' : 'y';
         const bound = bindingFor(axis);
         if (!bound) {
           // Nothing is bound to this direction. Claim it anyway so the gesture
@@ -208,7 +234,11 @@ export function useScrub(options: {
     (e: React.PointerEvent<HTMLElement>) => {
       const d = drag.current;
       if (!d || d.pointerId !== e.pointerId) return;
-      const wasTap = !d.started && d.axis === null && Date.now() - d.startedAt < TAP_MS;
+      // A tap has to have stayed put as well as never claimed an axis: a
+      // deliberate diagonal that never resolved is not a tap, and cycling the
+      // tile set because somebody swiped at forty-five degrees would be worse
+      // than doing nothing.
+      const wasTap = !d.started && d.moved < AXIS_LOCK_PX && Date.now() - d.startedAt < TAP_MS;
       finish();
       if (wasTap) onTap();
     },

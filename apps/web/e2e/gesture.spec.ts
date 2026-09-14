@@ -75,6 +75,43 @@ test.describe('gesture', () => {
     expect(await numberOf(page, 'Stroke weight'), 'a vertical drag moved the horizontal control too').toBe(weightBefore);
   });
 
+  test('a swipe that sets off sideways is still a swipe up', async ({ page }) => {
+    await page.goto('/p/truchet');
+    await settled(page);
+
+    const weightBefore = await numberOf(page, 'Stroke weight');
+    const before = await numberOf(page, 'Divisions');
+
+    // A thumb pivots from the knuckle, so the first few millimetres of a swipe
+    // up a phone travel sideways before the intent shows. These samples are
+    // that shape: eleven across and four down at the point an axis-lock keyed
+    // on "whichever is larger the moment either passes ten pixels" would fire,
+    // and unambiguously vertical a moment later. That rule locked to across
+    // here and held it for the whole gesture, so the control the person was
+    // watching never moved — intermittently, depending on how they swept.
+    const { cx, cy } = await phoneBox(page);
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    const arc: [number, number][] = [
+      [6, 1],
+      [11, 4],
+      [14, -6],
+      [13, -24],
+      [9, -56],
+      [5, -100],
+      [2, -150],
+    ];
+    for (const [dx, dy] of arc) await page.mouse.move(cx + dx, cy + dy);
+    await page.mouse.up();
+    await settled(page);
+
+    expect(
+      await numberOf(page, 'Divisions'),
+      `divisions went ${before} -> ${await numberOf(page, 'Divisions')} across a swipe that arced up`,
+    ).toBeGreaterThan(before);
+    expect(await numberOf(page, 'Stroke weight'), 'the swipe locked to the direction it set off in').toBe(weightBefore);
+  });
+
   test('a tap cycles the option, and wraps', async ({ page }) => {
     await page.goto('/p/truchet');
     await settled(page);
