@@ -139,16 +139,9 @@ describe('truchet stroke weight', () => {
     // Taken from the code before this control existed, not from the code
     // after it: measured under `git stash`, which is the only way the claim
     // means anything.
-    //
-    // The undivided number is the original and must never move — it is the
-    // identity of this tile set. The two divided ones were re-pinned once, on
-    // purpose, when the opposite triangle was added to give a divided cell
-    // legs on all four of its edges; that roughly doubles the marks in a
-    // divided tile and is the change recorded in the block below. Re-pin these
-    // only with a reason of that size.
     expect(render({ tileSet: 'triangles' }).length).toBe(5691);
-    expect(render({ tileSet: 'triangles', arcCount: 3 }).length).toBe(16727);
-    expect(render({ tileSet: 'triangles', arcCount: 6 }).length).toBe(32547);
+    expect(render({ tileSet: 'triangles', arcCount: 3 }).length).toBe(11273);
+    expect(render({ tileSet: 'triangles', arcCount: 6 }).length).toBe(17288);
   });
 
   /**
@@ -177,33 +170,16 @@ describe('truchet stroke weight', () => {
 
   /**
    * Past the top the bands fuse, which is what gives the upper half of the
-   * slider something to say on a divided tile.
-   *
-   * This used to assert that a heavy divided triangle covers the *same* as a
-   * heavy undivided one, within 0.02, and that equality was an artefact rather
-   * than a property: both were a solid half cell, because a lone triangle only
-   * ever used half of its own cell. With the opposite triangle drawn the
-   * divided tile has the whole cell to fuse across, and measures 0.574 against
-   * 0.300 — about twice, which is the ratio you would expect from a mark that
-   * stopped wasting half its cell.
-   *
-   * So the claim is the one that survives that: the top of the slider fuses
-   * ribbons into mass, more than a default-weight divided tile lays and at
-   * least as much as a solid undivided one. Bounds taken from the two
-   * measurements, not from what sounds reasonable.
+   * slider something to say on a divided tile. A heavy divided triangle is the
+   * solid mass an undivided one is, not a slightly thicker ribbon.
    */
   it('grows a divided triangle back into solid mass', () => {
     const heavyDivided = ink({ tileSet: 'triangles', arcCount: 3, weight: 0.45 });
-    const lightDivided = ink({ tileSet: 'triangles', arcCount: 3 });
     const solid = ink({ tileSet: 'triangles', arcCount: 1, weight: 0.45 });
     expect(
-      heavyDivided,
-      `a divided triangle at full weight covers ${heavyDivided.toFixed(3)} against ${lightDivided.toFixed(3)} at the default`,
-    ).toBeGreaterThan(lightDivided * 1.3);
-    expect(
-      heavyDivided,
-      `a divided triangle at full weight covers ${heavyDivided.toFixed(3)} against ${solid.toFixed(3)} for a solid undivided one`,
-    ).toBeGreaterThan(solid);
+      Math.abs(heavyDivided - solid),
+      `a divided triangle at full weight covers ${heavyDivided.toFixed(3)} against ${solid.toFixed(3)} for an undivided one`,
+    ).toBeLessThan(0.02);
   });
 });
 
@@ -244,40 +220,51 @@ function arcSeams(svg: string, width: number): { worst: number; span: number } {
   return { worst, span };
 }
 
-describe('truchet triangles and the division count', () => {
+describe('truchet triangles keep their paper', () => {
   /**
-   * Dividing a triangle must not empty the tiling out.
+   * Dividing mass into ribbons has to remove ink. This test exists because a
+   * change that added ink instead shipped, and looked fine everywhere it was
+   * checked.
    *
-   * A lone triangle is bounded by two cell edges and the diagonal, so it
-   * touches only two of its cell's four edges — this repo's own "one mark per
-   * cell cannot tile" note, written about the arcs, which were fixed for it
-   * long ago and left this set as the one that never was. Measured over all
-   * sixteen rotation pairs, only 4 put ink on both sides of a shared edge and
-   * 8 put it on one side only.
+   * A triangle fills half its cell and leaves the other half as paper — that is
+   * what "mass instead of line" means here, and it is why the set reads at a
+   * glance. Divisions was reported as looking weak; the diagnosis was that
+   * dividing a half cell inks less of it as the count rises; the fix was to
+   * draw the opposite triangle so the ink held. The ink held. The pattern was
+   * ruined, because filling the blank half is precisely what must not happen,
+   * and at 14 columns the airy chevrons became uniform hatching with no
+   * negative space left in it.
    *
-   * What made it visible was the count. Filling every other band of a half
-   * cell inks less and less of the cell as the count rises — measured at five
-   * columns, 0.538 of the canvas undivided against 0.337 at six divisions, a
-   * 37% collapse — so raising divisions thinned the pattern to scattered
-   * ribbons instead of dividing it. It was reported as divisions "not doing
-   * well" on this tile set, which is exactly what it was.
+   * The defect states itself in one number once you ask the right question.
+   * Undivided, a triangle tiling inks 0.300. Divided it must ink *less* —
+   * measured 0.205 at three divisions and 0.169 at the densest corner. With
+   * the complement it reads 0.311, 0.310, 0.308: a divided tile inking more
+   * than a solid one, which cannot be right whatever it looks like.
    *
-   * Drawing the opposite triangle on the complementary parity gives the cell
-   * legs on all four edges and holds the ink: 0.517 to 0.550 across the same
-   * range. The bound is taken from between the two measurements rather than
-   * from what sounds reasonable.
+   * Two things let it through, both worth keeping. The measurement asserted
+   * that ink *held* as the count rose, which is the property that caused the
+   * regression rather than one that guards against it — it tested the change,
+   * not the design. And it was taken at one density, low, where bold ribbons on
+   * a dark ground look fine either way; the fault is obvious at the corner of
+   * the parameter space, which this repo's contours note already says is where
+   * to look.
    */
-  it('holds its ink as the division count rises', () => {
+  it('inks less when divided than it does solid, at every count and density', () => {
     const solid = ink({ tileSet: 'triangles', arcCount: 1 });
-    for (const arcCount of [2, 3, 4, 6]) {
-      const divided = ink({ tileSet: 'triangles', arcCount });
+    for (const [density, arcCount] of [
+      [8, 3],
+      [8, 6],
+      [14, 6],
+      [20, 6],
+      [26, 12],
+    ] as const) {
+      const divided = ink({ tileSet: 'triangles', density, arcCount });
       expect(
         divided,
-        `triangles laid ${divided.toFixed(3)} ink at ${arcCount} divisions against ${solid.toFixed(3)} undivided`,
-      ).toBeGreaterThan(solid * 0.85);
+        `triangles inked ${divided.toFixed(3)} at ${density} columns and ${arcCount} divisions against ${solid.toFixed(3)} solid — dividing added ink instead of removing it`,
+      ).toBeLessThan(solid);
     }
   });
-
 });
 
 describe('truchet arc colour', () => {

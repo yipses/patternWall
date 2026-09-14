@@ -334,11 +334,21 @@ export const truchet: Generator = {
         // turned. Measured across interior cell edges, this agrees with the
         // neighbouring cell more often than the solid tile does, not less:
         // 37% of samples disagree at a count of three against 52% solid.
+        const corner = tri[0] as [number, number];
+        const legA = tri[1] as [number, number];
+        const legB = tri[2] as [number, number];
         const bands = Math.max(1, arcCount);
         // How much of its own pitch each band fills. One is the width this
         // tile has always drawn; less pulls the band back toward the corner it
         // is anchored on, more grows it across the gap into its neighbour.
         const fill = clamp(weight / TRIANGLE_FULL_WEIGHT, 0.12, TRIANGLE_FILL_MAX);
+
+        // t >= 1 returns the vertex itself rather than corner + (p - corner),
+        // which is the same point in algebra and not always the same float. A
+        // single band has to emit the exact string this tile has always
+        // emitted, so the arithmetic is skipped rather than trusted.
+        const at = (p: [number, number], t: number): [number, number] =>
+          t >= 1 ? p : [corner[0] + t * (p[0] - corner[0]), corner[1] + t * (p[1] - corner[1])];
 
         // Each band takes its colour from the field at its own centroid, the way
         // the arcs and the diagonal chords do. Colouring every band from the
@@ -380,51 +390,11 @@ export const truchet: Generator = {
         // becoming a band across the middle of one: scaling about the right
         // angle keeps the two legs on the cell edges, where the neighbouring
         // tiles meet them, and retreats only the hypotenuse.
-        const ribbons = (t: [number, number][], from: number): void => {
-          const corner = t[0] as [number, number];
-          const legA = t[1] as [number, number];
-          const legB = t[2] as [number, number];
-          // t >= 1 returns the vertex itself rather than corner + (p - corner),
-          // which is the same point in algebra and not always the same float.
-          // A single band has to emit the exact string this tile has always
-          // emitted, so the arithmetic is skipped rather than trusted.
-          const at = (p: [number, number], u: number): [number, number] =>
-            u >= 1 ? p : [corner[0] + u * (p[0] - corner[0]), corner[1] + u * (p[1] - corner[1])];
-          for (let k = from; k >= 0; k -= 2) {
-            const t0 = k / bands;
-            const t1 = Math.min(1, (k + fill) / bands);
-            emit(t0 === 0 ? [corner, at(legA, t1), at(legB, t1)] : [at(legA, t0), at(legA, t1), at(legB, t1), at(legB, t0)]);
-          }
-        };
-
-        ribbons(tri, bands - 1);
-
-        // And the opposite half of the cell, on the complementary parity.
-        //
-        // One mark per cell cannot tile — this repo's own note about the arcs,
-        // which were fixed for it long ago and left the triangles as the one
-        // set that never was. A triangle is bounded by two cell edges and the
-        // diagonal, so it touches only two of the four edges; measured over
-        // all sixteen rotation pairs, just 4 put ink on both sides of a shared
-        // edge, 8 put it on one side only, and the ribbons stop dead at half
-        // the boundaries in the grid.
-        //
-        // Drawing the opposite triangle gives the cell legs on all four edges.
-        // The parity is what keeps it a pattern rather than a solid block:
-        // reading across the cell the bands run A0..A(n-1) then B(n-1)..B0,
-        // so filling A from n-1 and B from n-2 continues the alternation
-        // straight through the diagonal and the whole cell becomes 2n
-        // interleaved stripes instead of a half-cell of them.
-        //
-        // It also stops divisions thinning the pattern out, which is the
-        // complaint that led here: a lone triangle inks half a cell undivided
-        // and a third of one at three divisions, so raising the count made the
-        // tiling weedier. With the complement it holds at about half at every
-        // count.
-        //
-        // At one division `bands - 2` is -1 and this loop does not run, so the
-        // undivided tile — the whole identity of the set — is untouched.
-        ribbons(pts[(rot + 2) % 4] as [number, number][], bands - 2);
+        for (let k = bands - 1; k >= 0; k -= 2) {
+          const t0 = k / bands;
+          const t1 = Math.min(1, (k + fill) / bands);
+          emit(t0 === 0 ? [corner, at(legA, t1), at(legB, t1)] : [at(legA, t0), at(legA, t1), at(legB, t1), at(legB, t0)]);
+        }
         return;
       }
 

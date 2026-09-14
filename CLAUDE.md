@@ -616,55 +616,55 @@ see mid-drag wrapping. It can; the injected bug was not the bug. When a bug
 injection fails to fail, check that you injected the thing you meant before
 concluding anything about the test.
 
-**One mark per cell cannot tile — and the triangles were the set that never
-got the fix.** The arcs' entry above says this, and it was written about the
-arcs, and for as long as this generator existed the triangles sat with exactly
-the same fault. A triangle is bounded by two cell edges and the diagonal, so it
-touches only two of its cell's four edges. Counted over all sixteen rotation
-pairs, only 4 put ink on both sides of a shared edge, 8 put it on one side
-only, and 4 on neither: half the boundaries in the grid have a ribbon stopping
-dead against nothing.
+**Filling the empty half of a truchet triangle fixes the measurement and
+destroys the pattern.** This is the most instructive failure in this file
+because everything about the process was followed and the result still shipped
+broken, so the lesson is about *which* number and *which* picture.
 
-What made it visible was the division count, and it was reported as divisions
-"not doing well" on this set. Filling every other band of a *half* cell inks
-less and less of the whole cell as the count rises — measured at five columns,
-0.538 of the canvas undivided against 0.337 at six divisions, a 37% collapse.
-So raising divisions thinned the tiling to scattered ribbons rather than
-dividing it, and the odd counts scattered stray corner tips through it as well.
-Drawing the opposite triangle on the complementary parity holds it at 0.517 to
-0.550 across the same range, gives the cell legs on all four edges, and leaves
-one division byte-identical, because at one band the complement's loop starts
-at -1 and does not run.
+A triangle fills half its cell and leaves the other half as paper. That blank
+half is the tile set — "mass instead of line" — and it is why the thing reads
+at a glance. Divisions was reported as looking weak on it, and a real fault was
+found underneath: a lone triangle touches only two of its cell's four edges, so
+half the grid's boundaries have a ribbon stopping dead against nothing, and
+dividing a half cell inks less of the whole cell as the count rises. Drawing
+the opposite triangle on the complementary parity fixes both. The ink held flat
+across the range, the undivided render stayed byte-identical, three tests were
+watched failing against the old code, and at five columns on a dark ground the
+A/B was plainly better.
 
-The parity is the part worth understanding. Reading across the cell the bands
-run A0..A(n-1) then B(n-1)..B0, so filling A from n-1 and B from n-2 continues
-the alternation straight through the shared diagonal: 2n interleaved stripes
-across the whole cell instead of n across half of it.
+It was much worse. At fourteen columns on paper the airy chevrons became
+uniform hatching with no negative space anywhere in it, and that is the only
+place anyone actually looks at this pattern.
 
-**And there is a limit here that is worth stating rather than discovering.**
-Whether two neighbours agree along their shared edge depends on the parity of
-the count. A triangle measures its bands from its own right-angle corner, and
-of the four rotations one measures both legs in the grid's natural direction,
-one measures both reversed, and two measure one each way. Reversing an index
-along an edge of n intervals maps m to n-1-m, which preserves parity when n is
-odd and flips it when n is even. So at odd counts every cell agrees with every
-neighbour, and at even counts the mixed rotations cannot agree on both of their
-legs at once — ink lines up against gaps and the tiling reads as a brick offset
-rather than as continuous ribbon. Measured as cross-edge disagreement at five
-columns: 34% at three divisions against 55% at two and 53% at four. It looks
-like a woven texture rather than like breakage, which is why it ships, but a
-count of three or five is doing something a count of two or four structurally
-cannot. This is the same shape of argument as the arcs' mirror rule, and if the
-even counts ever need to join, that is where the answer will come from.
+The defect states itself in one number once the question is right. Undivided,
+the tiling inks 0.300; divided it must ink **less**, because dividing mass into
+ribbons removes mass — measured 0.205 at three divisions and 0.169 at the
+densest corner. With the complement it reads 0.311, 0.310, 0.308. A divided
+tile inking more than a solid one cannot be right whatever it looks like, and
+that is now the regression test.
 
-**Two of the three pinned triangle lengths moved for this, deliberately.** The
-undivided one is the identity of the set and must never move; the divided ones
-roughly double, because the tile stopped wasting half its cell. A test also had
-to be re-aimed rather than re-pinned: it asserted that a heavy divided triangle
-covers the *same* as a heavy undivided one within 0.02, and that equality was
-an artefact — both were a solid half cell. With the whole cell to fuse across
-it now measures 0.574 against 0.300, so the claim it can still make is that the
-top of the slider fuses ribbons into mass, not that two numbers match.
+Three things let it through, and they are the reusable part:
+
+**The assertion was the change restated.** "Ink holds as the count rises" is
+the property the fix was built to produce, so of course it passed. It guards
+nothing. The design rule — dividing takes ink away — is the assertion that
+would have caught it, and it was available before the change was written.
+
+**One density is not a range.** Every measurement and every render was at five
+to eight columns, where bold ribbons look fine either way. This file's contours
+note already says the fault shows at the extreme setting and nowhere else; the
+same applies to any control that adds detail, and truchet has two of them
+multiplying together. Render the corner of the parameter space, not the middle.
+
+**And a metric can lie twice in one session.** A first attempt at the guard
+counted pixels above an absolute brightness, which on a near-black palette
+counts anti-aliased edges as ink and reported 0.996 coverage — a number that
+looked like proof of a solid block and was an artefact of the threshold. A
+second attempt then read identical numbers for both versions, because the
+script imports `dist` and the rebuild had not been run: exactly the stale-`dist`
+trap recorded above, hit while investigating a different one. Use the metric
+the suite already trusts, rebuild before measuring, and when a number is
+surprising, suspect the instrument before the code.
 
 **Two fills at different opacities composite, and a hole in the upper one is a
 window onto the lower.** The preview's gear was an opaque ring for the hub
@@ -820,19 +820,14 @@ result. Each was arrived at by breaking it first.
   about 23 columns a chord is already short enough to want a single piece,
   which is exactly where the render is heaviest.
 
-- **Triangles divide on that same lattice, and a divided cell draws two of
-  them.** Every rotation lists its right-angle corner first, so scaling about
-  that vertex sweeps the hypotenuse across the cell and a slice at `k/n` lands
-  on the chord `k*(s/n)`. Fill every other band counting down from the
-  hypotenuse, then draw the opposite triangle on the complementary parity: one
-  triangle touches only two of the cell's four edges, so alone it leaves half
-  the grid's boundaries with a ribbon stopping against nothing, and it inks
-  less of the cell the further you divide it. The pair alternates straight
-  through the shared diagonal — 2n stripes across the whole cell — and holds
-  its ink at about half the canvas at every count. One division draws nothing
-  from the complement and is byte-identical to what it always was. Agreement
-  across a shared edge holds at odd counts and not at even ones; the bug note
-  above derives why.
+- **Triangles divide on that same lattice.** Every rotation lists its
+  right-angle corner first, so scaling about that vertex sweeps the hypotenuse
+  across the cell and a slice at `k/n` lands on the chord `k*(s/n)`. Fill every
+  other band, counting down from the hypotenuse, and the mass becomes ribbons
+  that continue through the grid: across interior cell edges the ink agrees
+  with the neighbour more often than the solid tile manages (37% of samples
+  disagree at three divisions, against 52% solid). Filling every band instead
+  just reassembles the triangle.
 
 - **`weight` sets how much of its pitch a triangle band fills**, since there is
   no stroke here to widen. One is the width this set always drew, so the
