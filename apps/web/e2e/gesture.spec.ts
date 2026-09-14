@@ -62,13 +62,13 @@ test.describe('gesture', () => {
     await page.goto('/p/truchet');
     await settled(page);
 
-    const before = await numberOf(page, 'Stroke weight');
+    const before = await numberOf(page, 'Grid density');
     const divisionsBefore = await numberOf(page, 'Divisions');
     await dragBy(page, 200, 0);
     await settled(page);
-    const after = await numberOf(page, 'Stroke weight');
+    const after = await numberOf(page, 'Grid density');
 
-    expect(after, `stroke weight went ${before} -> ${after} across a 200px drag`).toBeGreaterThan(before);
+    expect(after, `grid density went ${before} -> ${after} across a 200px drag`).toBeGreaterThan(before);
     // The axis locks to whichever way the pointer went first and stays there,
     // so a horizontal drag must leave the vertical control alone even though
     // twenty-four separate moves went through the handler.
@@ -80,7 +80,7 @@ test.describe('gesture', () => {
     await page.goto('/p/truchet');
     await settled(page);
 
-    const weightBefore = await numberOf(page, 'Stroke weight');
+    const densityBefore = await numberOf(page, 'Grid density');
     const before = await numberOf(page, 'Divisions');
     // Up. Screen coordinates grow downward and a fader does not, so a negative
     // dy has to raise the value — the assertion is the direction, not just the
@@ -89,20 +89,23 @@ test.describe('gesture', () => {
     await settled(page);
 
     expect(await numberOf(page, 'Divisions'), `divisions went ${before} -> ${await numberOf(page, 'Divisions')} dragging up`).toBeGreaterThan(before);
-    expect(await numberOf(page, 'Stroke weight'), 'a vertical drag moved the horizontal control too').toBe(weightBefore);
+    expect(await numberOf(page, 'Grid density'), 'a vertical drag moved the horizontal control too').toBe(densityBefore);
   });
 
   test('a fresh swipe past an end wraps, and a drag that reaches one does not', async ({ page }) => {
     await page.goto('/p/truchet');
     await settled(page);
 
-    const weight = page.getByLabel('Stroke weight');
-    const min = Number(await weight.getAttribute('min'));
-    const max = Number(await weight.getAttribute('max'));
-    const mid = (min + max) / 2;
+    const density = page.getByLabel('Grid density');
+    const min = Number(await density.getAttribute('min'));
+    const max = Number(await density.getAttribute('max'));
+    // On the step lattice: density steps by one, so a bare midpoint of 3 and
+    // 26 is 14.5 and `fill` refuses it.
+    const step = Number(await density.getAttribute('step')) || 1;
+    const mid = min + Math.round((max - min) / 2 / step) * step;
 
-    await weight.fill(String(min));
-    await weight.blur();
+    await density.fill(String(min));
+    await density.blur();
     await settled(page);
 
     // Swiping left with nothing to the left of you is a dead gesture, and a
@@ -111,7 +114,7 @@ test.describe('gesture', () => {
     await dragBy(page, -40, 0);
     await settled(page);
     expect(
-      await numberOf(page, 'Stroke weight'),
+      await numberOf(page, 'Grid density'),
       'a fresh swipe left at the minimum did not come round to the top',
     ).toBeGreaterThan(mid);
 
@@ -119,8 +122,8 @@ test.describe('gesture', () => {
     // rather than at the bound: within one drag the value clamps. A fader that
     // rolls over mid-drag makes settling beside an end impossible, because you
     // keep falling off it and reappearing at the far one.
-    await weight.fill(String(mid));
-    await weight.blur();
+    await density.fill(String(mid));
+    await density.blur();
     await settled(page);
 
     const box = await page.locator('[class*="phone"]').first().boundingBox();
@@ -134,7 +137,7 @@ test.describe('gesture', () => {
     await settled(page);
 
     expect(
-      await numberOf(page, 'Stroke weight'),
+      await numberOf(page, 'Grid density'),
       'a single drag rolled over the end instead of stopping at it',
     ).toBe(min);
   });
@@ -152,13 +155,13 @@ test.describe('gesture', () => {
     // way the drag is going, and a range measured against the full width
     // instead of the width that is left arrives about 5% short of the end,
     // which reads as a control that will not quite reach.
-    const weight = page.getByLabel('Stroke weight');
-    await weight.fill(await weight.getAttribute('min') ?? '0');
-    await weight.blur();
+    const density = page.getByLabel('Grid density');
+    await density.fill(await density.getAttribute('min') ?? '0');
+    await density.blur();
     await settled(page);
-    const min = Number(await weight.getAttribute('min'));
-    const max = Number(await weight.getAttribute('max'));
-    expect(await numberOf(page, 'Stroke weight'), 'setup: weight did not start at its minimum').toBe(min);
+    const min = Number(await density.getAttribute('min'));
+    const max = Number(await density.getAttribute('max'));
+    expect(await numberOf(page, 'Grid density'), 'setup: density did not start at its minimum').toBe(min);
 
     const midY = box.y + box.height / 2;
     await page.mouse.move(box.x + 1, midY);
@@ -168,8 +171,8 @@ test.describe('gesture', () => {
     await settled(page);
 
     expect(
-      await numberOf(page, 'Stroke weight'),
-      `a drag across the full ${Math.round(box.width)}px of the preview left weight short of its maximum`,
+      await numberOf(page, 'Grid density'),
+      `a drag across the full ${Math.round(box.width)}px of the preview left density short of its maximum`,
     ).toBe(max);
 
     // And the same down the other axis, which measures against the height.
@@ -239,7 +242,7 @@ test.describe('gesture', () => {
     await page.goto('/p/truchet');
     await settled(page);
 
-    const weightBefore = await numberOf(page, 'Stroke weight');
+    const densityBefore = await numberOf(page, 'Grid density');
     const before = await numberOf(page, 'Divisions');
 
     // A thumb pivots from the knuckle, so the first few millimetres of a swipe
@@ -269,7 +272,7 @@ test.describe('gesture', () => {
       await numberOf(page, 'Divisions'),
       `divisions went ${before} -> ${await numberOf(page, 'Divisions')} across a swipe that arced up`,
     ).toBeGreaterThan(before);
-    expect(await numberOf(page, 'Stroke weight'), 'the swipe locked to the direction it set off in').toBe(weightBefore);
+    expect(await numberOf(page, 'Grid density'), 'the swipe locked to the direction it set off in').toBe(densityBefore);
   });
 
   test('a tap cycles the option, and wraps', async ({ page }) => {
@@ -297,7 +300,7 @@ test.describe('gesture', () => {
   test('a press that barely moves is a tap, not a scrub', async ({ page }) => {
     await page.goto('/p/truchet');
     await settled(page);
-    const weightBefore = await numberOf(page, 'Stroke weight');
+    const densityBefore = await numberOf(page, 'Grid density');
 
     // Four pixels, which is under the lock threshold. A finger never lands
     // perfectly still; without the threshold every tap would also nudge
@@ -306,7 +309,7 @@ test.describe('gesture', () => {
     await settled(page);
 
     await expect(page.getByLabel('Tile set'), 'a small movement was not taken as a tap').toHaveValue('diagonals');
-    expect(await numberOf(page, 'Stroke weight'), 'a tap nudged a scrubbed control').toBe(weightBefore);
+    expect(await numberOf(page, 'Grid density'), 'a tap nudged a scrubbed control').toBe(densityBefore);
   });
 
   test('the picture tracks the finger, before it lifts', async ({ page }) => {
@@ -400,24 +403,24 @@ test.describe('gesture', () => {
 
       // The three are promoted and visible with nothing to press.
       await expect(page.getByLabel('Tile set')).toBeVisible();
-      await expect(page.getByLabel('Stroke weight')).toBeVisible();
+      await expect(page.getByLabel('Grid density')).toBeVisible();
       await expect(page.getByLabel('Divisions')).toBeVisible();
 
       // Everything else is not in the page at all until the gear is pressed,
       // which is what keeps one parameter to one slider.
-      await expect(page.getByLabel('Grid density')).toHaveCount(0);
+      await expect(page.getByLabel('Stroke weight')).toHaveCount(0);
 
       const gear = page.getByTestId('preview-settings');
       await expect(gear).toHaveAttribute('aria-expanded', 'false');
       await gear.click();
       await expect(gear).toHaveAttribute('aria-expanded', 'true');
 
-      const density = page.getByLabel('Grid density');
-      await expect(density).toBeVisible();
+      const weight = page.getByLabel('Stroke weight');
+      await expect(weight).toBeVisible();
       await expect(page.getByLabel('Arc spread')).toBeVisible();
       await expect(page.getByLabel('Colour spread')).toBeVisible();
       // Name and slider only: no paragraph of explanation in a sheet this size.
-      await expect(page.locator('text=Columns across the canvas')).toHaveCount(0);
+      await expect(page.locator('text=Line width as a fraction')).toHaveCount(0);
 
       // And a way to reroll without reaching for the seed field below.
       const before = await previewSrc(page);
@@ -426,7 +429,7 @@ test.describe('gesture', () => {
       expect(await previewSrc(page), 'the seed button changed nothing').not.toBe(before);
 
       await gear.click();
-      await expect(page.getByLabel('Grid density')).toHaveCount(0);
+      await expect(page.getByLabel('Stroke weight')).toHaveCount(0);
     });
 
     test('a press outside the sheet dismisses it instead of cycling the pattern', async ({ page }) => {
@@ -435,7 +438,7 @@ test.describe('gesture', () => {
 
       const gear = page.getByTestId('preview-settings');
       await gear.click();
-      await expect(page.getByLabel('Grid density')).toBeVisible();
+      await expect(page.getByLabel('Stroke weight')).toBeVisible();
 
       // The upper fifth of the preview: over the picture, clear of the sheet,
       // and squarely on the gesture surface — which would have taken this as a
@@ -446,7 +449,7 @@ test.describe('gesture', () => {
       await settled(page);
 
       await expect(gear, 'the press outside the sheet did not close it').toHaveAttribute('aria-expanded', 'false');
-      await expect(page.getByLabel('Grid density')).toHaveCount(0);
+      await expect(page.getByLabel('Stroke weight')).toHaveCount(0);
       await expect(page.getByLabel('Tile set'), 'dismissing the sheet also changed the pattern').toHaveValue('arcs');
     });
 

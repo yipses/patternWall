@@ -133,17 +133,31 @@ export const truchet: Generator = {
   ],
 
   /**
-   * Tile set, stroke weight, divisions.
+   * Tile set, grid density, divisions.
    *
-   * These are the three that change what you are looking at. Tile set is the
-   * only one of truchet's seven that is a choice rather than a quantity, so it
-   * takes the tap; weight and divisions are the two quantities whose whole
-   * range is worth travelling, where density mostly trades one good picture
-   * for another good picture and the colour controls are a second-pass
-   * refinement. Arc spread only does anything on one of the three tile sets,
-   * which rules it out of a control that has to mean something in every mode.
+   * Tile set is the only one of truchet's seven that is a choice rather than a
+   * quantity, so it takes the tap. The other two are the quantities whose
+   * whole range is worth travelling, and the horizontal one used to be
+   * `weight`.
+   *
+   * It lost the slot to the fault this file's own rules predict. `weight` is a
+   * fraction of the cell, and the fan thins its stroke to the gap so that
+   * raising the division count cannot close the rings into a block — which
+   * means the moment divisions is above one, most of the weight slider is
+   * asking for a stroke wider than the gap and gets the gap. Measured on the
+   * arcs at 8 columns: the slider changes the stroke over 100% of its travel
+   * at one division, 29% at three, and 6% at twelve, and the 0.16 default is
+   * already inside the dead zone from three divisions up. Two of the three
+   * primaries were therefore coupled, with the vertical one deciding how much
+   * of the horizontal one did anything.
+   *
+   * Density is uncoupled from both and is the control a person reaches for
+   * first anyway — it decides whether you are reading tiles or reading a
+   * texture. Arc spread was never a candidate: it does nothing on two of the
+   * three tile sets, which rules it out of a gesture that has to mean
+   * something in every mode.
    */
-  primary: { tap: 'tileSet', x: 'weight', y: 'arcCount' },
+  primary: { tap: 'tileSet', x: 'density', y: 'arcCount' },
 
   /**
    * Divisions stops at six on diagonals.

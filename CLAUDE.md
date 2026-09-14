@@ -773,8 +773,10 @@ result. Each was arrived at by breaking it first.
 
 Controls: density, tileSet, weight, colorSpread,
 arcCount (labelled Divisions; max 6 on diagonals, 12 elsewhere), arcSpacing
-(spread; quarter arcs only). The three it is driven by are promoted into the
-panel; the rest live behind the gear on the preview, as name and slider with no
+(spread; quarter arcs only). The three it is driven by — tap for tileSet,
+horizontal for density, vertical for arcCount — are promoted into the panel;
+`weight` held the horizontal slot until its range turned out to be eaten by
+the division count, which the bug note above records; the rest live behind the gear on the preview, as name and slider with no
 explanation, alongside a button for a fresh seed. Removed as not worth their slots: `colorBlend`, `mixed`, row
 weight variation, `gap`, `subdivide`, `quietTop` and `openEnds`. The last four
 went together and each had the same shape of problem — a knob whose effect was
