@@ -139,9 +139,16 @@ describe('truchet stroke weight', () => {
     // Taken from the code before this control existed, not from the code
     // after it: measured under `git stash`, which is the only way the claim
     // means anything.
+    //
+    // The undivided number is the original and must never move — it is the
+    // identity of this tile set. The two divided ones were re-pinned once, on
+    // purpose, when the opposite triangle was added to give a divided cell
+    // legs on all four of its edges; that roughly doubles the marks in a
+    // divided tile and is the change recorded in the block below. Re-pin these
+    // only with a reason of that size.
     expect(render({ tileSet: 'triangles' }).length).toBe(5691);
-    expect(render({ tileSet: 'triangles', arcCount: 3 }).length).toBe(11273);
-    expect(render({ tileSet: 'triangles', arcCount: 6 }).length).toBe(17288);
+    expect(render({ tileSet: 'triangles', arcCount: 3 }).length).toBe(16727);
+    expect(render({ tileSet: 'triangles', arcCount: 6 }).length).toBe(32547);
   });
 
   /**
@@ -170,16 +177,33 @@ describe('truchet stroke weight', () => {
 
   /**
    * Past the top the bands fuse, which is what gives the upper half of the
-   * slider something to say on a divided tile. A heavy divided triangle is the
-   * solid mass an undivided one is, not a slightly thicker ribbon.
+   * slider something to say on a divided tile.
+   *
+   * This used to assert that a heavy divided triangle covers the *same* as a
+   * heavy undivided one, within 0.02, and that equality was an artefact rather
+   * than a property: both were a solid half cell, because a lone triangle only
+   * ever used half of its own cell. With the opposite triangle drawn the
+   * divided tile has the whole cell to fuse across, and measures 0.574 against
+   * 0.300 — about twice, which is the ratio you would expect from a mark that
+   * stopped wasting half its cell.
+   *
+   * So the claim is the one that survives that: the top of the slider fuses
+   * ribbons into mass, more than a default-weight divided tile lays and at
+   * least as much as a solid undivided one. Bounds taken from the two
+   * measurements, not from what sounds reasonable.
    */
   it('grows a divided triangle back into solid mass', () => {
     const heavyDivided = ink({ tileSet: 'triangles', arcCount: 3, weight: 0.45 });
+    const lightDivided = ink({ tileSet: 'triangles', arcCount: 3 });
     const solid = ink({ tileSet: 'triangles', arcCount: 1, weight: 0.45 });
     expect(
-      Math.abs(heavyDivided - solid),
-      `a divided triangle at full weight covers ${heavyDivided.toFixed(3)} against ${solid.toFixed(3)} for an undivided one`,
-    ).toBeLessThan(0.02);
+      heavyDivided,
+      `a divided triangle at full weight covers ${heavyDivided.toFixed(3)} against ${lightDivided.toFixed(3)} at the default`,
+    ).toBeGreaterThan(lightDivided * 1.3);
+    expect(
+      heavyDivided,
+      `a divided triangle at full weight covers ${heavyDivided.toFixed(3)} against ${solid.toFixed(3)} for a solid undivided one`,
+    ).toBeGreaterThan(solid);
   });
 });
 
@@ -219,6 +243,42 @@ function arcSeams(svg: string, width: number): { worst: number; span: number } {
   for (const m of marks) span = Math.max(span, Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1]) / width);
   return { worst, span };
 }
+
+describe('truchet triangles and the division count', () => {
+  /**
+   * Dividing a triangle must not empty the tiling out.
+   *
+   * A lone triangle is bounded by two cell edges and the diagonal, so it
+   * touches only two of its cell's four edges — this repo's own "one mark per
+   * cell cannot tile" note, written about the arcs, which were fixed for it
+   * long ago and left this set as the one that never was. Measured over all
+   * sixteen rotation pairs, only 4 put ink on both sides of a shared edge and
+   * 8 put it on one side only.
+   *
+   * What made it visible was the count. Filling every other band of a half
+   * cell inks less and less of the cell as the count rises — measured at five
+   * columns, 0.538 of the canvas undivided against 0.337 at six divisions, a
+   * 37% collapse — so raising divisions thinned the pattern to scattered
+   * ribbons instead of dividing it. It was reported as divisions "not doing
+   * well" on this tile set, which is exactly what it was.
+   *
+   * Drawing the opposite triangle on the complementary parity gives the cell
+   * legs on all four edges and holds the ink: 0.517 to 0.550 across the same
+   * range. The bound is taken from between the two measurements rather than
+   * from what sounds reasonable.
+   */
+  it('holds its ink as the division count rises', () => {
+    const solid = ink({ tileSet: 'triangles', arcCount: 1 });
+    for (const arcCount of [2, 3, 4, 6]) {
+      const divided = ink({ tileSet: 'triangles', arcCount });
+      expect(
+        divided,
+        `triangles laid ${divided.toFixed(3)} ink at ${arcCount} divisions against ${solid.toFixed(3)} undivided`,
+      ).toBeGreaterThan(solid * 0.85);
+    }
+  });
+
+});
 
 describe('truchet arc colour', () => {
   /**
