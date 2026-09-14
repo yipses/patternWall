@@ -14,6 +14,7 @@ import {
   scrubTo,
   secondaryParams,
   stepCount,
+  wrapPastEnd,
   defaultParams,
   type Generator,
   type NumberSpec,
@@ -82,6 +83,31 @@ describe('controls', () => {
         expect(v).toBeLessThanOrEqual(spec.max);
       }
     }
+  });
+
+  /**
+   * A bounded control has two dead directions, and a gesture that does nothing
+   * cannot be told apart from one that is broken. A swipe that *begins* by
+   * pushing further into the end it is already on comes round to the other.
+   */
+  it('wraps a gesture that starts by pushing past an end, and only that one', () => {
+    const arcCount = truchet.params.find((p) => p.key === 'arcCount') as NumberSpec;
+    const weight = truchet.params.find((p) => p.key === 'weight') as NumberSpec;
+
+    expect(wrapPastEnd(arcCount, arcCount.min, -1), 'down from the bottom').toBe(arcCount.max);
+    expect(wrapPastEnd(arcCount, arcCount.max, 1), 'up from the top').toBe(arcCount.min);
+
+    // Everything else is left alone. Wrapping a gesture that has somewhere to
+    // go would make the control discontinuous where it has no reason to be.
+    expect(wrapPastEnd(arcCount, arcCount.min, 1), 'up from the bottom is just up').toBe(arcCount.min);
+    expect(wrapPastEnd(arcCount, arcCount.max, -1), 'down from the top is just down').toBe(arcCount.max);
+    expect(wrapPastEnd(arcCount, 6, -1), 'from the middle').toBe(6);
+    expect(wrapPastEnd(arcCount, 6, 1), 'from the middle').toBe(6);
+
+    // A float bound has to count as sitting on itself: weight floors at 0.02,
+    // and an equality test against a quantised value there is a coin toss.
+    expect(wrapPastEnd(weight, weight.min, -1), 'a float minimum still wraps').toBe(weight.max);
+    expect(wrapPastEnd(weight, weight.max, 1), 'a float maximum still wraps').toBe(weight.min);
   });
 
   /**

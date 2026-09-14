@@ -73,6 +73,36 @@ export function scrubTo(spec: NumberSpec, from: number, fraction: number): numbe
 }
 
 /**
+ * Where a scrub goes when it *starts* by pushing further into an end it is
+ * already sitting on: round to the other end.
+ *
+ * A bounded control has two dead directions, and a gesture that does nothing
+ * is indistinguishable from one that is broken — which matters more here than
+ * it would elsewhere, because this surface has had three separate faults that
+ * all presented as "the swipe isn't registering".
+ *
+ * The rule is deliberately about where a gesture *begins*, not about what
+ * happens when a drag reaches an end. Within one drag the value clamps, so a
+ * fader stays a fader and settling next to an end does not keep throwing you
+ * across the range. Lifting and swiping the same way again is a second,
+ * deliberate statement — "further, and I know there is no further" — and that
+ * is the one that comes round. It also gives a short path from one end to the
+ * other, which otherwise costs a full sweep of the preview.
+ *
+ * `direction` is the way the drag is heading in value terms, already corrected
+ * for the screen's y axis growing downward: positive increases.
+ *
+ * Compared with `>=` and `<=` rather than equality because a bound can be a
+ * float — truchet's stroke weight floors at 0.02 — and a value that has been
+ * quantised onto the lattice near it should still count as sitting on it.
+ */
+export function wrapPastEnd(spec: NumberSpec, from: number, direction: number): number {
+  if (direction > 0 && from >= spec.max) return spec.min;
+  if (direction < 0 && from <= spec.min) return spec.max;
+  return from;
+}
+
+/**
  * The next value in the cycle: what a tap does.
  *
  * Selects advance through their options and wrap. Booleans toggle. Numbers

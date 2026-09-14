@@ -35,6 +35,7 @@ export {
   scrubTo,
   secondaryParams,
   stepCount,
+  wrapPastEnd,
   type NumberSpec,
   type PrimaryBinding,
   type PrimaryRole,

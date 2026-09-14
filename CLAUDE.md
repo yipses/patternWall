@@ -586,6 +586,36 @@ fault above from intermittent into total and failed a test that had been
 passing for the wrong reason since it was written. A calibration change is a
 good way to find out which of your tests were only ever passing by luck.
 
+**A bounded control has two dead directions, and a gesture that does nothing
+cannot be told apart from one that is broken.** Swiping left on a control
+already at its minimum did nothing, correctly — there is nothing to the left of
+a minimum — and on this surface in particular that is not a neutral outcome.
+Three separate faults here had already presented as "the swipe isn't
+registering", so a legitimately dead gesture is the same experience as the bug,
+and a person has no way to tell which they are looking at.
+
+What it turns on is *when* the rule applies, and the two readings are not close.
+Wrap whenever a drag reaches an end and a fader rolls over mid-drag: settling
+next to either end becomes impossible, because you keep falling off it and
+reappearing at the far one, and that is worse on a 48-step control than a
+12-step one. Wrap only where a gesture *begins* and a drag stays a fader — it
+clamps at the end like it always did — while lifting and swiping the same way
+again is a second, deliberate statement that comes round. It also gives a short
+path between the ends, which otherwise costs a full sweep of the preview.
+
+So the wrap lives at the axis lock, which is the one place that knows a gesture
+is starting rather than continuing, and `wrapPastEnd` is in core because where
+a parameter goes when it runs out is a fact about the parameter.
+
+Both halves need a test and the second one is easy to write badly. A first
+attempt at injecting the mid-drag version set `from` to the wrapped value
+inside the existing re-anchor branch, where the re-anchor that follows
+immediately computes its offset from the new `from` and puts the value straight
+back — a no-op that the test passed, which looked like proof the test could not
+see mid-drag wrapping. It can; the injected bug was not the bug. When a bug
+injection fails to fail, check that you injected the thing you meant before
+concluding anything about the test.
+
 **Two fills at different opacities composite, and a hole in the upper one is a
 window onto the lower.** The preview's gear was an opaque ring for the hub
 drawn under a gear body at 0.55. The body paints over the ring; the ring's hole

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { quantise, scrubTo, type NumberSpec, type ParamSpec, type PrimaryBinding } from '@patternwall/core';
+import { quantise, scrubTo, wrapPastEnd, type NumberSpec, type ParamSpec, type PrimaryBinding } from '@patternwall/core';
 
 /**
  * Driving a pattern's three controls from the picture itself.
@@ -249,14 +249,33 @@ export function useScrub(options: {
         onStart();
         d.spec = bound.spec;
         d.key = bound.key;
-        d.from = quantise(bound.spec, read(bound.key));
+        const lead = axis === 'x' ? dx0 : dy0;
+        // Up increases, so the y lead is read against the screen.
+        const heading = axis === 'x' ? lead : -lead;
+        const at = quantise(bound.spec, read(bound.key));
+
+        // A gesture that *begins* by pushing further into the end it is
+        // already on comes round to the other one. Only at the lock, which is
+        // what keeps a drag a fader: reach an end mid-drag and it clamps, so
+        // settling beside one does not keep throwing the value across the
+        // range. Lifting and swiping the same way again is the second,
+        // deliberate statement, and that is the one that wraps.
+        d.from = wrapPastEnd(bound.spec, at, heading);
+
         // Anchored where the axis was claimed, so the value does not jump by a
         // threshold's worth the instant it locks — and the range is then
         // spread over the travel that is actually left, so that reaching the
         // far edge reaches the end of the parameter.
         d.anchor = axis === 'x' ? e.clientX : e.clientY;
-        d.travel = travelFor(d.surface, axis, axis === 'x' ? dx0 : dy0);
+        d.travel = travelFor(d.surface, axis, lead);
         d.emitted = d.from;
+        // A wrap is a change, and the lock otherwise announces nothing. Say it
+        // now rather than waiting for the next move, which on a swipe that
+        // stops dead at the threshold would never arrive.
+        if (d.from !== at) {
+          setReadout({ key: d.key, spec: bound.spec, value: d.from });
+          onScrub(d.key, d.from);
+        }
         return;
       }
 

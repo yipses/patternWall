@@ -92,6 +92,53 @@ test.describe('gesture', () => {
     expect(await numberOf(page, 'Stroke weight'), 'a vertical drag moved the horizontal control too').toBe(weightBefore);
   });
 
+  test('a fresh swipe past an end wraps, and a drag that reaches one does not', async ({ page }) => {
+    await page.goto('/p/truchet');
+    await settled(page);
+
+    const weight = page.getByLabel('Stroke weight');
+    const min = Number(await weight.getAttribute('min'));
+    const max = Number(await weight.getAttribute('max'));
+    const mid = (min + max) / 2;
+
+    await weight.fill(String(min));
+    await weight.blur();
+    await settled(page);
+
+    // Swiping left with nothing to the left of you is a dead gesture, and a
+    // dead gesture cannot be told apart from a broken one. A fresh swipe that
+    // starts by pushing into the end it is already on comes round to the top.
+    await dragBy(page, -40, 0);
+    await settled(page);
+    expect(
+      await numberOf(page, 'Stroke weight'),
+      'a fresh swipe left at the minimum did not come round to the top',
+    ).toBeGreaterThan(mid);
+
+    // The other half of the bargain, and the reason it happens at the lock
+    // rather than at the bound: within one drag the value clamps. A fader that
+    // rolls over mid-drag makes settling beside an end impossible, because you
+    // keep falling off it and reappearing at the far one.
+    await weight.fill(String(mid));
+    await weight.blur();
+    await settled(page);
+
+    const box = await page.locator('[class*="phone"]').first().boundingBox();
+    if (!box) throw new Error('the preview frame has no box');
+    const midY = box.y + box.height / 2;
+    await page.mouse.move(box.x + box.width - 1, midY);
+    await page.mouse.down();
+    // Far enough left to spend the whole range and then some.
+    for (let i = 1; i <= 60; i++) await page.mouse.move(box.x + box.width - 1 - (box.width * 1.6 * i) / 60, midY);
+    await page.mouse.up();
+    await settled(page);
+
+    expect(
+      await numberOf(page, 'Stroke weight'),
+      'a single drag rolled over the end instead of stopping at it',
+    ).toBe(min);
+  });
+
   test('edge to edge covers the whole range, on each axis', async ({ page }) => {
     await page.goto('/p/truchet');
     await settled(page);
