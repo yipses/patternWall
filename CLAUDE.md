@@ -498,6 +498,18 @@ matters replays the arc, because a straight vertical drag passes under both
 rules, which is exactly why this shipped with a vertical-drag test already
 green.
 
+**Two fills at different opacities composite, and a hole in the upper one is a
+window onto the lower.** The preview's gear was an opaque ring for the hub
+drawn under a gear body at 0.55. The body paints over the ring; the ring's hole
+does not, so what renders is a bright annulus with a grey disc sitting in it —
+reported as "a strange dot, almost as if there's two icons? or a circle?".
+Neither path is wrong on its own. This is the subpath note above seen from the
+other side: there one element would not accumulate with itself, here two
+elements accumulated where the drawing assumed they would not. It is one path
+with `fill-rule="evenodd"` now, so the hub is the body's own hole and there is
+nothing behind it to show through. Rasterising an icon on its own at the size
+it ships at answers this in seconds; no test in this repo ever would.
+
 **A comment can be the last surviving copy of a reverted design.** The arcs
 branch carried four layers of commentary from successive attempts, two of them
 describing code that had been reverted and contradicting the layer below. Each

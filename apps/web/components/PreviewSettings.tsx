@@ -53,15 +53,17 @@ export function PreviewSettings({
         data-testid="preview-settings"
         onClick={onToggle}
       >
+        {/* One path, one opacity. It was two: a full-strength ring for the hub
+            over a 0.55 gear body, which composites into a bright ring with a
+            grey disc inside it — the "strange dot, almost as if there's two
+            icons" that was reported. The hub is the body's own hole now,
+            subtracted with `evenodd` so it shows the button behind it, and
+            nothing in here overlaps anything else. */}
         <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" focusable="false">
           <path
             fill="currentColor"
-            d="M12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm0-2a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"
-          />
-          <path
-            fill="currentColor"
-            d="m19.4 13-.1-1 1.6-1.3-1.6-2.8-2 .7-1.6-1-.3-2.1H12l-.3 2-1.7 1-1.9-.7-1.6 2.8L8.1 12l-.1 1-1.7 1.3 1.6 2.8 2-.7 1.6 1 .3 2.1h3.4l.3-2 1.7-1 1.9.7 1.6-2.8L19.4 13Z"
-            opacity="0.55"
+            fillRule="evenodd"
+            d="m19.4 13-.1-1 1.6-1.3-1.6-2.8-2 .7-1.6-1-.3-2.1H12l-.3 2-1.7 1-1.9-.7-1.6 2.8L8.1 12l-.1 1-1.7 1.3 1.6 2.8 2-.7 1.6 1 .3 2.1h3.4l.3-2 1.7-1 1.9.7 1.6-2.8L19.4 13ZM12 8.7a3.3 3.3 0 1 0 0 6.6 3.3 3.3 0 0 0 0-6.6Z"
           />
         </svg>
       </button>
