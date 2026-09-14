@@ -178,6 +178,33 @@ const WEIGHT_MAX = 0.5;
 /** A band may grow to twice its pitch, which closes the gap either side of it. */
 const TRIANGLE_FILL_MAX = 2;
 
+/** The bottom of the weight slider. */
+const WEIGHT_MIN = 0.02;
+
+/**
+ * The narrowest a triangle band may be drawn, as a share of its own pitch.
+ *
+ * A band is anchored on its corner-side edge, so at one division `fill` does
+ * not thin the mark — it scales the whole triangle about its right angle, and
+ * a triangle at 0.125 of its cell is 1.6% of that cell's area. The tile set
+ * stopped being a tiling and became specks, which is what the low end of the
+ * slider was doing on every undivided render.
+ *
+ * The bound is the reversed neighbour. A band covering [k, k+f] of its legs
+ * faces, across a seam where the neighbour is turned the other way, a band
+ * covering [n-k'-f, n-k']; the two overlap for k+k' = n-1 exactly when
+ * f > 1/2, at every division count. Below that a ribbon has no partner to run
+ * into and stops against the cell boundary. 0.6 takes the bound with enough
+ * margin that the overlap is a third of a band rather than a knife edge.
+ *
+ * Two pixel metrics were tried on the seams and neither can see this. Counting
+ * samples with ink on one side only rewards a render for being empty — the
+ * specks score best of anything. Normalising by inked samples inverts the bias
+ * and rewards thickness, marking the shipping default as worse than solid at
+ * every count. The bound above is derived and the floor was chosen by looking.
+ */
+const TRIANGLE_FILL_MIN = 0.6;
+
 export const truchet: Generator = {
   id: 'truchet',
   name: 'Truchet',
@@ -419,7 +446,21 @@ export const truchet: Generator = {
         // How much of its own pitch each band fills. One is the width this
         // tile has always drawn; less pulls the band back toward the corner it
         // is anchored on, more grows it across the gap into its neighbour.
-        const fill = clamp(weight / TRIANGLE_FULL_WEIGHT, 0.12, TRIANGLE_FILL_MAX);
+        //
+        // Below the default the slider is remapped onto [TRIANGLE_FILL_MIN, 1]
+        // rather than clamped there. A clamp would leave the bottom eight of
+        // the slider's forty-eight steps doing nothing, and unlike the dead top
+        // third — where a band has closed its gaps and there is visibly nothing
+        // left to fill — that one has no reason a person could see. Remapping a
+        // control normally means moving every value it already had, which is
+        // what made the arcs thinner than they were; here every value it had
+        // below the default drew specks, so there is nothing under this range
+        // worth preserving. The default and everything above it are untouched.
+        const fill =
+          weight >= TRIANGLE_FULL_WEIGHT
+            ? Math.min(weight / TRIANGLE_FULL_WEIGHT, TRIANGLE_FILL_MAX)
+            : TRIANGLE_FILL_MIN +
+              clamp((weight - WEIGHT_MIN) / (TRIANGLE_FULL_WEIGHT - WEIGHT_MIN), 0, 1) * (1 - TRIANGLE_FILL_MIN);
 
         // t >= 1 returns the vertex itself rather than corner + (p - corner),
         // which is the same point in algebra and not always the same float. A

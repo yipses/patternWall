@@ -294,6 +294,44 @@ describe('truchet triangles and their neighbours', () => {
   });
 });
 
+describe('truchet triangles stay a tiling at the narrowest weight', () => {
+  /**
+   * The rule this guards is available before knowing the fix, which is the
+   * test this file's notes keep asking for and did not get last time.
+   *
+   * A triangle band is anchored on its corner-side edge, so at one division
+   * `weight` does not thin the mark — it scales the whole triangle about its
+   * right angle. Two things follow. The tile set is "half the cell is ink and
+   * half is paper", and a mark scaled to a small fraction of its cell is not
+   * that tile set any more, whatever it looks like. And a band covering the
+   * first f of its legs faces, across a seam where the neighbour is turned the
+   * other way, a band covering the last f: the two overlap only when f > 1/2,
+   * so below half size a mark has no partner to meet and stops against the
+   * cell boundary with nothing on the far side.
+   *
+   * Half size is therefore the bound, and it converts into a bound on ink
+   * without a tuned constant: a triangle scaled by f covers f-squared of the
+   * area a full one does, so f > 1/2 is ink at the narrowest setting being
+   * more than a quarter of the ink at the default. The broken version scaled
+   * to 0.125 and read 0.016 of the default's ink — scattered specks, which is
+   * what this shipped as.
+   */
+  it('inks more than a quarter of the default at the lowest weight', () => {
+    const spec = truchet.params.find((p) => p.key === 'weight');
+    if (!spec || spec.type !== 'number') throw new Error('weight is not a number param');
+
+    for (const density of [4, 8, 14]) {
+      const full = ink({ tileSet: 'triangles', density, arcCount: 1 });
+      const thin = ink({ tileSet: 'triangles', density, arcCount: 1, weight: spec.min });
+      const ratio = thin / full;
+      expect(
+        ratio,
+        `at ${density} columns the lowest weight inked ${ratio.toFixed(3)} of the default, so the mark is under half size`,
+      ).toBeGreaterThan(0.25);
+    }
+  });
+});
+
 describe('truchet triangles keep their paper', () => {
   /**
    * Dividing mass into ribbons has to remove ink. This test exists because a
