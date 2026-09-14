@@ -755,6 +755,33 @@ reverse, so the rule is worth stating plainly: a test that just needs a control
 should say so in a comment and name a promoted one, and moving a control means
 grepping every spec file for its label rather than the one you are working in.
 
+**Joining every edge and staying random are not both available, so the
+choice is a dial.** A truchet triangle covers half its cell: it shows ink to
+two of the four edges and blank paper to the other two, so with a free rotation
+per cell about half of all shared edges have ink on one side and nothing on the
+other, and a ribbon running into one stops dead against a ruler-straight
+boundary. At low densities, where a cell is read on its own, that is the whole
+of "the triangles don't line up".
+
+The bound is worth knowing before anyone tries again. Let R be 1 when the
+filled half touches the right edge and D when it touches the bottom; the four
+rotations are exactly the four (R, D) pairs, and two cells meet along a shared
+edge precisely when those bits alternate across it. So a fully joined tiling
+needs R to alternate by column and D by row — which fixes every cell from the
+first one, leaves four layouts in total, and makes the seed do nothing on this
+tile set. There is no assignment that joins everything and keeps variety.
+
+`JOIN_NEIGHBOUR` is the dial, applied per axis. Measured one-sided edges at
+three, six and fourteen columns: 51/47/52% free, 35/32/31% at 0.4, 16/14/17% at
+0.7, 0% at 1 with the pattern frozen. It ships at 0.7. It costs no ink and no
+negative space — the rotation decides which half of a cell is filled, never how
+much — which is exactly what the earlier attempt at this got wrong by drawing
+the opposite triangle as well.
+
+The regression test asks about the symptom, ink stopping at a boundary, rather
+than about the rotation bias that produces it, so a better way of joining would
+satisfy it too.
+
 **Demoting a control does not reset it.** `weight` was a swipe gesture, got
 dragged near its minimum while it was one, and was then moved behind the gear
 still holding 0.04. The render came out as hairlines and was twice reported as
@@ -842,11 +869,12 @@ result. Each was arrived at by breaking it first.
 - **Triangles divide on that same lattice.** Every rotation lists its
   right-angle corner first, so scaling about that vertex sweeps the hypotenuse
   across the cell and a slice at `k/n` lands on the chord `k*(s/n)`. Fill every
-  other band, counting down from the hypotenuse, and the mass becomes ribbons
-  that continue through the grid: across interior cell edges the ink agrees
-  with the neighbour more often than the solid tile manages (37% of samples
-  disagree at three divisions, against 52% solid). Filling every band instead
-  just reassembles the triangle.
+  other band, counting down from the hypotenuse, and the mass becomes ribbons;
+  filling every band instead just reassembles the triangle. **Rotations are
+  biased toward meeting their neighbours** rather than drawn freely — a half
+  cell shows ink to only two of four edges, so a free rotation leaves about half
+  the grid's seams with a ribbon stopping against blank paper. See
+  `JOIN_NEIGHBOUR` and the bug note above for why it is a dial and not a fix.
 
 - **`weight` sets how much of its pitch a triangle band fills**, since there is
   no stroke here to widen. One is the width this set always drew, so the

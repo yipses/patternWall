@@ -139,9 +139,16 @@ describe('truchet stroke weight', () => {
     // Taken from the code before this control existed, not from the code
     // after it: measured under `git stash`, which is the only way the claim
     // means anything.
-    expect(render({ tileSet: 'triangles' }).length).toBe(5691);
-    expect(render({ tileSet: 'triangles', arcCount: 3 }).length).toBe(11273);
-    expect(render({ tileSet: 'triangles', arcCount: 6 }).length).toBe(17288);
+    // Re-pinned once, deliberately, when the rotations were biased toward
+    // meeting their neighbours: that changes which corner each triangle sits
+    // on and therefore its coordinates, while leaving the shape, its area and
+    // everything `weight` does untouched. 5691 / 11273 / 17288 were the
+    // free-rotation values. What this test guards is the *weight* default, so
+    // a change to the fill arithmetic still fails it; re-pin only for a reason
+    // of that size, and never because the number moved.
+    expect(render({ tileSet: 'triangles' }).length).toBe(5690);
+    expect(render({ tileSet: 'triangles', arcCount: 3 }).length).toBe(11270);
+    expect(render({ tileSet: 'triangles', arcCount: 6 }).length).toBe(17283);
   });
 
   /**
@@ -219,6 +226,73 @@ function arcSeams(svg: string, width: number): { worst: number; span: number } {
   for (const m of marks) span = Math.max(span, Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1]) / width);
   return { worst, span };
 }
+
+describe('truchet triangles and their neighbours', () => {
+  /**
+   * A ribbon should run on into the next cell rather than stop against the
+   * boundary.
+   *
+   * A triangle covers half its cell, so it shows ink to two of the four edges
+   * and blank paper to the other two. With a free rotation per cell that is a
+   * coin toss on every shared edge — measured, about half of them have ink on
+   * one side and nothing on the other, and at low densities, where each cell
+   * is read on its own, the tiling looks cut rather than woven. That is the
+   * reported fault.
+   *
+   * What the rotation can and cannot do is worth stating, because it bounds
+   * any future attempt. Let R be 1 when the filled half touches the right edge
+   * and D when it touches the bottom; the four rotations are exactly the four
+   * (R, D) pairs, and two cells meet along a shared edge precisely when those
+   * bits alternate across it. A fully joined tiling therefore needs R to
+   * alternate by column and D by row, which determines every cell from the
+   * first, leaves four layouts in total and makes the seed do nothing here.
+   * Joining everything and staying random are not both available, so the
+   * generator biases toward the joining rotation rather than forcing it.
+   *
+   * Measured on boundary samples: 78 / 43 / 49% one-sided at four, six and ten
+   * columns with a free rotation, against 14 / 25 / 25% with the bias. The
+   * bound sits between the two, and this asks about the *symptom* — ink
+   * stopping at a boundary — rather than about the mechanism that produces it,
+   * so a different way of joining would satisfy it too.
+   */
+  it('mostly puts ink on both sides of a shared edge, or neither', () => {
+    for (const density of [4, 6, 10]) {
+      const svg = render({ tileSet: 'triangles', density, arcCount: 1 });
+      const { pixels, width } = rasterize(svg, 300);
+      const [pr, pg, pb] = [1, 3, 5].map((i) => parseInt(palette.background.slice(i, i + 2), 16)) as [
+        number,
+        number,
+        number,
+      ];
+      const paper = (0.2126 * pr + 0.7152 * pg + 0.0722 * pb) / 255;
+      const inked = (x: number, y: number): boolean => {
+        const i = (y * width + x) * 4;
+        const lum =
+          (0.2126 * (pixels[i] as number) + 0.7152 * (pixels[i + 1] as number) + 0.0722 * (pixels[i + 2] as number)) /
+          255;
+        return Math.abs(lum - paper) > 0.05;
+      };
+
+      // Interior column boundaries only: rows carry an origin offset, columns
+      // start at zero, so a vertical seam is where the grid provably is.
+      const cell = width / density;
+      let one = 0;
+      let total = 0;
+      for (let c = 1; c < density; c++) {
+        const x = Math.round(c * cell);
+        for (let y = 4; y < width - 4; y++) {
+          total += 1;
+          if (inked(x - 4, y) !== inked(x + 4, y)) one += 1;
+        }
+      }
+      const pct = (one / total) * 100;
+      expect(
+        pct,
+        `${pct.toFixed(1)}% of samples along the column seams at ${density} columns had ink on one side only`,
+      ).toBeLessThan(35);
+    }
+  });
+});
 
 describe('truchet triangles keep their paper', () => {
   /**
