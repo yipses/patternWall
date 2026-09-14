@@ -105,34 +105,44 @@ const TRIANGLE_FILL_OPACITY = '0.9';
 const TRIANGLE_FULL_WEIGHT = 0.16;
 
 /**
- * The weight at which a *stroked* mark fills the whole pitch between itself
- * and its neighbour, so that the family closes into solid mass.
+ * How much of its own pitch a stroked mark may fill.
  *
- * `weight` reads as a fraction of the cell, and the fan and the chord family
- * used to take it that way and then clamp it to the gap, so that raising the
- * division count could not merge the rings. Both halves are right and together
- * they made most of the slider inert: above the gap it asked for a stroke it
- * could not have and got the gap. Measured on the arcs at eight columns, the
- * share of the slider's travel that changed the rendered stroke at all was
- * 100% at one division, 29% at three and 6% at twelve — and the 0.16 default
- * was already inside the dead zone from three divisions up.
+ * Three versions of this have shipped and the middle one was wrong in a way
+ * worth recording, because it was wrong in the opposite direction from the
+ * first.
  *
- * So the pitch is the unit, not the ceiling. That is what `weight` has always
- * meant on the triangles, which is why they never had this fault, and it makes
- * one control mean one thing across all three sets: how much of its own share
- * each mark fills. A given weight now produces the same *look* at every
- * division count instead of the same absolute width until it hits a wall.
+ * It began as `min(weight * s, pitch * 0.68)`: a width read off the cell, then
+ * limited so raising the division count could not close the rings into a
+ * block. Both halves are right and together they killed the slider — above the
+ * gap it asked for a stroke it could not have and got the gap, so at eight
+ * columns the travel that changed anything ran 100% at one division, 29% at
+ * three and 6% at twelve.
  *
- * 0.414 is not arbitrary. At one division there is no neighbour and therefore
- * no pitch, so the mark keeps its cell-relative width and the default render
- * is byte-identical to what it was. This is the weight at which a mark exactly
- * fills its pitch, chosen so that the arcs are *continuous* across that seam:
- * the fan's two-ring pitch is its whole outward span, 2 * 0.2071s, and
- * 0.16 / 0.414 of that is 0.16s — the same stroke one division draws. The
- * slider then runs from a 5% hairline to 1.2 pitches, which overlaps and reads
- * as solid, at every count.
+ * The fix for that made the pitch the *unit* rather than the ceiling,
+ * `weight / 0.414` of the gap, which does keep the whole slider live. It also
+ * thinned every divided render that already existed, because the default then
+ * filled 0.386 of the pitch where the old ceiling allowed 0.68. Measured on the
+ * arcs at three columns and four divisions: 13.46px before, 7.65px after, and
+ * 5.73 against 1.91 at a low weight. It was reported as the arcs no longer
+ * being "smooth as before", which is what losing 43% of the stroke looks like.
+ *
+ * So keep the original shape — cell-relative, limited by the room between
+ * marks — and scale the *limit* instead of reinterpreting the control. At and
+ * below the default the limit is exactly the 0.68 it always was, so nothing
+ * that already renders changes at all; above the default it opens toward a
+ * whole pitch, which is where marks touch and read as solid, and that is the
+ * headroom the upper travel needs once the limit bites.
+ *
+ * The general form: when a control is dead because a *constant* ceiling
+ * truncates it, scale the ceiling. Reinterpreting the control moves every
+ * value the control already had, which is a change to every saved render
+ * rather than to the dead range you meant to fix.
  */
-const FULL_PITCH_WEIGHT = 0.414;
+const WEIGHT_DEFAULT = 0.16;
+const PITCH_AT_DEFAULT = 0.68;
+
+/** The top of the weight slider, where a mark fills its pitch and marks touch. */
+const WEIGHT_MAX = 0.5;
 /** A band may grow to twice its pitch, which closes the gap either side of it. */
 const TRIANGLE_FILL_MAX = 2;
 
@@ -294,6 +304,17 @@ export const truchet: Generator = {
       // weight visible at small cell sizes; the upper one is only reachable by
       // a fan thinning rule further down asking for more room than it has.
       const sw = clamp(weight * s, s * 0.012, s * 0.62);
+
+      // Strictly additive: unchanged at and below the default, opening toward a
+      // whole pitch above it. See WEIGHT_DEFAULT.
+      const pitchShare =
+        weight <= WEIGHT_DEFAULT
+          ? PITCH_AT_DEFAULT
+          : clamp(
+              PITCH_AT_DEFAULT + ((weight - WEIGHT_DEFAULT) / (WEIGHT_MAX - WEIGHT_DEFAULT)) * (1 - PITCH_AT_DEFAULT),
+              PITCH_AT_DEFAULT,
+              1,
+            );
 
       const band = bandAt(x + size / 2, cy);
       const rot = rng.int(0, 3);
@@ -503,7 +524,9 @@ export const truchet: Generator = {
         // A fraction of the pitch rather than a width clamped to it — see
         // FULL_PITCH_WEIGHT. One ring has no neighbour and so no pitch, and
         // keeps the cell-relative width it always drew.
-        const fanSw = step > 0 ? clamp((weight / FULL_PITCH_WEIGHT) * step, s * 0.012, s * 0.62) : sw;
+        // Cell-relative, limited by the room between rings, with the limit
+        // itself scaling above the default so the top of the slider lives.
+        const fanSw = step > 0 ? Math.min(sw, step * pitchShare) : sw;
 
         // Each arc is coloured from the field at its own midpoint, not at the
         // tile's centre. Sampling once per tile and quantising the result gives
@@ -609,7 +632,7 @@ export const truchet: Generator = {
       // it. Thinning to `step` would still let a heavy stroke close the family
       // into a solid triangle.
       const perp = step * 0.70710678;
-      const lineSw = lines > 1 ? clamp((weight / FULL_PITCH_WEIGHT) * perp, s * 0.012, s * 0.62) : sw;
+      const lineSw = lines > 1 ? Math.min(sw, perp * pitchShare) : sw;
 
       // Each chord is cut into pieces that take their own colour, rather than
       // carrying one colour end to end.

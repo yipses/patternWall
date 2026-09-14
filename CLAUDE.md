@@ -28,6 +28,27 @@ repo a test was written that passed against the broken code; one was deleted
 for it. Note also that `npm run test:e2e` serves the *built* export, so
 reverting a source file without rebuilding proves nothing.
 
+**Watching it fail is necessary and it is not sufficient, and that gap has
+shipped a regression.** A test written as "the property my change produces"
+fails against the old code by construction — that only proves the test is
+sensitive to the change, never that the change is right. The triangles entry
+below is the worked example: "ink holds as the division count rises" was the
+change restated, it failed against the old code exactly as the rule asks, and
+it let through something that destroyed the pattern. So before writing the
+assertion, ask: **could I have written this from the design rule, before
+deciding on the fix?** If it only makes sense once you know the implementation,
+it is a description, not a guard. The assertion that would have caught it —
+dividing mass into ribbons removes ink — was available the whole time.
+
+**A change that is strictly additive needs no judgement call.** Where a fix can
+be written so that everything already rendering is byte-identical and only the
+broken range moves, write it that way and prove it with a hash over a matrix of
+configs. Truchet's weight ceiling was fixed twice: the first version
+reinterpreted the control and silently thinned every divided render that
+existed, the second scaled only the ceiling above the default and is identical
+across 192 configs below it. The second needs no opinion about whether the new
+look is better.
+
 ---
 
 ## Verifying a visual change
@@ -39,6 +60,23 @@ checked by rendering the new version and looking at it alone.
 **Render before and after, and compare them.** One image cannot tell you whether
 anything changed. The A/B takes seconds; `npm run samples <dir>` or a short
 script against `packages/core/dist` plus resvg will do it. Look at the PNGs.
+
+**Render the corner of the parameter space, not the middle.** Defaults are the
+one place a change is least likely to show. Every generator here has at least
+two controls that add detail and they multiply: truchet's density and divisions
+together turn a legible tiling into grey noise long before either is extreme on
+its own. A triangles change was measured and eyeballed at five to eight columns,
+looked plainly better, and was reported as "a lot worse" — the reporter was at
+fourteen columns, where it had filled in all the negative space. Render the
+grid: low and high density against low and high count, and on a light palette
+as well as a dark one, because a dark ground hides ink that a paper one shows.
+
+**And render what the person reporting it is looking at, not your defaults.**
+Two reports in a row here turned out to be a *stored* parameter rather than a
+fault in the code — a `weight` dragged near its minimum earlier in the session
+and then hidden behind the gear when the control was demoted. Reproducing the
+exact config settles in one render what reasoning about the geometry will not,
+and it is the difference between fixing the bug and inventing one.
 
 **Check the symptom described, not the mechanism you built.** A colour-blend
 control was added, verified to produce a smoother ramp, and shipped — while the
@@ -708,20 +746,25 @@ not to rescale `weight`; it was to notice that a gesture has to be independent
 of the other gestures, and to give the horizontal axis to `density`, which is
 uncoupled from both and is the control a person reaches for first anyway.
 
-The fix is the one the triangles already had: **the pitch is the unit, not the
-ceiling.** A stroke is `weight / FULL_PITCH_WEIGHT` of the gap it has, so a
-given weight produces the same *look* at every division count instead of the
-same absolute width until it hits a wall. All three sets now mean one thing by
-it — how much of its own share each mark fills — and the slider is live over
-100% of its travel at every count on arcs and diagonals.
+The first fix made the pitch the *unit* rather than the ceiling — a stroke
+became `weight / 0.414` of the gap it has, so a given weight produced the same
+*look* at every division count instead of the same absolute width until it hit
+a wall. The slider went live over 100% of its travel, one division stayed
+byte-identical, and it was wrong: the default then filled 0.386 of the pitch
+where the old ceiling allowed 0.68, so **every divided render that already
+existed got 43% thinner**. Measured on the arcs at three columns and four
+divisions, 13.46px before against 7.65px after, and 5.73 against 1.91 at a low
+weight. It was reported as the arcs no longer being "smooth as before".
 
-Two things made that cheap. At one division there is no neighbour and so no
-pitch, so the mark keeps its cell-relative width and the default render is
-byte-identical — checked by checksum on the rasterised PNG, not by eye. And
-the constant is chosen so the arcs are *continuous* across that seam rather
-than merely unbroken: the two-ring pitch is exactly the fan's whole outward
-span, so 0.414 makes one division and two draw the same stroke at the same
-weight.
+What ships now keeps the original shape — cell-relative, limited by the room
+between marks — and scales the *limit* instead. At and below the default the
+limit is exactly the 0.68 it always was, verified byte-identical across 192
+configs of tile set, density, count and weight; above the default it opens
+toward a whole pitch, which is the headroom the top of the travel needs. The
+reusable rule is in the gates section: when a control is dead because a
+constant ceiling truncates it, scale the ceiling. Reinterpreting the control
+moves every value that control already had, which is a change to every saved
+render rather than to the dead range you meant to fix.
 
 The triangles keep a dead top third and that is correct. At twice its pitch a
 band has closed the gap either side of it and the tile is solid — there is
