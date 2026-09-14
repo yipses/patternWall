@@ -291,3 +291,76 @@
   background: #fff;
   border-radius: 1px;
 }
+
+/* The picture, as a control.
+   Covers the frame so a pointer never lands on the furniture beneath it, and
+   claims the gesture outright: without `touch-action: none` the browser
+   decides a vertical drag is a page scroll before the first move event
+   arrives, and the value never moves. That claim is latched when the gesture
+   starts, which is why it cannot be made conditionally once a drag is under
+   way — and why the frame is capped in height below, so there is page left to
+   scroll from. */
+.surface {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: grab;
+}
+
+.surface:active {
+  cursor: grabbing;
+}
+
+/* What the gesture is doing, on the picture, while it is doing it. */
+.hud {
+  position: absolute;
+  z-index: 9;
+  left: 50%;
+  bottom: 6%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  max-width: 86%;
+  padding: 6px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: rgba(10, 10, 11, 0.84);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.hudLabel {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hudValue {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Room to scroll past a surface that has taken the gesture.
+   At 380px wide and 9:19.5 the frame is about 820px tall, which is more than a
+   phone viewport — so nobody has ever seen the whole preview at once anyway,
+   and with `touch-action: none` on it there would be no way to scroll past it
+   either. Sized from height instead, the same way the wide layout already
+   does it. `svh` rather than `vh` so a collapsing URL bar does not reflow the
+   frame mid-drag; the `vh` line before it is the fallback. */
+@media (max-width: 999px) {
+  .phoneGrab {
+    width: auto;
+    height: min(62vh, 460px);
+    height: min(62svh, 460px);
+  }
+}

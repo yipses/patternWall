@@ -345,3 +345,92 @@
   background: var(--accent);
   transition: width 160ms ease;
 }
+
+/* The three controls a pattern is driven by, promoted above the rest.
+   Named `promoted` and not `primary`: `.primary` is already the amber Button
+   variant a hundred lines up, and a CSS module maps one name to one class, so
+   the two rule sets would both land on it. Which is exactly what happened —
+   the whole group came out wearing the primary button's colours, with all
+   eight gesture tests green. Only looking at it caught that. */
+.promoted {
+  margin-bottom: 6px;
+}
+
+.gesture {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-input);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  vertical-align: 1px;
+}
+
+.advanced {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.advancedToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 6px 2px;
+  min-height: 32px;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.advancedToggle:hover {
+  color: var(--text);
+}
+
+.advancedCount {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.caret {
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 120ms ease;
+}
+
+/* `auto` is the state nobody has chosen yet, and the stylesheet answers it so
+   that no JavaScript has to read the viewport during render. Once the button
+   is pressed the data attribute is open or closed and these rules stop
+   mattering. */
+.advancedBody {
+  display: none;
+  padding-top: 10px;
+}
+
+.advanced[data-advanced='open'] .advancedBody {
+  display: block;
+}
+
+.advanced[data-advanced='open'] .caret {
+  transform: rotate(90deg);
+}
+
+@media (min-width: 1000px) {
+  .advanced[data-advanced='auto'] .advancedBody {
+    display: block;
+  }
+
+  .advanced[data-advanced='auto'] .caret {
+    transform: rotate(90deg);
+  }
+}

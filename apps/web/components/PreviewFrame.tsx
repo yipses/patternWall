@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { safeZonesFor, visibleRect, type Rect } from '@patternwall/core';
 import { PatternImage } from './PatternImage';
+import { formatValue } from '../lib/format';
+import type { ScrubHandlers, ScrubReadout } from '../lib/use-scrub';
 import type { RenderSpec } from '../lib/render';
 import styles from './PreviewFrame.module.css';
 
@@ -57,6 +59,8 @@ export function PreviewFrame({
   alt,
   caption,
   onRenderError,
+  channel,
+  gesture,
 }: {
   spec: RenderSpec;
   mode: PreviewMode;
@@ -64,6 +68,13 @@ export function PreviewFrame({
   alt: string;
   caption?: string;
   onRenderError?: (message: string) => void;
+  /** Names this preview's stream of renders, so a drag supersedes itself. */
+  channel?: string;
+  /**
+   * Makes the picture itself the control. Present only for a pattern that has
+   * chosen its three; absent, the preview is exactly what it always was.
+   */
+  gesture?: { handlers: ScrubHandlers; readout: ScrubReadout | null };
 }) {
   const { time, date } = useClock(mode === 'lock');
 
@@ -81,8 +92,14 @@ export function PreviewFrame({
 
   return (
     <div className={styles.wrap}>
-      <div className={styles.phone}>
-        <PatternImage spec={spec} alt={alt} className={styles.pattern} onRenderError={onRenderError} />
+      <div className={gesture ? `${styles.phone} ${styles.phoneGrab}` : styles.phone}>
+        <PatternImage
+          spec={spec}
+          alt={alt}
+          className={styles.pattern}
+          onRenderError={onRenderError}
+          {...(channel ? { channel } : {})}
+        />
 
         {/* The veil is a visual effect over the whole image rather than a claim
             about where anything sits, so it stays outside the screen box. */}
@@ -152,6 +169,21 @@ export function PreviewFrame({
           </div>
         ) : null}
         </div>
+
+        {/* Last child, above everything.
+            `.screen` carries z-index 2 and therefore opens a stacking context,
+            so the furniture inside it — `.lock` at 4, `.zones` at 7 — is
+            trapped below anything that outranks `.screen` out here. Sitting
+            above it all is also why none of those overlays needs
+            `pointer-events: none` for this to work: the surface covers the
+            frame, so it is what a pointer lands on whatever mode is showing. */}
+        {gesture ? <div className={styles.surface} {...gesture.handlers} /> : null}
+        {gesture?.readout ? (
+          <div className={styles.hud} aria-hidden="true">
+            <span className={styles.hudLabel}>{gesture.readout.spec.label}</span>
+            <span className={styles.hudValue}>{formatValue(gesture.readout.spec, gesture.readout.value)}</span>
+          </div>
+        ) : null}
       </div>
       {caption ? <p className={styles.caption}>{caption}</p> : null}
     </div>

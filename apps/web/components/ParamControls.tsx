@@ -1,21 +1,19 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { GRID_SIZE, type Generator, type ParamSpec, type ParamValue } from '@patternwall/core';
+import {
+  GRID_SIZE,
+  resolvePrimaries,
+  secondaryParams,
+  type Generator,
+  type ParamSpec,
+  type ParamValue,
+  type PrimaryRole,
+} from '@patternwall/core';
 import { loadImageFile } from '../lib/extract';
+import { formatValue } from '../lib/format';
 import { imageToGrid } from '../lib/to-grid';
 import { Switch, uiStyles as ui } from './ui';
-
-function formatValue(spec: ParamSpec, value: ParamValue): string {
-  if (spec.type === 'number') {
-    const n = typeof value === 'number' ? value : spec.default;
-    return spec.step >= 1 ? String(Math.round(n)) : n.toFixed(spec.step >= 0.1 ? 1 : 2);
-  }
-  if (spec.type === 'boolean') return value === true ? 'on' : 'off';
-  if (spec.type === 'image') return typeof value === 'string' && value.length > 0 ? 'yours' : 'none';
-  const opt = spec.options.find((o) => o.value === value);
-  return opt ? opt.label : String(value);
-}
 
 /**
  * The picture control.
@@ -118,10 +116,27 @@ function ImageField({
   );
 }
 
+/**
+ * What each gesture is called, next to the control it drives.
+ *
+ * These labels are the whole of the discoverability. There is no tutorial
+ * overlay and no first-run hint: the three controls sit at the top of the
+ * panel with their gesture written beside them, so reading the panel once
+ * teaches the picture. Hidden from assistive technology because the gesture
+ * is a shortcut to a control that is right there — announcing "swipe left or
+ * right" to somebody driving a slider with arrow keys is noise.
+ */
+const GESTURE_LABEL: Record<PrimaryRole, string> = {
+  tap: 'Tap',
+  x: 'Swipe \u2194',
+  y: 'Swipe \u2195',
+};
+
 function Control({
   spec,
   value,
   detail,
+  gesture,
   onChange,
   onCommit,
 }: {
@@ -135,6 +150,8 @@ function Control({
    * related.
    */
   detail: number;
+  /** The gesture that also drives this control, when one does. */
+  gesture?: PrimaryRole;
   onChange: (v: ParamValue) => void;
   onCommit: () => void;
 }) {
@@ -145,6 +162,11 @@ function Control({
     <div className={ui.field}>
       <div className={ui.labelRow}>
         <label className={ui.label} htmlFor={id}>
+          {gesture ? (
+            <span className={ui.gesture} aria-hidden="true">
+              {GESTURE_LABEL[gesture]}
+            </span>
+          ) : null}
           {spec.label}
         </label>
         <span className={ui.value}>{formatValue(spec, value)}</span>
@@ -236,19 +258,80 @@ export function ParamControls({
   // type.
   const declared = params.detail ?? generator.params.find((p) => p.key === 'detail')?.default;
   const detail = Number(declared);
+  const size = Number.isFinite(detail) && detail > 0 ? detail : GRID_SIZE;
+
+  const bindings = resolvePrimaries(generator);
+  const rest = secondaryParams(generator);
+  const advancedId = useId();
+
+  /**
+   * Which controls are showing, and who decided.
+   *
+   * `auto` means nobody has said yet, and CSS answers it: shown on a wide
+   * window, hidden on a narrow one. That indirection is the point. The default
+   * has to differ by viewport, and reading the viewport during render is a
+   * hydration mismatch — this app has an unresolved React #418 on record and a
+   * scar in `next.config.mjs` from the last one. Server and client therefore
+   * render the identical `data-advanced="auto"`, and only the stylesheet knows
+   * how wide the window is. Once somebody presses the button, React takes over
+   * and CSS stops having an opinion.
+   *
+   * `wide` exists only so `aria-expanded` can tell the truth. It is set in an
+   * effect, after hydration, which is the same post-mount upgrade `useClock`
+   * does in `PreviewFrame`.
+   */
+  const [choice, setChoice] = useState<'auto' | 'open' | 'closed'>('auto');
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1000px)');
+    const sync = (): void => setWide(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+  const open = choice === 'auto' ? wide : choice === 'open';
+
+  const control = (spec: ParamSpec, gesture?: PrimaryRole) => (
+    <Control
+      key={spec.key}
+      spec={spec}
+      value={params[spec.key] ?? spec.default}
+      detail={size}
+      {...(gesture ? { gesture } : {})}
+      onChange={(v) => onChange(spec.key, v)}
+      onCommit={onCommit}
+    />
+  );
+
+  // A pattern that has not chosen its three is left exactly as it was: one
+  // flat list, no disclosure, nothing hidden.
+  if (bindings.length === 0) return <div>{generator.params.map((spec) => control(spec))}</div>;
 
   return (
     <div>
-      {generator.params.map((spec) => (
-        <Control
-          key={spec.key}
-          spec={spec}
-          value={params[spec.key] ?? spec.default}
-          detail={Number.isFinite(detail) && detail > 0 ? detail : GRID_SIZE}
-          onChange={(v) => onChange(spec.key, v)}
-          onCommit={onCommit}
-        />
-      ))}
+      <div className={ui.promoted}>
+        {bindings.map((b) => (b.spec ? control(b.spec, b.role) : null))}
+      </div>
+
+      <div className={ui.advanced} data-advanced={choice}>
+        <button
+          type="button"
+          className={ui.advancedToggle}
+          aria-expanded={open}
+          aria-controls={advancedId}
+          onClick={() => setChoice(open ? 'closed' : 'open')}
+        >
+          <span className={ui.caret} aria-hidden="true" />
+          Advanced
+          <span className={ui.advancedCount}>{rest.length}</span>
+        </button>
+        {/* Always rendered, shown or hidden by CSS. `aria-controls` can point
+            at it honestly because the id always resolves — which is the thing
+            the note on TabList says to avoid doing when it would not. */}
+        <div className={ui.advancedBody} id={advancedId}>
+          {rest.map((spec) => control(spec))}
+        </div>
+      </div>
     </div>
   );
 }

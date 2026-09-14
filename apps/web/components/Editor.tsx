@@ -4,12 +4,14 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DEFAULT_BLEED,
+  cycleValue,
   decodeConfig,
   defaultParams,
   encodeConfig,
   generators,
   getGenerator,
   initialConfig,
+  resolvePrimaries,
   type Palette,
   type ParamValue,
 } from '@patternwall/core';
@@ -20,6 +22,7 @@ import { PalettePanel } from './PalettePanel';
 import { ExportPanel } from './ExportPanel';
 import { Button, Notice, Switch, TabList, Tag, uiStyles as ui } from './ui';
 import { renderProse } from '../lib/prose';
+import { useScrub } from '../lib/use-scrub';
 import { collectionKey, loadCollected, saveCollected } from '../lib/storage';
 import type { RenderSpec } from '../lib/render';
 import styles from './Editor.module.css';
@@ -156,7 +159,66 @@ export function Editor({ generatorId }: { generatorId: string }) {
     [settle],
   );
 
-  const dirty = committed.params !== params || committed.palette !== palette || committed.seed !== seed;
+  /**
+   * Driving the three from the picture.
+   *
+   * Absent for a pattern that has not chosen its three, in which case the
+   * preview is inert and every control is where it always was.
+   */
+  const bindings = useMemo(() => resolvePrimaries(generator), [generator]);
+  const [scrubbing, setScrubbing] = useState(false);
+
+  /**
+   * A continuous gesture: the newest value, rendered now.
+   *
+   * Not `applyParams`, whose 110ms is a debounce that *restarts* on every
+   * call — a stream of them never commits until the finger stops, which is no
+   * live preview at all and the whole point of a scrub. Going through
+   * `commitNow` rather than writing `committed` directly keeps the merge that
+   * stops a pending seed being thrown away, which has two regression tests.
+   */
+  const scrubParams = useCallback(
+    (next: Record<string, ParamValue>) => {
+      latestParams.current = next;
+      setParams(next);
+      commitNow({ params: next });
+    },
+    [commitNow],
+  );
+
+  const { handlers: gestureHandlers, readout } = useScrub({
+    bindings,
+    read: (key) => {
+      const v = latestParams.current[key];
+      return typeof v === 'number' ? v : 0;
+    },
+    onScrub: (key, value) => scrubParams({ ...latestParams.current, [key]: value }),
+    onTap: () => {
+      const tap = bindings.find((b) => b.role === 'tap');
+      if (!tap) return;
+      if (tap.spec === null) {
+        // Bound to the seed rather than to a param: another one of these.
+        const next = randomSeed();
+        setSeed(next);
+        commitNow({ seed: next });
+        return;
+      }
+      const spec = tap.spec;
+      scrubParams({ ...latestParams.current, [spec.key]: cycleValue(spec, latestParams.current[spec.key] ?? spec.default) });
+    },
+    onStart: () => setScrubbing(true),
+    onEnd: () => setScrubbing(false),
+  });
+
+  /**
+   * `scrubbing` is in here for a reason that is easy to miss. `dirty` is an
+   * identity compare, and a gesture commits on every move — so the moment it
+   * does, `committed.params` *is* `params` and `dirty` goes false, which sends
+   * the preview back to full resolution for every frame of the drag. The
+   * editor would get slower during the one interaction built for speed, with
+   * nothing on screen to say why.
+   */
+  const dirty = scrubbing || committed.params !== params || committed.palette !== palette || committed.seed !== seed;
 
   const query = useMemo(
     () => encodeConfig({ generatorId: generator.id, seed: committed.seed, params: committed.params, palette: committed.palette }),
@@ -270,6 +332,8 @@ export function Editor({ generatorId }: { generatorId: string }) {
             alt={`${generator.name} rendered with the ${palette.name} palette, seed ${committed.seed}`}
             caption={`Previewing with 8% bleed, as exported. Seed ${committed.seed}.`}
             onRenderError={setRenderError}
+            channel="editor-preview"
+            {...(bindings.length > 0 ? { gesture: { handlers: gestureHandlers, readout } } : {})}
           />
 
           <div className={styles.underPreview}>
