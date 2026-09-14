@@ -65,6 +65,35 @@ export interface RenderContext {
   safeZones: SafeZones;
 }
 
+/**
+ * The three controls a pattern is driven by, when they have been chosen.
+ *
+ * A pattern declares thirteen parameters and a person wants three. These name
+ * the three that carry the picture, so the editor can promote them and bind
+ * them to the preview itself — tap to cycle, drag across to scrub, drag up and
+ * down to scrub — and put the rest behind a disclosure.
+ *
+ * Keys, never indices. The share encoding is positional and `params` is
+ * append-only for that reason; naming a param by key means this can be chosen,
+ * changed and reordered freely without any of that mattering. It is also why
+ * this is a field on the generator rather than a flag on each spec: which
+ * three controls carry a pattern is a fact about the pattern as a whole, in
+ * the same way that string art's picture needing to see its detail setting is
+ * a fact about string art rather than about `ParamSpec`.
+ *
+ * Optional, and absent means absent: a generator that has not had its three
+ * chosen renders every control in a flat list exactly as it always did. There
+ * is no guessing on a pattern's behalf.
+ */
+export interface Primaries {
+  /** Cycled by a tap. A param key, or `'seed'` to reroll. */
+  tap: string;
+  /** Scrubbed by a horizontal drag. Names a number param. */
+  x: string;
+  /** Scrubbed by a vertical drag. Names a number param. */
+  y: string;
+}
+
 export interface Generator {
   /** Slug, e.g. 'flow-dots'. Also the URL key and the registry key. */
   id: string;
@@ -77,6 +106,26 @@ export interface Generator {
   description: string;
   /** Pure: same inputs, same string, every time. */
   render(ctx: RenderContext): string;
+  /** The three controls this pattern is driven by, if they have been chosen. */
+  primary?: Primaries;
+}
+
+/**
+ * Decimal places implied by a slider step, e.g. 0.005 -> 3.
+ *
+ * This is the precision a control can actually produce, and therefore the
+ * precision a value is allowed to have. The share encoding has always trimmed
+ * to it; a scrubbed value has to be trimmed to it too, because floating-point
+ * arithmetic over a step lattice does not land on the lattice — 49 steps of
+ * 0.01 from 0.02 gives 0.49000000000000005, which a link would carry as 0.49
+ * while the render used the longer one. One copy, so the two cannot drift.
+ */
+export function decimalsOf(step: number): number {
+  if (!Number.isFinite(step) || step <= 0) return 3;
+  const s = String(step);
+  if (s.includes('e-')) return Math.min(8, Number(s.split('e-')[1] ?? 3));
+  const dot = s.indexOf('.');
+  return dot < 0 ? 0 : Math.min(8, s.length - dot - 1);
 }
 
 /** The declared defaults of a generator, as a plain params object. */

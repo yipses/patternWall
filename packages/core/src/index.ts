@@ -26,6 +26,18 @@ export {
 } from './palette.js';
 export { curatedPalettes, defaultPalette, getPalette, PALETTE_TAGS, type PaletteTag } from './palettes.js';
 export { createNoise2D, noise1D, type Noise2D } from './noise.js';
+export {
+  cycleValue,
+  quantise,
+  resolvePrimaries,
+  scrubTo,
+  secondaryParams,
+  stepCount,
+  type NumberSpec,
+  type PrimaryBinding,
+  type PrimaryRole,
+  type SelectSpec,
+} from './controls.js';
 export { packGrid, unpackGrid, isPackedGrid, gridSizeOf, gridChars, GRID_SIZE, GRID_SIZES, GRID_LEVELS } from './imagegrid.js';
 export {
   clamp,
@@ -53,6 +65,7 @@ export {
 } from './svg.js';
 export {
   coerceParams,
+  decimalsOf,
   defaultParams,
   pBool,
   pNum,
@@ -61,6 +74,7 @@ export {
   type Generator,
   type ParamSpec,
   type ParamValue,
+  type Primaries,
   type RenderContext,
   type Tag,
 } from './types.js';

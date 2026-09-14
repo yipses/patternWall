@@ -72,6 +72,19 @@ export const truchet: Generator = {
     { key: 'colorBlend', label: 'Colour blend', type: 'number', min: 0, max: 1, step: 0.02, default: 1, description: 'How finely the palette is resolved between its accents. At zero only the accents themselves are used, so regions of colour meet at hard edges. Raise it and the steps between them are filled in, so one region eases into the next.' },
   ],
 
+  /**
+   * Tile set, stroke weight, divisions.
+   *
+   * These are the three that change what you are looking at. Tile set is the
+   * only one of truchet's seven that is a choice rather than a quantity, so it
+   * takes the tap; weight and divisions are the two quantities whose whole
+   * range is worth travelling, where density mostly trades one good picture
+   * for another good picture and the colour controls are a second-pass
+   * refinement. Arc spread only does anything on one of the three tile sets,
+   * which rules it out of a control that has to mean something in every mode.
+   */
+  primary: { tap: 'tileSet', x: 'weight', y: 'arcCount' },
+
   render(ctx: RenderContext): string {
     const { width: w, height: h, palette, params, rng } = ctx;
     const noise = createNoise2D(rng);

@@ -10,7 +10,7 @@
 
 import { curatedPalettes, defaultPalette, getPalette } from './palettes.js';
 import { getGenerator, generators } from './generators/index.js';
-import { coerceParams, defaultParams, type ParamValue } from './types.js';
+import { coerceParams, decimalsOf, defaultParams, type ParamValue } from './types.js';
 import type { Palette } from './palette.js';
 
 export interface PatternConfig {
@@ -78,15 +78,6 @@ export function unpackPalette(token: string): Palette | null {
     mode,
     tags: ['custom'],
   };
-}
-
-/** Decimal places implied by a slider step, e.g. 0.005 -> 3. */
-function decimalsOf(step: number): number {
-  if (!Number.isFinite(step) || step <= 0) return 3;
-  const s = String(step);
-  if (s.includes('e-')) return Math.min(8, Number(s.split('e-')[1] ?? 3));
-  const dot = s.indexOf('.');
-  return dot < 0 ? 0 : Math.min(8, s.length - dot - 1);
 }
 
 function packParams(generatorId: string, params: Record<string, ParamValue>): string {
