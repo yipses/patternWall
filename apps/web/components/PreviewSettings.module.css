@@ -62,10 +62,30 @@
   padding-bottom: 52px;
 }
 
+/* A control behind the gear holding a non-default value has nothing on screen
+   to explain it, so the gear says so. Small and on the accent, because it is a
+   note rather than a warning — the value may well be deliberate. */
+.mark {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(10, 10, 11, 0.9);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action {
+  flex: 1;
+}
+
 .rows > :last-child {
   margin-bottom: 4px;
 }
 
-.seed {
-  width: 100%;
-}

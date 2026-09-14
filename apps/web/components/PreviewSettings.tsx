@@ -43,14 +43,41 @@ export function PreviewSettings({
 }) {
   const rest = secondaryParams(generator);
 
+  // Which of the hidden controls are not where they started.
+  //
+  // A control behind the gear can hold a value nothing on screen explains, and
+  // that is not hypothetical: `weight` was a swipe gesture, got dragged near
+  // its minimum, and was then demoted to this sheet still holding 0.04. The
+  // render came out as hairlines and was reported as a bug in the pattern
+  // twice, because the only thing that could have explained it was two taps
+  // away and gave no sign of itself. Promoting or demoting a control does not
+  // reset it, so the sheet has to say when it is carrying something.
+  const changed = rest.filter((spec) => (params[spec.key] ?? spec.default) !== spec.default);
+
+  const resetHidden = (): void => {
+    // Sequential, because `applyParams` writes its ref synchronously before
+    // setState — the same reason the gesture handlers can read back what they
+    // just wrote. Reading `params` here instead would settle every key against
+    // the render before this one.
+    for (const spec of changed) onChange(spec.key, spec.default);
+    onCommit();
+  };
+
   return (
     <>
       <button
         type="button"
         className={styles.gear}
         aria-expanded={open}
-        aria-label={open ? 'Hide the other controls' : 'Show the other controls'}
+        aria-label={
+          open
+            ? 'Hide the other controls'
+            : changed.length > 0
+              ? `Show the other controls, ${changed.length} changed`
+              : 'Show the other controls'
+        }
         data-testid="preview-settings"
+        data-changed={changed.length > 0 ? 'true' : 'false'}
         onClick={onToggle}
       >
         {/* One path, one opacity, and proportions rather than coordinates
@@ -66,6 +93,7 @@ export function PreviewSettings({
         <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" focusable="false">
           <path fill="currentColor" fillRule="evenodd" d="M19.41 9.57L22.77 9.77L22.77 14.23L19.41 14.43A7.8 7.8 0 0 1 18.96 15.52L21.19 18.04L18.04 21.19L15.52 18.96A7.8 7.8 0 0 1 14.43 19.41L14.23 22.77L9.77 22.77L9.57 19.41A7.8 7.8 0 0 1 8.48 18.96L5.96 21.19L2.81 18.04L5.04 15.52A7.8 7.8 0 0 1 4.59 14.43L1.23 14.23L1.23 9.77L4.59 9.57A7.8 7.8 0 0 1 5.04 8.48L2.81 5.96L5.96 2.81L8.48 5.04A7.8 7.8 0 0 1 9.57 4.59L9.77 1.23L14.23 1.23L14.43 4.59A7.8 7.8 0 0 1 15.52 5.04L18.04 2.81L21.19 5.96L18.96 8.48A7.8 7.8 0 0 1 19.41 9.57ZM12 9.30a2.7 2.7 0 1 0 0 5.40a2.7 2.7 0 1 0 0 -5.40Z" />
         </svg>
+        {changed.length > 0 && !open ? <span className={styles.mark} aria-hidden="true" /> : null}
       </button>
 
       {open ? (
@@ -105,9 +133,21 @@ export function PreviewSettings({
               );
             })}
           </div>
-          <button type="button" className={`${ui.btn} ${ui.small} ${styles.seed}`} onClick={onNewSeed}>
-            New seed
-          </button>
+          <div className={styles.actions}>
+            <button type="button" className={`${ui.btn} ${ui.small} ${styles.action}`} onClick={onNewSeed}>
+              New seed
+            </button>
+            {changed.length > 0 ? (
+              <button
+                type="button"
+                className={`${ui.btn} ${ui.small} ${styles.action}`}
+                data-testid="preview-settings-reset"
+                onClick={resetHidden}
+              >
+                Reset these
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </>

@@ -28,26 +28,24 @@ repo a test was written that passed against the broken code; one was deleted
 for it. Note also that `npm run test:e2e` serves the *built* export, so
 reverting a source file without rebuilding proves nothing.
 
-**Watching it fail is necessary and it is not sufficient, and that gap has
-shipped a regression.** A test written as "the property my change produces"
-fails against the old code by construction — that only proves the test is
-sensitive to the change, never that the change is right. The triangles entry
-below is the worked example: "ink holds as the division count rises" was the
-change restated, it failed against the old code exactly as the rule asks, and
-it let through something that destroyed the pattern. So before writing the
-assertion, ask: **could I have written this from the design rule, before
-deciding on the fix?** If it only makes sense once you know the implementation,
-it is a description, not a guard. The assertion that would have caught it —
-dividing mass into ribbons removes ink — was available the whole time.
+**Watching it fail is necessary and not sufficient.** A test written as "the
+property my change produces" fails against the old code by construction: that
+proves it is sensitive to the change, not that the change is right. Before
+writing the assertion, ask whether you could have written it from the design
+rule *before* choosing the fix. If it only makes sense once you know the
+implementation, it is a description, not a guard. A triangles change shipped
+with "ink holds as the division count rises", which was the change restated; it
+failed against the old code exactly as this section asks, and it destroyed the
+pattern. The guard it needed — dividing mass into ribbons removes ink — was
+available before a line was written.
 
-**A change that is strictly additive needs no judgement call.** Where a fix can
-be written so that everything already rendering is byte-identical and only the
-broken range moves, write it that way and prove it with a hash over a matrix of
-configs. Truchet's weight ceiling was fixed twice: the first version
-reinterpreted the control and silently thinned every divided render that
-existed, the second scaled only the ceiling above the default and is identical
-across 192 configs below it. The second needs no opinion about whether the new
-look is better.
+**Prefer a fix that is strictly additive, and prove it with hashes.** Where a
+change can leave every existing render byte-identical and move only the broken
+range, write it that way and check it over a matrix of configs. Truchet's
+stroke ceiling was fixed twice: the first reinterpreted the control and thinned
+every divided render by 43%, the second scaled only the ceiling above the
+default and is identical across 192 configs below it. The second needed no
+opinion about which looked better.
 
 ---
 
@@ -61,22 +59,19 @@ checked by rendering the new version and looking at it alone.
 anything changed. The A/B takes seconds; `npm run samples <dir>` or a short
 script against `packages/core/dist` plus resvg will do it. Look at the PNGs.
 
-**Render the corner of the parameter space, not the middle.** Defaults are the
-one place a change is least likely to show. Every generator here has at least
-two controls that add detail and they multiply: truchet's density and divisions
-together turn a legible tiling into grey noise long before either is extreme on
-its own. A triangles change was measured and eyeballed at five to eight columns,
-looked plainly better, and was reported as "a lot worse" — the reporter was at
-fourteen columns, where it had filled in all the negative space. Render the
-grid: low and high density against low and high count, and on a light palette
-as well as a dark one, because a dark ground hides ink that a paper one shows.
+**Render the corner of the parameter space, not the middle.** Defaults are
+where a change is least likely to show. Controls that add detail multiply:
+truchet's density and divisions together turn a legible tiling into grey noise
+long before either is extreme alone. Render low and high density against low
+and high count, on a light palette as well as a dark one — a dark ground hides
+ink a paper one shows. A triangles change was measured and eyeballed at five to
+eight columns, looked plainly better, and was reported as "a lot worse" from
+fourteen.
 
-**And render what the person reporting it is looking at, not your defaults.**
-Two reports in a row here turned out to be a *stored* parameter rather than a
-fault in the code — a `weight` dragged near its minimum earlier in the session
-and then hidden behind the gear when the control was demoted. Reproducing the
-exact config settles in one render what reasoning about the geometry will not,
-and it is the difference between fixing the bug and inventing one.
+**Reproduce the reporter's exact config before diagnosing.** Two reports in a
+row here were a stored parameter, not a fault in the code — a `weight` dragged
+near its minimum and then hidden behind the gear. One render settles what
+reasoning about the geometry will not.
 
 **Check the symptom described, not the mechanism you built.** A colour-blend
 control was added, verified to produce a smoother ramp, and shipped — while the
@@ -655,54 +650,26 @@ injection fails to fail, check that you injected the thing you meant before
 concluding anything about the test.
 
 **Filling the empty half of a truchet triangle fixes the measurement and
-destroys the pattern.** This is the most instructive failure in this file
-because everything about the process was followed and the result still shipped
-broken, so the lesson is about *which* number and *which* picture.
+destroys the pattern.** A triangle fills half its cell and leaves the other half
+as paper; that blank half *is* the tile set. Two real faults sit under it — a
+lone triangle touches only two of its cell's four edges, so half the grid's
+boundaries have a ribbon stopping against nothing, and dividing a half cell inks
+less of the whole cell as the count rises — and drawing the opposite triangle
+fixes both arithmetically while ruining the picture. At fourteen columns the
+airy chevrons become uniform hatching with no negative space in them.
 
-A triangle fills half its cell and leaves the other half as paper. That blank
-half is the tile set — "mass instead of line" — and it is why the thing reads
-at a glance. Divisions was reported as looking weak on it, and a real fault was
-found underneath: a lone triangle touches only two of its cell's four edges, so
-half the grid's boundaries have a ribbon stopping dead against nothing, and
-dividing a half cell inks less of the whole cell as the count rises. Drawing
-the opposite triangle on the complementary parity fixes both. The ink held flat
-across the range, the undivided render stayed byte-identical, three tests were
-watched failing against the old code, and at five columns on a dark ground the
-A/B was plainly better.
+The rule that catches it: **dividing mass into ribbons must remove ink.**
+Undivided the tiling inks 0.300, divided 0.205 at three and 0.169 at the
+densest corner; the complement reads 0.311, 0.310, 0.308. A divided tile inking
+more than a solid one is wrong whatever it looks like. That is the regression
+test, and the joining fault is still open — a half-cell mark cannot reach four
+edges, so the next attempt has to start from what the tile set is for.
 
-It was much worse. At fourteen columns on paper the airy chevrons became
-uniform hatching with no negative space anywhere in it, and that is the only
-place anyone actually looks at this pattern.
-
-The defect states itself in one number once the question is right. Undivided,
-the tiling inks 0.300; divided it must ink **less**, because dividing mass into
-ribbons removes mass — measured 0.205 at three divisions and 0.169 at the
-densest corner. With the complement it reads 0.311, 0.310, 0.308. A divided
-tile inking more than a solid one cannot be right whatever it looks like, and
-that is now the regression test.
-
-Three things let it through, and they are the reusable part:
-
-**The assertion was the change restated.** "Ink holds as the count rises" is
-the property the fix was built to produce, so of course it passed. It guards
-nothing. The design rule — dividing takes ink away — is the assertion that
-would have caught it, and it was available before the change was written.
-
-**One density is not a range.** Every measurement and every render was at five
-to eight columns, where bold ribbons look fine either way. This file's contours
-note already says the fault shows at the extreme setting and nowhere else; the
-same applies to any control that adds detail, and truchet has two of them
-multiplying together. Render the corner of the parameter space, not the middle.
-
-**And a metric can lie twice in one session.** A first attempt at the guard
-counted pixels above an absolute brightness, which on a near-black palette
-counts anti-aliased edges as ink and reported 0.996 coverage — a number that
-looked like proof of a solid block and was an artefact of the threshold. A
-second attempt then read identical numbers for both versions, because the
-script imports `dist` and the rebuild had not been run: exactly the stale-`dist`
-trap recorded above, hit while investigating a different one. Use the metric
-the suite already trusts, rebuild before measuring, and when a number is
-surprising, suspect the instrument before the code.
+Two instrument failures on the way, both worth avoiding: an absolute-brightness
+pixel count scored 0.996 coverage on a near-black palette by counting
+anti-aliased edges, and a script reading a stale `dist` reported identical
+numbers for both versions. Use the metric the suite already trusts, rebuild
+before measuring, and suspect the instrument before the code.
 
 **Two fills at different opacities composite, and a hole in the upper one is a
 window onto the lower.** The preview's gear was an opaque ring for the hub
@@ -746,25 +713,19 @@ not to rescale `weight`; it was to notice that a gesture has to be independent
 of the other gestures, and to give the horizontal axis to `density`, which is
 uncoupled from both and is the control a person reaches for first anyway.
 
-The first fix made the pitch the *unit* rather than the ceiling — a stroke
-became `weight / 0.414` of the gap it has, so a given weight produced the same
-*look* at every division count instead of the same absolute width until it hit
-a wall. The slider went live over 100% of its travel, one division stayed
-byte-identical, and it was wrong: the default then filled 0.386 of the pitch
-where the old ceiling allowed 0.68, so **every divided render that already
-existed got 43% thinner**. Measured on the arcs at three columns and four
-divisions, 13.46px before against 7.65px after, and 5.73 against 1.91 at a low
-weight. It was reported as the arcs no longer being "smooth as before".
+The first fix made the pitch the *unit* rather than the ceiling — `weight /
+0.414` of the gap. The slider went live and every divided render that already
+existed got 43% thinner, because the default then filled 0.386 of the pitch
+where the old ceiling allowed 0.68: on the arcs at three columns and four
+divisions, 13.46px before against 7.65px after. It was reported as the arcs no
+longer being "smooth as before".
 
-What ships now keeps the original shape — cell-relative, limited by the room
-between marks — and scales the *limit* instead. At and below the default the
-limit is exactly the 0.68 it always was, verified byte-identical across 192
-configs of tile set, density, count and weight; above the default it opens
-toward a whole pitch, which is the headroom the top of the travel needs. The
-reusable rule is in the gates section: when a control is dead because a
-constant ceiling truncates it, scale the ceiling. Reinterpreting the control
-moves every value that control already had, which is a change to every saved
-render rather than to the dead range you meant to fix.
+What ships keeps the original shape — cell-relative, limited by the room
+between marks — and scales the *limit*. At and below the default it is exactly
+the 0.68 it always was, byte-identical across 192 configs; above the default it
+opens toward a whole pitch. **When a control is dead because a constant ceiling
+truncates it, scale the ceiling** — reinterpreting the control moves every value
+that control already had.
 
 The triangles keep a dead top third and that is correct. At twice its pitch a
 band has closed the gap either side of it and the tile is solid — there is
@@ -793,6 +754,15 @@ when density first went behind the disclosure; it happened again immediately in
 reverse, so the rule is worth stating plainly: a test that just needs a control
 should say so in a comment and name a promoted one, and moving a control means
 grepping every spec file for its label rather than the one you are working in.
+
+**Demoting a control does not reset it, and a hidden control explains
+nothing.** `weight` was a swipe gesture, got dragged near its minimum, and was
+then moved behind the gear still holding 0.04. The render came out as hairlines
+and was reported as a bug in the pattern twice — the only thing that could have
+explained it was two taps away and gave no sign of itself. The gear carries a
+mark when any control behind it is away from its default, and the sheet offers
+a reset scoped to those controls. Any time a control moves out of sight, ask
+what it is holding.
 
 **A comment can be the last surviving copy of a reverted design.** The arcs
 branch carried four layers of commentary from successive attempts, two of them
