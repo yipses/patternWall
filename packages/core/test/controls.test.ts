@@ -18,6 +18,7 @@ import {
   type Generator,
   type NumberSpec,
   type ParamSpec,
+  type ParamValue,
   type SelectSpec,
 } from '../src/index.js';
 import { TEST_PALETTES } from './helpers.js';
