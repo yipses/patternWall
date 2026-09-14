@@ -269,6 +269,27 @@ test.describe('gesture', () => {
       await expect(page.getByLabel('Grid density')).toHaveCount(0);
     });
 
+    test('a press outside the sheet dismisses it instead of cycling the pattern', async ({ page }) => {
+      await page.goto('/p/truchet');
+      await settled(page);
+
+      const gear = page.getByTestId('preview-settings');
+      await gear.click();
+      await expect(page.getByLabel('Grid density')).toBeVisible();
+
+      // The upper fifth of the preview: over the picture, clear of the sheet,
+      // and squarely on the gesture surface — which would have taken this as a
+      // tap and cycled the tile set under a menu asking about something else.
+      const box = await page.locator('[class*="phone"]').first().boundingBox();
+      if (!box) throw new Error('the preview frame has no box');
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.2);
+      await settled(page);
+
+      await expect(gear, 'the press outside the sheet did not close it').toHaveAttribute('aria-expanded', 'false');
+      await expect(page.getByLabel('Grid density')).toHaveCount(0);
+      await expect(page.getByLabel('Tile set'), 'dismissing the sheet also changed the pattern').toHaveValue('arcs');
+    });
+
     test('the preview leaves room to scroll past it', async ({ page }) => {
       await page.goto('/p/truchet');
       await settled(page);

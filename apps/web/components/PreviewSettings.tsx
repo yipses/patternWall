@@ -69,6 +69,25 @@ export function PreviewSettings({
       </button>
 
       {open ? (
+        /* The rest of the preview is the gesture surface, so with the sheet
+           open a press beside it cycled the tile set — which is the picture
+           changing under a menu that is asking about something else. This
+           takes the press instead and closes. It sits above the surface and
+           below the sheet, so the sheet's own controls are untouched, and it
+           closes on `pointerdown` rather than on click because the surface
+           opens its gesture on the same event and only one of them can. */
+        <div
+          className={styles.scrim}
+          data-testid="preview-settings-scrim"
+          aria-hidden="true"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            onToggle();
+          }}
+        />
+      ) : null}
+
+      {open ? (
         <div className={styles.sheet} role="group" aria-label={`${generator.name} settings`}>
           <div className={styles.rows}>
             {rest.map((declared) => {

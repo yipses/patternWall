@@ -32,6 +32,16 @@
   border-color: var(--accent-dim);
 }
 
+/* Between the gesture surface (8) and the sheet (10): a press anywhere on the
+   picture that is not the sheet or the gear closes the sheet, and the surface
+   below never sees it. Transparent on purpose — the preview is what the sheet
+   is changing, so dimming it would hide the thing being judged. */
+.scrim {
+  position: absolute;
+  z-index: 9;
+  inset: 0;
+}
+
 /* Sits over the lower part of the picture rather than beside it. The preview
    is the thing being changed, so covering the least of it that will hold four
    rows is the whole layout brief. */
