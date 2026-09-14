@@ -92,6 +92,55 @@ test.describe('gesture', () => {
     expect(await numberOf(page, 'Stroke weight'), 'a vertical drag moved the horizontal control too').toBe(weightBefore);
   });
 
+  test('edge to edge covers the whole range, on each axis', async ({ page }) => {
+    await page.goto('/p/truchet');
+    await settled(page);
+
+    const box = await page.locator('[class*="phone"]').first().boundingBox();
+    if (!box) throw new Error('the preview frame has no box');
+
+    // The promise the surface makes: the picture is the control, so one side
+    // of the picture to the other is everywhere the parameter goes. It is not
+    // approximately — the axis lock spends the first few pixels deciding which
+    // way the drag is going, and a range measured against the full width
+    // instead of the width that is left arrives about 5% short of the end,
+    // which reads as a control that will not quite reach.
+    const weight = page.getByLabel('Stroke weight');
+    await weight.fill(await weight.getAttribute('min') ?? '0');
+    await weight.blur();
+    await settled(page);
+    const min = Number(await weight.getAttribute('min'));
+    const max = Number(await weight.getAttribute('max'));
+    expect(await numberOf(page, 'Stroke weight'), 'setup: weight did not start at its minimum').toBe(min);
+
+    const midY = box.y + box.height / 2;
+    await page.mouse.move(box.x + 1, midY);
+    await page.mouse.down();
+    for (let i = 1; i <= 40; i++) await page.mouse.move(box.x + 1 + ((box.width - 2) * i) / 40, midY);
+    await page.mouse.up();
+    await settled(page);
+
+    expect(
+      await numberOf(page, 'Stroke weight'),
+      `a drag across the full ${Math.round(box.width)}px of the preview left weight short of its maximum`,
+    ).toBe(max);
+
+    // And the same down the other axis, which measures against the height.
+    const divisions = page.getByLabel('Divisions');
+    const dMax = Number(await divisions.getAttribute('max'));
+    const midX = box.x + box.width / 2;
+    await page.mouse.move(midX, box.y + box.height - 1);
+    await page.mouse.down();
+    for (let i = 1; i <= 40; i++) await page.mouse.move(midX, box.y + box.height - 1 - ((box.height - 2) * i) / 40);
+    await page.mouse.up();
+    await settled(page);
+
+    expect(
+      await numberOf(page, 'Divisions'),
+      `a drag up the full ${Math.round(box.height)}px of the preview left divisions short of its maximum`,
+    ).toBe(dMax);
+  });
+
   test('a smooth swipe moves a control that starts on its minimum', async ({ page }) => {
     await page.goto('/p/truchet');
     await settled(page);

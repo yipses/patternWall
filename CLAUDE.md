@@ -533,28 +533,56 @@ what else satisfies the proxy — here, being at the end and having gone past th
 end look identical in the value and are opposite in intent.
 
 **Pixels per step is the wrong invariant once a step stops being a small
-thing.** The gesture gives every parameter twelve pixels of travel per step,
-which is deliberate and right against surface-relative travel: it means a drag
-means the same on a phone and a desktop. It also put truchet's two axes on
-wildly different scales, because the number of steps is not a measure of how
-much a step does. Weight has 48 and one of them is invisible; divisions has 11
-and one of them redraws the pattern. Measured, a 150px drag moved weight 29% of
-its range and divisions 107% of its — so the vertical axis saturated inside a
-third of the preview's height and every swipe after the first did nothing.
-From the outside that is indistinguishable from a gesture that never
-registered, which is what it was reported as.
+thing — and the surface was the right one all along.** This entry is kept with
+its middle rewritten, because the fix it originally recorded was itself
+replaced two days later and the reasoning is only useful with both halves.
 
-The floor on total travel exists for exactly this and was set at 140px by eye,
-which is no floor at all for an 11-step control — 132 of those pixels were what
-the step rule already asked for. It is 300px now, about two thirds of the
-preview's height on a phone, so a coarse parameter spends its range over a
-thumb's length while a fine one still gets its twelve pixels a step. Ask what a
-person sees: not how many steps they crossed, but how much the picture moved
-under their thumb.
+The gesture began by giving every parameter twelve pixels of travel per step,
+clamped into a band. The argument for it was real: it makes a drag mean the
+same on a phone and a desktop, where measuring against the surface does not.
+What it could not do is produce a scale anybody could point at. The number of
+steps is an implementation detail of a parameter, not a measure of how much a
+step *does* — weight has 48 and one is invisible, divisions has 11 and one
+redraws the pattern — so the two axes came out 3.7x apart. Measured, a 150px
+drag moved weight 29% of its range and divisions 107% of its, which meant the
+vertical axis saturated inside a third of the preview's height and every swipe
+after the first did nothing. From outside that is indistinguishable from a
+gesture that never registered, and that is what it was reported as.
 
-Worth noting how the second bug hid the third and the third exposed the second.
-Raising the travel made every pointer move smaller, which turned the
-re-anchor fault from intermittent into total and failed a test that had been
+The first fix was to raise the floor on total travel from 140px to 300 — a
+better constant, still a constant, and still calibrated by hand against one
+generator. What replaced it is the rule that needs no calibration: **the
+picture is the control, so the picture is the scale.** Edge to edge covers the
+whole range, on each axis against its own dimension. Let go half way and you
+are half way along. That is a promise the surface states by existing, it holds
+on every parameter without anybody tuning it, and it is what was asked for in
+those words once the constants had been wrong twice.
+
+Two details it needs to be true rather than nearly true. The range is spread
+over the surface **less the pixels the axis lock spent deciding** — the value
+anchors where the axis is claimed, so that lead moves the finger without moving
+the value, and measuring against the full width lands a full-width drag about
+5% short of the end. Six percent on a phone, where the lead is a bigger share
+of a narrower surface. Near enough to read as a control that will not quite
+reach, which is the same complaint this whole sequence started with. And the
+surface is measured once, at pointerdown: reading layout per move is a forced
+reflow per pointer event, and a surface that resized mid-drag would move the
+value with the finger still.
+
+The cost is the one the original argument named, now accepted deliberately. A
+fine control on a narrow phone gets very little travel per step — weight's 48
+steps across a ~210px preview is about 4px each. That is fine for an aesthetic
+quantity nobody is trying to land on an exact step of, and it would not be fine
+for a control where the exact step mattered. If one ever exists here it should
+say so, rather than a constant pushing every parameter around to protect it.
+
+The general form, which is the part worth keeping: when a scale has to be
+calibrated per thing it scales, the calibration is the smell. Look for a
+quantity already on screen that can carry it.
+
+Worth noting how the middle fix hid another bug and then exposed it. Raising
+the travel floor made every pointer move smaller, which turned the re-anchor
+fault above from intermittent into total and failed a test that had been
 passing for the wrong reason since it was written. A calibration change is a
 good way to find out which of your tests were only ever passing by luck.
 

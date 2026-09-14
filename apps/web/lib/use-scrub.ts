@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { quantise, scrubTo, stepCount, type NumberSpec, type ParamSpec, type PrimaryBinding } from '@patternwall/core';
+import { quantise, scrubTo, type NumberSpec, type ParamSpec, type PrimaryBinding } from '@patternwall/core';
 
 /**
  * Driving a pattern's three controls from the picture itself.
@@ -18,38 +18,70 @@ import { quantise, scrubTo, stepCount, type NumberSpec, type ParamSpec, type Pri
  */
 
 /**
- * Travel per step, and the band a full sweep is held to.
+ * A full sweep is the surface itself: edge to edge covers the whole range.
  *
- * Twelve pixels per step, not "one sweep across the surface". Surface-relative
- * travel sounds natural and is wrong in both directions: on a phone the
- * preview is about 200px wide, so truchet's stroke weight — 49 steps — would
- * get four pixels a step and be untunable, while divisions at 12 steps would
- * get seventeen. Worse, the same drag would mean different things on a desktop
- * and a phone, which is precisely what this design is trying not to be.
+ * This replaced a fixed twelve pixels per *step*, clamped into a band, and the
+ * argument for that is worth keeping because it is not wrong — it made a drag
+ * mean the same thing on a phone and a desktop, where this deliberately does
+ * not. What it could not do is mean anything a person could point at. The
+ * travel came out of the step count, the step count is an implementation
+ * detail of the parameter, and the result was two axes on scales 3.7x apart
+ * with nothing on screen to explain why: weight took 520px to cross, divisions
+ * 140px, and the only fix available was to keep re-guessing the constants.
  *
- * But pixels per step is only the right invariant while a step is a small
- * thing. Weight has 48 of them and one is invisible; divisions has 11 and one
- * redraws the pattern. At twelve pixels each that put the whole of divisions
- * inside 140px — a third of the preview's height — so a swipe up pinned it at
- * twelve and the next swipe did nothing, because there was nothing left. That
- * is what "swipe up and down isn't great" was: not a gesture that failed to
- * register, a control that had already finished. Measured on the two axes
- * truchet is driven by, a 150px drag moved weight 29% of its range and
- * divisions 107% of its.
+ * The picture is the control, so the picture is the scale. Drag from one side
+ * to the other and you have been everywhere the parameter goes; let go half
+ * way and you are half way along it. That is a promise the surface itself
+ * states, and it holds on every parameter without being calibrated per
+ * parameter — which is the part the old rule could never manage.
  *
- * So the floor is a real swipe rather than a nominal one, and what it buys is
- * that a coarse parameter spends its range over about a thumb's length while a
- * fine one still gets its twelve pixels a step. The ceiling is unchanged and
- * still the other guard: with pointer capture a gesture continues past the
- * edge of the surface, so a 520px sweep on a 200px-wide preview is fine.
+ * Each axis measures against its own dimension. The preview is 9:19.5, so the
+ * vertical axis gets roughly twice the room, which is right: it is also the
+ * direction with space to swipe in.
  *
- * Both numbers are relative to the preview, which is `min(62svh, 460px)` tall
- * on a phone — 300 is two thirds of that, reachable in one movement without
- * being reachable by accident.
+ * The cost, stated rather than discovered later. A fine control on a narrow
+ * phone gets very little travel per step — truchet's stroke weight has 48 of
+ * them across a preview about 210px wide, so about 4px each. That is fine for
+ * what it is, an aesthetic quantity nobody is trying to land on a specific
+ * step of, and it would not be fine for a control where the exact step
+ * mattered. If one ever exists here, it wants a way to say so rather than a
+ * constant that pushes every parameter around to protect it.
  */
-const PX_PER_STEP = 12;
-const TRAVEL_MIN = 300;
-const TRAVEL_MAX = 520;
+
+/** The size of the surface a drag is happening on, measured when it starts. */
+interface Surface {
+  w: number;
+  h: number;
+}
+
+/**
+ * A degenerate box — a surface not laid out yet — would divide by zero and
+ * send the value to an end on the first move. Fall back to something a drag
+ * can happen in rather than to a NaN.
+ */
+const FALLBACK_TRAVEL = 300;
+
+/** Enough travel left to be a scrub rather than a switch. */
+const TRAVEL_FLOOR = 60;
+
+/**
+ * The distance a full range is spread over: the surface, less whatever the
+ * axis lock spent deciding which way this drag was going.
+ *
+ * Subtracting the lead is what makes "edge to edge is the whole range" true
+ * rather than approximately true. The value is anchored where the axis was
+ * claimed — it has to be, or it would jump by a threshold's worth the instant
+ * it locked — so the pixels before that point move the finger without moving
+ * the value. Measure the range against the full width anyway and a drag from
+ * one edge to the other arrives about 5% short of the end, which on a phone,
+ * where the lead is a larger share of a narrower surface, is closer to 6%.
+ * Near enough to look like the control simply will not reach.
+ */
+function travelFor(surface: Surface, axis: 'x' | 'y', lead: number): number {
+  const measured = axis === 'x' ? surface.w : surface.h;
+  const full = measured > 1 ? measured : FALLBACK_TRAVEL;
+  return Math.max(TRAVEL_FLOOR, full - Math.abs(lead));
+}
 
 /**
  * How far a pointer moves before it has chosen an axis, and how far before it
@@ -79,11 +111,6 @@ const AXIS_FORCE_PX = 26;
 /** A press held longer than this is not a tap, however still it was. */
 const TAP_MS = 500;
 
-/** A full sweep of this parameter, in CSS pixels. */
-export function travelFor(spec: NumberSpec): number {
-  return Math.min(TRAVEL_MAX, Math.max(TRAVEL_MIN, stepCount(spec) * PX_PER_STEP));
-}
-
 /** What the gesture is doing right now, for the readout on the preview. */
 export interface ScrubReadout {
   key: string;
@@ -93,6 +120,8 @@ export interface ScrubReadout {
 
 interface Drag {
   pointerId: number;
+  /** The surface's size when the gesture began, which is what travel is. */
+  surface: Surface;
   x0: number;
   y0: number;
   startedAt: number;
@@ -107,6 +136,8 @@ interface Drag {
   from: number;
   /** The coordinate the current run is measured from. Moves when a clamp bites. */
   anchor: number;
+  /** Pixels a full range is spread over, settled when the axis was claimed. */
+  travel: number;
   /** The last value handed out, so a move that changes nothing says nothing. */
   emitted: number;
 }
@@ -164,14 +195,20 @@ export function useScrub(options: {
       // kills the browser's native image drag on a desktop.
       e.currentTarget.setPointerCapture(e.pointerId);
       e.preventDefault();
+      // Measured once, here. Reading layout on every move would be a forced
+      // reflow per pointer event, and a surface that resized mid-drag would
+      // move the value without the finger moving.
+      const box = e.currentTarget.getBoundingClientRect();
       drag.current = {
         pointerId: e.pointerId,
+        surface: { w: box.width, h: box.height },
         x0: e.clientX,
         y0: e.clientY,
         startedAt: Date.now(),
         axis: null,
         started: false,
         moved: 0,
+        travel: FALLBACK_TRAVEL,
         spec: null,
         key: '',
         from: 0,
@@ -214,8 +251,11 @@ export function useScrub(options: {
         d.key = bound.key;
         d.from = quantise(bound.spec, read(bound.key));
         // Anchored where the axis was claimed, so the value does not jump by a
-        // threshold's worth the instant it locks.
+        // threshold's worth the instant it locks — and the range is then
+        // spread over the travel that is actually left, so that reaching the
+        // far edge reaches the end of the parameter.
         d.anchor = axis === 'x' ? e.clientX : e.clientY;
+        d.travel = travelFor(d.surface, axis, axis === 'x' ? dx0 : dy0);
         d.emitted = d.from;
         return;
       }
@@ -225,7 +265,7 @@ export function useScrub(options: {
       // Up increases. Screen coordinates grow downward and a fader does not.
       const dir = d.axis === 'x' ? 1 : -1;
       const coord = d.axis === 'x' ? e.clientX : e.clientY;
-      const travel = travelFor(spec);
+      const travel = d.travel;
       const span = spec.max - spec.min;
       const fraction = (dir * (coord - d.anchor)) / travel;
       const value = scrubTo(spec, d.from, fraction);
