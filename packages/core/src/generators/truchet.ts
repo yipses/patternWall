@@ -14,7 +14,7 @@ Three tile sets are offered here and they behave quite differently. **Quarter ar
 
 On the diagonal set the same control does something structurally different, and something the arcs cannot quite manage. The single corner-to-corner line becomes a family of parallel chords spaced one cell width over the count — the only spacing that tiles, because it puts every crossing at a multiple of itself along each edge, and puts them there in both rotations. Where a fan only meets its neighbour when the two cells agree on a corner, every chord here finds its partner across every edge whichever way the cell beyond it happens to be turned. Past three or four the cells stop reading as cells at all and the grid becomes a woven field of chevrons and nested diamonds, which is a different pattern from the maze of switchbacks a count of one gives you.
 
-The triangles divide too, and on that same lattice. Each rotation of the tile is a half cell with its right angle at one corner, so scaling it about that corner sweeps the hypotenuse across the cell and a slice at k/n lands exactly where the diagonal family crosses. Filling every other band turns the solid half-cell into ribbons, and because the band edges fall where a neighbour puts its own, the ribbons run on through the grid instead of stopping at it — which is why raising this makes the tile set agree with itself across edges more often than the solid version does, not less.
+The triangles divide too, and on that same lattice. Each rotation of the tile is a half cell with its right angle at one corner, so scaling it about that corner sweeps the hypotenuse across the cell and a slice at k/n lands exactly where the diagonal family crosses. Filling every other band turns the solid half-cell into ribbons, and because the band edges fall where a neighbour puts its own, the ribbons run on through the grid instead of stopping at it — which is why raising this makes the tile set agree with itself across edges more often than the solid version does, not less. Stroke weight has no stroke to widen here, so it sets how much of its own share of the tile each band fills: thin it and a divided tile becomes fine ribbons while an undivided one shrinks back toward its corner, and past the default the bands grow into the gaps between them and fuse into solid mass again.
 
 Grid **density** interacts with everything. Below about six columns the tiles are large enough that you read each one individually and the tile set matters enormously; above about twenty you stop seeing tiles at all and start seeing a woven texture, at which point stroke weight matters more than which set you chose.
 `.trim();
@@ -45,6 +45,32 @@ const MAX_SEGMENT = 0.06;
  */
 const TRIANGLE_FILL_OPACITY = '0.9';
 
+/**
+ * The stroke weight at which a triangle band fills its whole share of the tile.
+ *
+ * `weight` used to do nothing at all on this set — it is the one control that
+ * had no stroke to apply itself to, and it was written down as a known dead
+ * knob rather than fixed. That was survivable while it was one slider among
+ * seven; it stopped being survivable when the three primaries put `weight` on
+ * the horizontal drag, because a dead control is a dead *gesture*, and a third
+ * of the way a person drives this pattern did nothing on a third of its tile
+ * sets.
+ *
+ * What a band has instead of a stroke is a thickness, and this is the weight
+ * at which that thickness is the band's full pitch — which is to say, the
+ * appearance this tile set has always had. Below it the band fills less of its
+ * pitch; above it, more than its pitch, so the alternating bands grow into the
+ * gaps between them and fuse back into solid mass. That saturation is the same
+ * shape the arcs already have, where past about 0.4 they touch and read solid.
+ *
+ * Anchored on the default so that every render at or above it is the render it
+ * always was, byte for byte: at a fill of exactly 1 the arithmetic below
+ * reduces to the expression this tile emitted before there was a control.
+ */
+const TRIANGLE_FULL_WEIGHT = 0.16;
+/** A band may grow to twice its pitch, which closes the gap either side of it. */
+const TRIANGLE_FILL_MAX = 2;
+
 export const truchet: Generator = {
   id: 'truchet',
   name: 'Truchet',
@@ -65,7 +91,7 @@ export const truchet: Generator = {
       default: 'arcs',
       description: 'Arcs make continuous loops, diagonals make switchbacks, triangles make mass instead of line.',
     },
-    { key: 'weight', label: 'Stroke weight', type: 'number', min: 0.02, max: 0.5, step: 0.01, default: 0.16, description: 'Line width as a fraction of the cell. Above about 0.4 the arcs start to touch and read as solid.' },
+    { key: 'weight', label: 'Stroke weight', type: 'number', min: 0.02, max: 0.5, step: 0.01, default: 0.16, description: 'Line width as a fraction of the cell. Above about 0.4 the arcs start to touch and read as solid. Triangles have no stroke, so it sets how much of its own share of the tile each band fills instead: below the default a divided tile thins to ribbons and an undivided one shrinks back toward its corner, above it the bands grow into the gaps and fuse into solid mass.' },
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'How much of the colour comes from the drifting field rather than from height. At zero the palette runs top to bottom; at one it pools into regions that wander across the image.' },
     { key: 'arcCount', label: 'Divisions', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'How many parts each cell’s mark is divided into. Quarter arcs become concentric, added either side of the radius that joins the neighbouring cells, and how far they reach is Arc spread’s job rather than this one. A diagonal becomes a family of parallel chords across the cell. A triangle is sliced into bands parallel to its hypotenuse with every other one filled, so the solid mass becomes ribbons. All three divide on a spacing that puts each part’s edges where a cell of the same size puts its own, so raising this adds detail inside a mark that keeps its size, and any stroke thins to the gap it leaves.' },
     { key: 'arcSpacing', label: 'Arc spread', type: 'number', min: 0.15, max: 1, step: 0.05, default: 1, description: 'How much of the cell the rings reach across. The gap between them is worked out from that and the division count, so every arc you ask for fits, and the stroke thins if it has to rather than closing the rings into a solid block. Quarter arcs only: a family of diagonals has no say in how far it spreads, because the spacing that makes it meet its neighbours is the spacing that fills the cell.' },
@@ -215,6 +241,10 @@ export const truchet: Generator = {
         const legA = tri[1] as [number, number];
         const legB = tri[2] as [number, number];
         const bands = Math.max(1, arcCount);
+        // How much of its own pitch each band fills. One is the width this
+        // tile has always drawn; less pulls the band back toward the corner it
+        // is anchored on, more grows it across the gap into its neighbour.
+        const fill = clamp(weight / TRIANGLE_FULL_WEIGHT, 0.12, TRIANGLE_FILL_MAX);
 
         // t >= 1 returns the vertex itself rather than corner + (p - corner),
         // which is the same point in algebra and not always the same float. A
@@ -255,9 +285,17 @@ export const truchet: Generator = {
         // along the hypotenuse — the edge that gives the tile its direction —
         // at every count. One band is the whole triangle, so the tile set is
         // unchanged until the count is raised.
+        // Anchored at `t0`, the corner-side edge, and never at the hypotenuse.
+        // That edge is the one on the lattice a neighbour puts its own band
+        // edges on, so thinning a ribbon leaves the join that makes the
+        // ribbons run on through the grid rather than stopping at it. It is
+        // also what makes the undivided tile shrink as a triangle instead of
+        // becoming a band across the middle of one: scaling about the right
+        // angle keeps the two legs on the cell edges, where the neighbouring
+        // tiles meet them, and retreats only the hypotenuse.
         for (let k = bands - 1; k >= 0; k -= 2) {
           const t0 = k / bands;
-          const t1 = (k + 1) / bands;
+          const t1 = Math.min(1, (k + fill) / bands);
           emit(t0 === 0 ? [corner, at(legA, t1), at(legB, t1)] : [at(legA, t0), at(legA, t1), at(legB, t1), at(legB, t0)]);
         }
         return;

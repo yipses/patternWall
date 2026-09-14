@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { curatedPalettes, defaultParams, getGenerator, renderToSvg } from '../src/index.js';
+import { rasterize } from './helpers.js';
 
 const truchet = getGenerator('truchet')!;
 const palette = curatedPalettes[0]!;
@@ -15,6 +16,132 @@ function render(overrides: Record<string, number | string | boolean>, size = 400
     bleed: 0,
   });
 }
+
+/**
+ * Mean distance from the paper, over the whole canvas.
+ *
+ * Not `nonBackgroundFraction`, which counts pixels differing from the top-left
+ * one: on a tiling that covers the canvas the top-left pixel is usually ink
+ * rather than paper, so it reads 0.999 for a thin render and 0.975 for a heavy
+ * one — backwards, and both saturated. Measuring against the palette's own
+ * background instead answers the question actually being asked, which is how
+ * much of the paper is covered.
+ */
+function ink(overrides: Record<string, number | string | boolean>): number {
+  const { pixels } = rasterize(render(overrides), 300);
+  const [pr, pg, pb] = [1, 3, 5].map((i) => parseInt(palette.background.slice(i, i + 2), 16)) as [number, number, number];
+  const paper = (0.2126 * pr + 0.7152 * pg + 0.0722 * pb) / 255;
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i + 3 < pixels.length; i += 4) {
+    const lum =
+      (0.2126 * (pixels[i] as number) + 0.7152 * (pixels[i + 1] as number) + 0.0722 * (pixels[i + 2] as number)) / 255;
+    sum += Math.abs(lum - paper);
+    n += 1;
+  }
+  return n === 0 ? 0 : sum / n;
+}
+
+describe('truchet stroke weight', () => {
+  /**
+   * Every tile set answers to weight, and answers in the same direction.
+   *
+   * Triangles did not, for as long as this generator has existed. They are
+   * filled and weight sets a stroke width, so there was nothing for it to
+   * apply itself to — and rather than being noticed as a bug it was written
+   * down twice as a known dead knob, in this repo's own notes and in the
+   * parameter's description. It survived because a slider that does nothing on
+   * one of three settings is easy to look past.
+   *
+   * What ended that was binding the three controls to the picture: weight is
+   * truchet's horizontal drag now, so a dead control became a dead *gesture*,
+   * and a third of the way a person drives this pattern did nothing on a third
+   * of its tile sets. It was reported the same week.
+   *
+   * So the test is the general claim rather than the specific fix — heavier is
+   * more ink, on every set, at an undivided tile and a divided one both. That
+   * is the assertion a fourth tile set would have to pass too, which is the
+   * only reason this catches the next one instead of just this one.
+   *
+   * Measured, thin 0.05 against heavy 0.45: arcs 0.056 -> 0.481 undivided and
+   * 0.157 -> 0.415 at three divisions, diagonals 0.058 -> 0.447 and
+   * 0.154 -> 0.466, triangles 0.030 -> 0.300 and 0.051 -> 0.299. Watched
+   * failing against the code as it was, where the triangles read 0.300 thin
+   * and 0.300 heavy, and 0.205 either way when divided — the same number to
+   * three places, which is what a dead control looks like when you finally
+   * measure it.
+   */
+  it('lays more ink the heavier it is, on every tile set', () => {
+    for (const tileSet of ['arcs', 'diagonals', 'triangles']) {
+      for (const arcCount of [1, 3]) {
+        const thin = ink({ tileSet, arcCount, weight: 0.05 });
+        const heavy = ink({ tileSet, arcCount, weight: 0.45 });
+        expect(
+          heavy,
+          `${tileSet} at ${arcCount} division(s) laid ${heavy.toFixed(3)} ink heavy against ${thin.toFixed(3)} thin`,
+        ).toBeGreaterThan(thin * 1.25);
+      }
+    }
+  });
+
+  /**
+   * The default is the render it always was.
+   *
+   * Giving a dead control something to do is a change to every picture that
+   * used it, and the one place that must not move is where nobody asked it to.
+   * The fill is anchored on the default weight precisely so that this holds:
+   * at exactly the default the arithmetic reduces to the expression this tile
+   * emitted before the control existed, byte for byte, at every division count.
+   */
+  it('leaves the default weight emitting exactly what it always emitted', () => {
+    // Pinned rather than compared against a recomputation, so that a change to
+    // the fill arithmetic that happens to be self-consistent still fails here.
+    // Taken from the code before this control existed, not from the code
+    // after it: measured under `git stash`, which is the only way the claim
+    // means anything.
+    expect(render({ tileSet: 'triangles' }).length).toBe(5691);
+    expect(render({ tileSet: 'triangles', arcCount: 3 }).length).toBe(11273);
+    expect(render({ tileSet: 'triangles', arcCount: 6 }).length).toBe(17288);
+  });
+
+  /**
+   * An undivided triangle thinned is still a triangle.
+   *
+   * This is the half of the rule that total ink cannot see, and the reason the
+   * band is anchored at its corner-side edge rather than centred on itself. At
+   * full fill the two are the same expression, so every other test here passes
+   * either way; they only diverge once the band is thinned, and then a centred
+   * band becomes a four-sided strip across the middle of the tile while an
+   * anchored one scales about the right angle and stays the shape it was.
+   *
+   * Keeping the two legs on the cell edges is also what keeps the join: that is
+   * where the neighbouring tiles meet this one, and a strip floating in the
+   * middle of a cell meets nothing.
+   */
+  it('shrinks an undivided triangle as a triangle, not into a band across it', () => {
+    const svg = render({ tileSet: 'triangles', arcCount: 1, weight: 0.05 });
+    const polygons = svg.match(/<polygon points="([^"]+)"/g) ?? [];
+    expect(polygons.length, 'no triangles were drawn at all').toBeGreaterThan(20);
+    for (const p of polygons) {
+      const corners = (p.match(/,/g) ?? []).length;
+      expect(corners, `a thinned triangle came out with ${corners} corners: ${p}`).toBe(3);
+    }
+  });
+
+  /**
+   * Past the top the bands fuse, which is what gives the upper half of the
+   * slider something to say on a divided tile. A heavy divided triangle is the
+   * solid mass an undivided one is, not a slightly thicker ribbon.
+   */
+  it('grows a divided triangle back into solid mass', () => {
+    const heavyDivided = ink({ tileSet: 'triangles', arcCount: 3, weight: 0.45 });
+    const solid = ink({ tileSet: 'triangles', arcCount: 1, weight: 0.45 });
+    expect(
+      Math.abs(heavyDivided - solid),
+      `a divided triangle at full weight covers ${heavyDivided.toFixed(3)} against ${solid.toFixed(3)} for an undivided one`,
+    ).toBeLessThan(0.02);
+  });
+});
 
 describe('truchet quarter arcs', () => {
   /**

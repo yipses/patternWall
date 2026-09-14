@@ -454,6 +454,12 @@ Two things had to move with it, and both are the same lesson in different clothe
 
 Both of those were found by instrumenting rather than by reasoning. Three plausible diagnoses were tried and shipped nothing; dumping per-ring counts found it in one run.
 
+**A dead control is survivable until you bind it to a gesture.** `weight` did nothing at all on truchet's triangles for as long as the generator existed. They are filled and it sets a stroke width, so there was nothing for it to apply itself to — and rather than being treated as a bug it was written down twice as a known limitation, in this file and in the parameter's own description. That is what made it last: a slider that is inert on one of three settings is easy to look past, and documenting it felt like honesty rather than deferral.
+
+What ended it was promoting the three primaries. `weight` is truchet's horizontal drag now, so a dead control became a dead *gesture* — a third of the way a person drives the pattern doing nothing on a third of its tile sets — and it was reported within the week. The general form: promoting a control raises the cost of every compromise already in it, so the moment you decide which three carry a pattern, re-examine what those three actually do at every setting of the others. The file's own rule says a control that is inert in some mode is a smell; this is the one it was written about, left standing.
+
+The fix is worth recording too, because the obvious reading was wrong. "Make the mark thinner" for a filled triangle means the band fills less of its pitch — but only if it is anchored at its corner-side edge. Centre it on itself instead and an undivided tile stops being a triangle and becomes a strip across the middle of the cell, joined to none of its neighbours, and the two are the *same expression* at full fill so nothing but a test about corner counts can tell them apart.
+
 **A comment can be the last surviving copy of a reverted design.** The arcs
 branch carried four layers of commentary from successive attempts, two of them
 describing code that had been reverted and contradicting the layer below. Each
@@ -526,10 +532,21 @@ result. Each was arrived at by breaking it first.
   that continue through the grid: across interior cell edges the ink agrees
   with the neighbour more often than the solid tile manages (37% of samples
   disagree at three divisions, against 52% solid). Filling every band instead
-  just reassembles the triangle. `weight` is still inert on this set — it has
-  no stroke — which is the one remaining dead control in truchet.
+  just reassembles the triangle.
 
-Controls: density, tileSet, weight (no effect on triangles), colorSpread,
+- **`weight` sets how much of its pitch a triangle band fills**, since there is
+  no stroke here to widen. One is the width this set always drew, so the
+  default is byte-identical to what it was; below it the band pulls back toward
+  the corner-side edge it is anchored on, above it the band grows past its
+  pitch and the alternating ribbons fuse into solid mass. Anchored at that edge
+  and never centred on itself: at one division the anchored version scales
+  about the right angle and stays a triangle with its legs on the cell edges,
+  where the neighbours meet it, while a centred one becomes a four-sided strip
+  floating across the middle of the cell, joined to nothing. The two are the
+  same expression at full fill, which is why every test but the one about
+  corner counts passes either way.
+
+Controls: density, tileSet, weight, colorSpread,
 arcCount (labelled Divisions; governs all three tile sets), arcSpacing (spread;
 quarter arcs only), colorBlend. Removed as not worth their slots: `mixed`, row
 weight variation, `gap`, `subdivide`, `quietTop` and `openEnds`. The last four
