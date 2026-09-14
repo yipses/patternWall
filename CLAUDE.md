@@ -625,8 +625,56 @@ Neither path is wrong on its own. This is the subpath note above seen from the
 other side: there one element would not accumulate with itself, here two
 elements accumulated where the drawing assumed they would not. It is one path
 with `fill-rule="evenodd"` now, so the hub is the body's own hole and there is
-nothing behind it to show through. Rasterising an icon on its own at the size
-it ships at answers this in seconds; no test in this repo ever would.
+nothing behind it to show through.
+
+That fixed the compositing and not the reading, and it was reported a second
+time in the same words. The glyph's *proportions* were the other half: stubby
+teeth and a hub wide enough to dominate, so at the 19px it ships at the thing
+still came out a ring with bumps — a circle, which is what was said twice. The
+first check missed it because it compared the two icons at 152px, where both
+are legible and only the grey disc stands out. At 40px the old one is a dark
+ring and nothing else. **Rasterise at the size it ships at, not at a size that
+flatters it** — the A/B rule in this file with the part about the shipping
+version applied to an icon. The cog is generated from a tip radius, a root
+radius and a hub now rather than typed out as coordinates, which is also why
+it took two goes to get wrong.
+
+**A control whose range is eaten by another control cannot carry a gesture.**
+Truchet's `weight` is a fraction of the cell, and the fan thins its stroke to
+the gap between rings so that raising the division count cannot close them into
+a block. Both halves are right, and together they mean most of the weight
+slider asks for a stroke wider than the gap and gets the gap. Measured on the
+arcs at eight columns, the fraction of the slider's travel that changes the
+rendered stroke at all: 100% at one division, 69% at two, 29% at three, 17% at
+six, 6% at twelve — and the 0.16 default is already inside the dead zone from
+three divisions up. Diagonals are the same shape of thing, 48% at three and 17%
+at six.
+
+This is the dead-control smell again, but the new part is what promotion did to
+it. `weight` and `arcCount` were the two scrubbed axes, so the *vertical*
+gesture decided how much of the *horizontal* one did anything — two of the
+three primaries coupled, with no way to see it from the outside. The fix was
+not to rescale `weight`; it was to notice that a gesture has to be independent
+of the other gestures, and to give the horizontal axis to `density`, which is
+uncoupled from both and is the control a person reaches for first anyway.
+
+`weight` is still worth fixing and is now a slider behind the gear, where a
+dead upper range is a much smaller debt. The fix, when it comes, is to make it
+a fraction of the *pitch* each mark has rather than of the cell — which is
+already exactly what it means on the triangles, so it would make one control
+mean one thing across all three tile sets.
+
+**A test that names a control by its label breaks when the control moves, and
+the ones that break are never in the file you are editing.** Swapping truchet's
+horizontal gesture from `weight` to `density` moved each behind and out from
+behind the gear, and three tests in two other spec files — `editor.spec.ts`
+twice, `worker.spec.ts` once — reach for a slider by label purely to have
+*something* to move. They timed out waiting for an element that is no longer in
+the page. This file already recorded the same trap from the other direction
+when density first went behind the disclosure; it happened again immediately in
+reverse, so the rule is worth stating plainly: a test that just needs a control
+should say so in a comment and name a promoted one, and moving a control means
+grepping every spec file for its label rather than the one you are working in.
 
 **A comment can be the last surviving copy of a reverted design.** The arcs
 branch carried four layers of commentary from successive attempts, two of them

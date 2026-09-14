@@ -53,18 +53,18 @@ export function PreviewSettings({
         data-testid="preview-settings"
         onClick={onToggle}
       >
-        {/* One path, one opacity. It was two: a full-strength ring for the hub
-            over a 0.55 gear body, which composites into a bright ring with a
-            grey disc inside it — the "strange dot, almost as if there's two
-            icons" that was reported. The hub is the body's own hole now,
-            subtracted with `evenodd` so it shows the button behind it, and
-            nothing in here overlaps anything else. */}
+        {/* One path, one opacity, and proportions rather than coordinates
+            typed out by hand. It was two paths — an opaque hub ring under a
+            0.55 body — which composite into a bright annulus with a grey disc
+            in it. Making the hub the body\'s own hole with `evenodd` fixed the
+            compositing and not the reading: the teeth were stubby and the hub
+            was wide, so at 19px it still came out a ring with bumps, and it
+            was reported a second time as a circle. This cog is generated from
+            a tip radius, a root radius and a hub — square teeth, small hub —
+            and checked by rasterising it at the 19px it ships at rather than
+            at a size nobody sees it. */}
         <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" focusable="false">
-          <path
-            fill="currentColor"
-            fillRule="evenodd"
-            d="m19.4 13-.1-1 1.6-1.3-1.6-2.8-2 .7-1.6-1-.3-2.1H12l-.3 2-1.7 1-1.9-.7-1.6 2.8L8.1 12l-.1 1-1.7 1.3 1.6 2.8 2-.7 1.6 1 .3 2.1h3.4l.3-2 1.7-1 1.9.7 1.6-2.8L19.4 13ZM12 8.7a3.3 3.3 0 1 0 0 6.6 3.3 3.3 0 0 0 0-6.6Z"
-          />
+          <path fill="currentColor" fillRule="evenodd" d="M19.41 9.57L22.77 9.77L22.77 14.23L19.41 14.43A7.8 7.8 0 0 1 18.96 15.52L21.19 18.04L18.04 21.19L15.52 18.96A7.8 7.8 0 0 1 14.43 19.41L14.23 22.77L9.77 22.77L9.57 19.41A7.8 7.8 0 0 1 8.48 18.96L5.96 21.19L2.81 18.04L5.04 15.52A7.8 7.8 0 0 1 4.59 14.43L1.23 14.23L1.23 9.77L4.59 9.57A7.8 7.8 0 0 1 5.04 8.48L2.81 5.96L5.96 2.81L8.48 5.04A7.8 7.8 0 0 1 9.57 4.59L9.77 1.23L14.23 1.23L14.43 4.59A7.8 7.8 0 0 1 15.52 5.04L18.04 2.81L21.19 5.96L18.96 8.48A7.8 7.8 0 0 1 19.41 9.57ZM12 9.30a2.7 2.7 0 1 0 0 5.40a2.7 2.7 0 1 0 0 -5.40Z" />
         </svg>
       </button>
 
