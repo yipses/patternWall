@@ -15,7 +15,9 @@ The shading is wound as a star polygon inside each ring. Join every nail to the 
 
 Nothing here is a search. The earlier version of this pattern was one — a greedy solver picking two thousand chords across a circular loom to approximate a photograph's tone — and it could not make these pictures, because it had no idea what an edge was. It only ever knew how dark a point was, and every chord it drew ran the full width of the disc and deposited ink along all of it. The result was a soft average of a face. Edges come from where the nails are; the thread only shades. Splitting those two jobs is the whole difference.
 
-**Tones** is how many nested outlines are traced, and **Coverage** is how much of the picture the outermost one encloses — the exposure control, in effect, since it decides what counts as dark. **Simplify** blurs the field before tracing, which is what separates an outline from a coastline: too little and every speck of grain becomes its own ring. **Shading** is how much thread goes on. At zero it is line art. With no picture given, the subject is a field of the seed's own making, which posterises into nested islands rather than a portrait.
+There are two kinds of picture and they have to be read differently, which is the one thing here you have to tell it. In a photograph the dark parts are the shapes, so they are what gets outlined and shaded. In a *line drawing* the dark parts are the boundaries, and the thing to fill is what they enclose — read a drawing as a photograph and you get outlines with nothing inside them, because a stroke two pixels wide has no interior to wind. **Picture is** switches between the two, and it cannot be worked out from the pixels: a heavy drawing and a high-contrast photograph measure much the same.
+
+**Tones** is how many nested outlines are traced, and **Coverage** is how much of the picture counts as dark. **Simplify** blurs the field before tracing, which is what separates an outline from a coastline: too little and every speck of grain becomes its own ring, and in a drawing it is also what decides how wide a stroke reads — a thread may pass over a mark narrower than the nails are spaced, and may not span a gap wider than that. **Shading** is how much thread goes on. At zero it is line art. With no picture given, the subject is a field of the seed's own making, which posterises into nested islands rather than a portrait.
 `.trim();
 
 /**
@@ -97,8 +99,30 @@ const PASS_MAX = 22;
 const REACH_BASE = 0.35;
 const REACH_SPAN = 0.65;
 
-/** Interior points a chord is tested at before it is allowed to shade. */
-const INSIDE_SAMPLES = 7;
+/**
+ * How a chord is tested before it is allowed to shade.
+ *
+ * Not "does every sample stay inside", which is what this was, and not "do
+ * most of them", which was the first attempt at loosening it. Both ask about
+ * the total, and the total is the wrong question.
+ *
+ * A thread on a real board passes over whatever is in its way. What it cannot
+ * do is span a space that is not part of the board's figure — that is the
+ * chord bridging the opening of a crescent, or the hole of a ring, and it is
+ * the one thing that destroys a drawing. In a traced line drawing almost every
+ * long chord clips a drawn line on its way across, so a rule about the total
+ * left the big cells empty while the small ones filled, because a short chord
+ * has less to cross.
+ *
+ * The rule that separates them is the *longest unbroken excursion*: a thread
+ * may cross a gap narrower than the nails are spaced, and may not cross one
+ * wider. That needs no constant of its own — the nail spacing is already the
+ * finest thing this board resolves, so a gap it cannot fit a nail into is a
+ * mark, and a wider one is a space. Measured, a chord across a drawn line runs
+ * out for 4 cells against a spacing of 3, one across an eye slot for 14, and
+ * one bridging a crescent for 47.
+ */
+const SAMPLE_CELLS = 1.5;
 
 /** Thread width and nail radius, as fractions of the nail spacing. */
 const THREAD_OF_SPACING = 0.11;
@@ -340,6 +364,21 @@ function traceRings(field: Float32Array, F: number, iso: number): Ring[] {
   return rings;
 }
 
+/**
+ * True if a ring runs along the edge of the picture.
+ *
+ * The field's border is forced light, so the region that reaches the frame is
+ * bounded by a curve half a cell inside it and nothing else comes near.
+ */
+function touchesFrame(ring: Ring): boolean {
+  for (let i = 0; i < ring.x.length; i++) {
+    const x = ring.x[i] as number;
+    const y = ring.y[i] as number;
+    if (x < 1.001 || y < 1.001 || x > TRACE - 2.001 || y > TRACE - 2.001) return true;
+  }
+  return false;
+}
+
 /** Length once round a closed ring. */
 function perimeterOf(ring: Ring): number {
   let total = 0;
@@ -410,7 +449,7 @@ export const stringArt: Generator = {
   params: [
     { key: 'image', label: 'Picture', type: 'image', default: '', description: 'The photograph the board is built from, reduced to a grid of sixteen darkness levels — small enough that the whole picture travels in the share link. How fine that grid is comes from Picture detail. With none given, the subject is a field of the seed’s own making.' },
     { key: 'tones', label: 'Tones', type: 'number', min: 1, max: 5, step: 1, default: 3, description: 'How many nested outlines are traced. Each encloses half the area of the one before it, so one is a silhouette, three is a readable drawing, and five picks out the deepest shadows as shapes of their own.' },
-    { key: 'coverage', label: 'Coverage', type: 'number', min: 0.12, max: 0.7, step: 0.01, default: 0.34, description: 'How much of the picture the outermost outline encloses. This is the exposure control: it decides what counts as dark, and because it is read as a proportion rather than a brightness, a flat photograph and a contrasty one both give usable shapes.' },
+    { key: 'coverage', label: 'Coverage', type: 'number', min: 0.12, max: 0.7, step: 0.01, default: 0.34, description: 'How much of the picture counts as dark, and so how much the outermost outline encloses. Read as a proportion of the picture when it is a photograph, so a flat one and a contrasty one both give usable shapes; read as a level instead when it is a drawing, because a drawing’s tones are two spikes with nothing in between and a proportion cannot find the gap.' },
     { key: 'simplify', label: 'Simplify', type: 'number', min: 0, max: 1, step: 0.02, default: 0.5, description: 'Softens the picture before the outlines are traced. This is what separates an outline from a coastline — at zero, every speck of grain becomes a ring of its own; high, and only the broad shapes survive.' },
     { key: 'nailSpacing', label: 'Nail spacing', type: 'number', min: 0.012, max: 0.05, step: 0.001, default: 0.022, description: 'How far apart the nails are driven, as a fraction of the canvas width. It is a distance and not a count, so a big shape gets more nails than a small one rather than the same number spread thinner — which is how a real board is built.' },
     { key: 'shading', label: 'Shading', type: 'number', min: 0, max: 1, step: 0.02, default: 0.62, description: 'How much thread is wound inside the outlines. At zero it is line art. Raising it reaches further in from each outline, and the deeper tones reach further than the shallow ones, which is what makes the shadows read as shadows.' },
@@ -419,6 +458,7 @@ export const stringArt: Generator = {
     { key: 'offsetY', label: 'Offset down', type: 'number', min: -0.5, max: 0.5, step: 0.01, default: 0, description: 'Moves the board up or down from the middle, as a fraction of the canvas height. Pushing it below centre puts the picture clear of the clock.' },
     { key: 'thickness', label: 'Thread', type: 'number', min: 0.3, max: 2.5, step: 0.05, default: 1, description: 'How heavy the thread is drawn. It does not change where anything goes — only how much of the board each chord covers, so it is the fastest way to lift or flatten the contrast of a finished board.' },
     { key: 'nailsVisible', label: 'Show nails', type: 'boolean', default: true, description: 'Draws the nails. They are the drawing here rather than a frame around it, so turning them off leaves only the thread.' },
+    { key: 'reading', label: 'Picture is', type: 'select', options: [{ value: 'masses', label: 'Shapes \u2014 a photograph' }, { value: 'lines', label: 'Lines \u2014 a drawing' }], default: 'masses', description: 'What the dark parts of your picture mean. In a photograph they are the shapes themselves, so they are what gets outlined and shaded. In a line drawing they are the *boundaries*, and the thing to fill is what they enclose \u2014 so the reading is turned inside out, and the lines come through as the gaps between wound regions. A drawing read as a photograph comes out as outlines with nothing in them, because a stroke two pixels wide has no interior to wind.' },
     { key: 'detail', label: 'Picture detail', type: 'select', options: [{ value: '48', label: 'Coarse — short link' }, { value: '64', label: 'Low' }, { value: '96', label: 'High' }, { value: '128', label: 'Finest — long link' }], default: '128', description: 'How finely a picture is read when you choose one. The whole picture travels in the share link, so this is a trade rather than a free setting: coarse is about 1,500 characters of URL and finest is about 11,000. It applies to the next picture you pick — the one already loaded keeps whatever it was read at, since the original is not kept.' },
   ],
 
@@ -435,6 +475,7 @@ export const stringArt: Generator = {
     const offsetY = clamp(pNum(params, 'offsetY', 0), -0.5, 0.5);
     const thickness = clamp(pNum(params, 'thickness', 1), 0.3, 2.5);
     const nailsVisible = pBool(params, 'nailsVisible', true);
+    const lines = pStr(params, 'reading', 'masses') === 'lines';
 
     // The board: a square of side S, because the stored picture is square.
     const S = w * scale;
@@ -504,6 +545,25 @@ export const stringArt: Generator = {
       for (let k = 0; k < field.length; k++) field[k] = ((field[k] as number) - lo) / span;
     }
 
+    // A drawing read inside out.
+    //
+    // The construction shades what is dark, which is right for a photograph
+    // and exactly wrong for a line drawing: there the dark is the boundary,
+    // and a stroke two pixels wide traces into a ribbon with no interior, so
+    // every chord leaves it at once and gets dropped. The render comes out as
+    // outlines with nothing in them — which is the symptom, and no amount of
+    // shading fixes it, because the shading had nowhere to go.
+    //
+    // Inverting puts the enclosed areas above the threshold and the strokes
+    // below it, so the cells of the drawing become the masses and the drawn
+    // lines come through as the gaps between wound regions. Everything
+    // downstream is unchanged. Which of the two a picture is cannot be read
+    // off the pixels without guessing — a high-contrast photograph and a
+    // heavy drawing measure much the same — so it is a control.
+    if (lines) {
+      for (let k = 0; k < field.length; k++) field[k] = 1 - (field[k] as number);
+    }
+
     if (simplify > 0) {
       const r = simplify * MAX_BLUR;
       const tmp = new Float32Array(TRACE * TRACE);
@@ -529,13 +589,52 @@ export const stringArt: Generator = {
     // numbers become thresholds, where one bit is a different outline.
     const rings: { ring: Ring; iso: number; level: number; perim: number }[] = [];
     let fraction = coverage;
+    let distinct = 0;
+    let lastIso = -1;
     for (let level = 1; level <= tones; level++) {
-      const iso = isoAtFraction(field, fraction);
-      for (const ring of traceRings(field, TRACE, iso)) {
-        rings.push({ ring, iso, level, perim: perimeterOf(ring) });
-      }
+      // In masses mode the threshold is a quantile of area: outline the
+      // darkest `fraction` of the picture. In lines mode it cannot be, and
+      // this is the one place the two readings genuinely differ.
+      //
+      // A drawing's histogram is two spikes — the strokes and the paper — with
+      // nothing between them, so a quantile of area lands inside whichever
+      // spike holds that fraction rather than in the gap. Measured on a line
+      // drawing at the default coverage it put the threshold at 0.9979, a
+      // fifth of one percent below the top of the range, which is a threshold
+      // in name only: every blurred stroke then reads as an eight-cell-wide
+      // gap instead of a two-cell one, and the big cell of the drawing kept
+      // five of its four hundred and forty-eight chords because every chord
+      // across it was judged to have left. The symptom was a drawing with its
+      // small cells wound and its large ones empty.
+      //
+      // For two spikes the meaningful threshold is a level, not an area. The
+      // field is already stretched to its own range, so `fraction` measured
+      // down from the top of it lands between the spikes wherever they are.
+      const iso = lines ? 1 - fraction : isoAtFraction(field, fraction);
       fraction *= 0.5;
+      // Levels that land on the same threshold are one level, drawn once.
+      // A picture with only two tones in it — a line drawing especially,
+      // where nearly every cell reads the same — puts every quantile at the
+      // same place, and without this the same rings are traced and wound
+      // several times over while each of them is treated as a shallow tone.
+      // Counting the *distinct* ones is what lets the depth below be read
+      // off how many tones the picture actually had rather than how many
+      // were asked for.
+      if (iso <= lastIso + 1e-4 && distinct > 0) continue;
+      lastIso = iso;
+      distinct += 1;
+      for (const ring of traceRings(field, TRACE, iso)) {
+        // In lines mode the paper outside the drawing is not one of the
+        // drawing's cells, and it is the region that reaches the edge of the
+        // picture — after inversion it is the largest mass there is, and
+        // winding it fills the whole board and buries the subject. Masses
+        // mode keeps it, because there a subject that bleeds off the frame is
+        // still the subject.
+        if (lines && touchesFrame(ring)) continue;
+        rings.push({ ring, iso, level: distinct, perim: perimeterOf(ring) });
+      }
     }
+    const levelCount = Math.max(1, distinct);
 
     // Nail spacing, in trace cells. The canvas width cancels out of this
     // entirely, which is what makes a thumbnail and an export drive nails into
@@ -557,7 +656,7 @@ export const stringArt: Generator = {
       // outline. How many families are wound inside that reach is what
       // `shading` buys, and that is the density anyone can see.
       const limit = Math.floor((count - 1) / 2);
-      const tone = r.level / tones;
+      const tone = r.level / levelCount;
       const reach = Math.max(1, Math.min(limit, Math.round(((REACH_BASE + REACH_SPAN * tone) * count) / 2)));
       const passes = Math.min(reach - 1, Math.round(shading * PASS_MAX * (0.5 + 0.5 * tone)));
       if (passes < 1) {
@@ -571,13 +670,24 @@ export const stringArt: Generator = {
     // chord count the shading wants; if it is over, every shape loses the same
     // proportion of its passes, so what a tight budget costs is density rather
     // than whole shapes.
+    // The widest gap a thread may pass over.
+    //
+    // The nail spacing is the first term because it is the finest thing this
+    // board resolves: a gap it cannot fit a nail into is a mark rather than a
+    // space. The blur is the second, and it is not a fudge — `simplify`
+    // widens every gap in the field by its own radius on each side, so a
+    // stroke two cells wide reads as eight at a heavy setting. A gap the blur
+    // itself manufactured is not a gap in the drawing, and without this term
+    // the big cell of a traced drawing keeps 26 of its 450 chords.
+    const crossable = spacing + 2 * simplify * MAX_BLUR;
+
     let asked = 0;
     for (const s of shapes) asked += s.nails.x.length * s.passes;
     const afford = asked > CHORD_BUDGET ? CHORD_BUDGET / asked : 1;
 
     const outlines: string[] = [];
     const shades: string[] = [];
-    for (let i = 0; i < tones; i++) {
+    for (let i = 0; i < levelCount; i++) {
       outlines.push('');
       shades.push('');
     }
@@ -616,19 +726,23 @@ export const stringArt: Generator = {
           // bridge the concavity, and bridging is exactly the thing this
           // construction exists to avoid — the notch between a helmet's cheek
           // and its jaw is a shape, not a gap to be filled in.
-          let inside = true;
           const x0 = nx[k] as number;
           const y0 = ny[k] as number;
           const dx = (nx[b] as number) - x0;
           const dy = (ny[b] as number) - y0;
-          for (let t = 1; t < INSIDE_SAMPLES; t++) {
-            const f = t / INSIDE_SAMPLES;
+          const steps = Math.max(2, Math.round(Math.sqrt(dx * dx + dy * dy) / SAMPLE_CELLS));
+          let run = 0;
+          let worst = 0;
+          for (let t = 1; t < steps; t++) {
+            const f = t / steps;
             if (sample(field, TRACE, x0 + dx * f, y0 + dy * f) < s.iso) {
-              inside = false;
-              break;
+              run += 1;
+              if (run > worst) worst = run;
+            } else {
+              run = 0;
             }
           }
-          if (inside) shade += seg(k, b);
+          if (worst * SAMPLE_CELLS <= crossable) shade += seg(k, b);
         }
       }
       shades[s.level - 1] = (shades[s.level - 1] as string) + shade;
@@ -641,7 +755,7 @@ export const stringArt: Generator = {
     // and the white are doing on a real two-thread board.
     const inkLch = hexToOklch(palette.ink);
     const threadFor = (level: number): string => {
-      const t = tones > 1 ? (level - 1) / (tones - 1) : 1;
+      const t = levelCount > 1 ? (level - 1) / (levelCount - 1) : 1;
       return oklchToHex(mixOklch(hexToOklch(accentAt(palette, 1 - t * 0.8)), inkLch, 0.3 + 0.6 * t));
     };
 
@@ -650,7 +764,7 @@ export const stringArt: Generator = {
     const nailRadius = spacingCanvas * NAIL_OF_SPACING;
 
     let out = el('rect', { x: 0, y: 0, width: w, height: h, fill: palette.background });
-    for (let level = tones; level >= 1; level--) {
+    for (let level = levelCount; level >= 1; level--) {
       const shade = shades[level - 1] as string;
       if (shade === '') continue;
       out += el(
@@ -665,7 +779,7 @@ export const stringArt: Generator = {
         shade,
       );
     }
-    for (let level = tones; level >= 1; level--) {
+    for (let level = levelCount; level >= 1; level--) {
       const line = outlines[level - 1] as string;
       if (line === '') continue;
       out += el(

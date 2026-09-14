@@ -240,6 +240,78 @@ describe('string-art', () => {
   });
 
   /**
+   * A line drawing is read as lines, and its cells get thread.
+   *
+   * This is the fault that shipped in the first build of the construction and
+   * it was reported exactly as it looked: "it seems to do the outlines". A
+   * drawing's dark is its *boundaries*, so a stroke two cells wide traced into
+   * a ribbon with no interior, every chord left it at once, and the render
+   * came out as outlines with nothing in them. Raising `shading` did nothing,
+   * because the shading had nowhere to go.
+   *
+   * Three separate pieces make the other reading work, and this asserts the
+   * consequence of all of them at once: the field is inverted so the cells
+   * become the masses, the threshold is read off the range rather than by
+   * quantile because a drawing's histogram is two spikes with nothing between
+   * them, and the region that reaches the frame is dropped because the paper
+   * outside a drawing is not one of its cells.
+   *
+   * The first two claims are asserted on a bare drawn circle, which is enough
+   * to catch the inversion and the frame drop. The third needs a drawing with
+   * internal structure, because the threshold and the crossing rule only bite
+   * where a cell is large enough that its chords have something to cross —
+   * on a plain circle every version of this fills, which is how the first
+   * draft of this test came to pass against two of the three bugs.
+   *
+   * Watched failing, each against the piece it is written for: without the
+   * inversion the circle's interior reads 0.000 ink where lines mode gives
+   * 0.149; without the frame drop the paper outside it reads 0.460; with the
+   * quantile threshold the structured drawing reads 0.319 ink against 0.511;
+   * and with the blur left out of the crossable width, 0.405. That last
+   * margin is the thinnest here at 11%, and it is a measured bound between
+   * two measured readings rather than a number that sounded right.
+   */
+  it('fills the cells of a line drawing, and not the paper around it', () => {
+    // A drawn circle: a thin stroke, not a disc. The dark is the boundary.
+    const drawn = picture((x, y) => {
+      const d = Math.sqrt(x * x + y * y);
+      return Math.abs(d - 0.3) < 0.012 ? 0.95 : 0.05;
+    });
+    const read = (reading: string): { inside: number; outside: number } => {
+      const svg = render({ image: drawn, reading, nailsVisible: false });
+      return { inside: inkWithin(svg, 0, 0.2), outside: inkWithin(svg, 0.33, 0.45) };
+    };
+    const asShapes = read('masses');
+    const asLines = read('lines');
+
+    // A drawing with internal structure: an outline, a bar across it, and two
+    // inner rings. Its big cell can only be wound by chords that have
+    // something in their way.
+    const structured = picture((x, y) => {
+      const d = Math.sqrt(x * x + y * y);
+      if (Math.abs(d - 0.34) < 0.01) return 0.95;
+      if (d < 0.34 && Math.abs(y + 0.06) < 0.01) return 0.95;
+      const eye = (ox: number): number => Math.sqrt((x - ox) * (x - ox) + (y - 0.12) * (y - 0.12));
+      if (Math.abs(eye(-0.14) - 0.08) < 0.01 || Math.abs(eye(0.14) - 0.08) < 0.01) return 0.95;
+      return 0.05;
+    });
+    const wound = inkWithin(render({ image: structured, reading: 'lines', nailsVisible: false }), 0, 0.3);
+
+    expect(
+      asLines.inside,
+      `read as lines the drawn circle holds ${asLines.inside.toFixed(3)} ink against ${asShapes.inside.toFixed(3)} read as shapes — the cell was not wound`,
+    ).toBeGreaterThan(Math.max(0.04, asShapes.inside * 6));
+    expect(
+      asLines.outside,
+      `the paper outside the drawing holds ${asLines.outside.toFixed(3)} ink against ${asLines.inside.toFixed(3)} inside it, so the board itself was wound`,
+    ).toBeLessThan(asLines.inside * 0.25);
+    expect(
+      wound,
+      `a drawing with internal structure holds ${wound.toFixed(3)} ink, so its large cells went unwound`,
+    ).toBeGreaterThan(0.46);
+  });
+
+  /**
    * The picture survives the round trip that lets it travel in a link.
    *
    * `packGrid` and `unpackGrid` are the reason a string-art share link is the

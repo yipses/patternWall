@@ -442,6 +442,18 @@ The truchet entry says to derive the implied quantity. The extra step here is pi
 
 **A budget enforced by a rounded-down divisor is not a budget.** The stride between families is the reach divided by the passes afforded, and rounding it down overshoots: a reach of 44 with fifteen passes gives a stride of two and twenty-one families, 40% over. Measured across a render it put 7,895 chords against a ceiling of 6,000. Rounding up gives back at most one family per shape and makes the ceiling true. Any time a count is enforced by dividing to get a step, the rounding direction is the difference between a cap and a suggestion.
 
+**A line drawing and a photograph are not the same kind of input, and no measurement of the pixels tells you which you have.** The rebuilt string art shades what is dark, which is right for a photograph and exactly inverted for a drawing: there the dark is the *boundary*, and a stroke two cells wide traces into a ribbon with no interior, so every chord leaves it immediately and is dropped. The render came out as crisp outlines with nothing in them, and raising `shading` did nothing at all, because the shading had nowhere to go. It was reported as "it just seems to do the outlines", which is precisely what it was.
+
+Inverting the field puts the cells of the drawing above the threshold and the strokes below it, and everything downstream works unchanged. Which of the two a picture is cannot be derived — a heavy drawing and a high-contrast photograph have much the same histogram — so it is a control rather than a detection, and the wrong setting fails visibly rather than subtly, which is the right way round.
+
+Two things had to move with it, and both are the same lesson in different clothes:
+
+**A quantile of area cannot find the gap between two spikes.** Thresholds are taken by quantile, which is what makes an arbitrary photograph work — see the contours entry about fractions of a field's possible range versus its actual one. A drawing's histogram is not a distribution, it is two spikes with nothing between them, so the quantile lands *inside* whichever spike holds that fraction: at the default coverage it put the threshold 0.2% below the top of the range. Every blurred stroke then read as an eight-cell gap instead of a two-cell one and the drawing's largest cell kept five of its 448 chords. For two spikes the meaningful threshold is a level, not an area. The general form: a quantile asks "how much", and when the answer is "almost all of it or almost none", that is not the question.
+
+**Ask what the mark is, not how much of the chord is wrong.** The chord test was "every sample inside", which bridged nothing and also filled nothing in a drawing, since almost every long chord clips a line. Loosening it to "most samples inside" is the obvious next move and it is still the wrong question, because it is about the total: a short chord crosses less than a long one, so the small cells filled and the big ones stayed empty. What separates a thread passing *over* a mark from one *spanning* a gap is the longest unbroken excursion, and the width that divides them needs no constant — the nail spacing is already the finest thing the board resolves, widened by the blur radius, because a gap `simplify` manufactured is not a gap in the drawing. Measured, that took the big cell from 26 of 450 chords to 170.
+
+Both of those were found by instrumenting rather than by reasoning. Three plausible diagnoses were tried and shipped nothing; dumping per-ring counts found it in one run.
+
 **A comment can be the last surviving copy of a reverted design.** The arcs
 branch carried four layers of commentary from successive attempts, two of them
 describing code that had been reverted and contradicting the layer below. Each
@@ -575,9 +587,18 @@ each ring, and a chord that would leave its region is dropped after being
 tested along its own length. Edges come from where the nails are; the thread
 only shades.
 
-Three things about it are load-bearing and easy to undo by accident. The
-thresholds are **quantiles, not values** — a fixed darkness is a different
-control on every photograph, and on a backlit one it traces nothing at all.
+It reads a picture one of two ways and this is the first thing to check when
+it looks wrong. **Masses** treats the dark as the shapes, which is a
+photograph. **Lines** inverts, because a drawing's dark is its boundaries and
+what wants filling is what they enclose; it also reads its thresholds off the
+field's range rather than by quantile, and drops the region that reaches the
+frame, since the paper outside a drawing is not one of its cells. A drawing
+read as masses comes out as outlines with nothing in them.
+
+Three things about it are load-bearing and easy to undo by accident. In masses
+mode the thresholds are **quantiles, not values** — a fixed darkness is a
+different control on every photograph, and on a backlit one it traces nothing
+at all.
 The trace grid is **fixed at 128 and is not the stored grid's size**, so
 raising picture detail changes how much of the photograph feeds the outlines
 rather than changing their shape. And **reach and density are not both free**:
