@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { type RenderSpec } from '../lib/render';
-import { renderDataUrl, renderDataUrlAsync } from '../lib/render-client';
+import { isSuperseded, renderDataUrl, renderDataUrlAsync } from '../lib/render-client';
 
 /**
  * A spec's content, as a string, so the render below can be memoised on what
@@ -42,11 +42,18 @@ export function PatternImage({
   alt,
   className,
   onRenderError,
+  channel,
 }: {
   spec: RenderSpec;
   alt: string;
   className?: string;
   onRenderError?: (message: string) => void;
+  /**
+   * Names a stream of renders that replace one another. Give it to a preview
+   * somebody is dragging; leave it off everywhere else, because a shared
+   * channel between two pictures means one of them never gets drawn.
+   */
+  channel?: string;
 }) {
   // Keyed on the spec's content rather than on `spec` itself. See specKey.
   const key = specKey(spec);
@@ -82,12 +89,16 @@ export function PatternImage({
   useEffect(() => {
     if (key === firstKey.current) return;
     let live = true;
-    renderDataUrlAsync(spec)
+    renderDataUrlAsync(spec, channel === undefined ? undefined : { channel })
       .then((url) => {
         if (live) setResult({ url, error: null });
       })
       .catch((err: Error) => {
         if (!live) return;
+        // A newer request on this channel owns the slot now. Nothing failed and
+        // there is nothing to draw: the render that replaced this one will
+        // arrive on its own.
+        if (isSuperseded(err)) return;
         // A worker that could not start is not a broken pattern. Draw it here
         // instead, and let the client fall back for the rest of the session.
         if (err.message === 'render worker unavailable') {
@@ -107,6 +118,8 @@ export function PatternImage({
       // must not be allowed to land.
       live = false;
     };
+    // `channel` is deliberately not a dependency: it identifies the stream,
+    // not the picture, and re-running on it would redraw for nothing.
   }, [key]);
 
   if (result.error) {
