@@ -197,7 +197,7 @@ test.describe('gesture', () => {
   test.describe('at phone width', () => {
     test.use({ viewport: { width: 390, height: 844 } });
 
-    test('the controls that are not the three are behind Advanced', async ({ page }) => {
+    test('the controls that are not the three are behind the gear', async ({ page }) => {
       await page.goto('/p/truchet');
       await settled(page);
 
@@ -206,14 +206,30 @@ test.describe('gesture', () => {
       await expect(page.getByLabel('Stroke weight')).toBeVisible();
       await expect(page.getByLabel('Divisions')).toBeVisible();
 
-      const density = page.getByLabel('Grid density');
-      await expect(density, 'a secondary control was showing before Advanced was opened').toBeHidden();
+      // Everything else is not in the page at all until the gear is pressed,
+      // which is what keeps one parameter to one slider.
+      await expect(page.getByLabel('Grid density')).toHaveCount(0);
 
-      const toggle = page.getByRole('button', { name: /Advanced/ });
-      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-      await toggle.click();
+      const gear = page.getByTestId('preview-settings');
+      await expect(gear).toHaveAttribute('aria-expanded', 'false');
+      await gear.click();
+      await expect(gear).toHaveAttribute('aria-expanded', 'true');
+
+      const density = page.getByLabel('Grid density');
       await expect(density).toBeVisible();
-      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.getByLabel('Arc spread')).toBeVisible();
+      await expect(page.getByLabel('Colour spread')).toBeVisible();
+      // Name and slider only: no paragraph of explanation in a sheet this size.
+      await expect(page.locator('text=Columns across the canvas')).toHaveCount(0);
+
+      // And a way to reroll without reaching for the seed field below.
+      const before = await previewSrc(page);
+      await page.getByRole('button', { name: 'New seed' }).click();
+      await settled(page);
+      expect(await previewSrc(page), 'the seed button changed nothing').not.toBe(before);
+
+      await gear.click();
+      await expect(page.getByLabel('Grid density')).toHaveCount(0);
     });
 
     test('the preview leaves room to scroll past it', async ({ page }) => {

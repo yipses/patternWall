@@ -1,0 +1,61 @@
+/* Above the gesture surface, the readout, and the sheet it opens.
+   Above the sheet specifically: the two share a corner, and the padding that
+   keeps the gear *looking* clear does nothing about hit testing — the sheet's
+   box still covers it, so at equal z-index the later element wins and the
+   press that should close the sheet lands on the sheet instead. It reads as
+   the gear simply not working the second time. */
+.gear {
+  position: absolute;
+  z-index: 11;
+  right: 3.5%;
+  bottom: 2.5%;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: rgba(10, 10, 11, 0.72);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.gear:hover {
+  color: var(--text);
+  background: rgba(10, 10, 11, 0.88);
+}
+
+.gear[aria-expanded='true'] {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+/* Sits over the lower part of the picture rather than beside it. The preview
+   is the thing being changed, so covering the least of it that will hold four
+   rows is the whole layout brief. */
+.sheet {
+  position: absolute;
+  z-index: 10;
+  left: 3.5%;
+  right: 3.5%;
+  bottom: 2.5%;
+  max-height: 78%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 14px 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-strong);
+  background: rgba(10, 10, 11, 0.93);
+  /* The gear sits under the sheet's own corner; leave it reachable. */
+  padding-bottom: 52px;
+}
+
+.rows > :last-child {
+  margin-bottom: 4px;
+}
+
+.seed {
+  width: 100%;
+}

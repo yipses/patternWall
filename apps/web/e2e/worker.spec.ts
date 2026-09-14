@@ -25,7 +25,7 @@ test.describe('render worker', () => {
     // The first render is deliberately inline -- it has to match the
     // prerendered HTML exactly or hydration fails -- so the worker is only
     // asked for anything once a control moves.
-    const slider = page.getByLabel('Grid density');
+    const slider = page.getByLabel('Stroke weight');
     await slider.focus();
     for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowRight');
     await settled(page);

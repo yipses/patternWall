@@ -20,14 +20,17 @@ test.describe('editor', () => {
     await settled(page);
     const before = await previewSrc(page);
 
-    const slider = page.getByLabel('Grid density');
+    // A promoted control: the ones that are not promoted live behind the gear
+    // on the preview now, and this test is about the editor's plumbing rather
+    // than about which slider was moved.
+    const slider = page.getByLabel('Stroke weight');
     await slider.focus();
     for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowRight');
     await settled(page);
 
     const after = await previewSrc(page);
     expect(after).not.toBe(before);
-    await expect(page.locator('text=/^14$/').first()).toBeVisible();
+    await expect(page.locator('text=/^0\\.22$/').first()).toBeVisible();
   });
 
   test('the seed field and shuffle both change the render', async ({ page }) => {
@@ -58,7 +61,7 @@ test.describe('editor', () => {
 
     // Starts a 260ms debounce; the slider lands well inside it.
     await page.getByTestId('seed-input').fill('mountain');
-    const slider = page.getByLabel('Grid density');
+    const slider = page.getByLabel('Stroke weight');
     await slider.focus();
     await page.keyboard.press('ArrowRight');
     await settled(page);

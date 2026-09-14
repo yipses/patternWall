@@ -5,7 +5,6 @@ import {
   GRID_SIZE,
   effectiveSpec,
   resolvePrimaries,
-  secondaryParams,
   type Generator,
   type ParamSpec,
   type ParamValue,
@@ -133,11 +132,12 @@ const GESTURE_LABEL: Record<PrimaryRole, string> = {
   y: 'Swipe \u2195',
 };
 
-function Control({
+export function Control({
   spec,
   value,
   detail,
   gesture,
+  compact,
   onChange,
   onCommit,
 }: {
@@ -153,6 +153,8 @@ function Control({
   detail: number;
   /** The gesture that also drives this control, when one does. */
   gesture?: PrimaryRole;
+  /** Name and slider only. The sheet over the preview has no room to explain. */
+  compact?: boolean;
   onChange: (v: ParamValue) => void;
   onCommit: () => void;
 }) {
@@ -234,9 +236,11 @@ function Control({
         />
       ) : null}
 
-      <p className={ui.help} id={helpId}>
-        {spec.description}
-      </p>
+      {compact ? null : (
+        <p className={ui.help} id={helpId}>
+          {spec.description}
+        </p>
+      )}
     </div>
   );
 }
@@ -262,84 +266,31 @@ export function ParamControls({
   const size = Number.isFinite(detail) && detail > 0 ? detail : GRID_SIZE;
 
   const bindings = resolvePrimaries(generator);
-  const rest = secondaryParams(generator);
-  const advancedId = useId();
 
-  /**
-   * Which controls are showing, and who decided.
-   *
-   * `auto` means nobody has said yet, and CSS answers it: shown on a wide
-   * window, hidden on a narrow one. That indirection is the point. The default
-   * has to differ by viewport, and reading the viewport during render is a
-   * hydration mismatch — this app has an unresolved React #418 on record and a
-   * scar in `next.config.mjs` from the last one. Server and client therefore
-   * render the identical `data-advanced="auto"`, and only the stylesheet knows
-   * how wide the window is. Once somebody presses the button, React takes over
-   * and CSS stops having an opinion.
-   *
-   * `wide` exists only so `aria-expanded` can tell the truth. It is set in an
-   * effect, after hydration, which is the same post-mount upgrade `useClock`
-   * does in `PreviewFrame`.
-   */
-  const [choice, setChoice] = useState<'auto' | 'open' | 'closed'>('auto');
-  const [wide, setWide] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1000px)');
-    const sync = (): void => setWide(mq.matches);
-    sync();
-    mq.addEventListener('change', sync);
-    return () => mq.removeEventListener('change', sync);
-  }, []);
-  const open = choice === 'auto' ? wide : choice === 'open';
-
-  // Every control is rendered against the spec it is actually working to, not
-  // the one it declared: a range that depends on another param would otherwise
-  // offer a ceiling the render clamps away, and the slider and the picture
-  // would disagree about what the value is.
   const control = (declared: ParamSpec, gesture?: PrimaryRole) => {
+    // Rendered against the spec it is actually working to, not the one it
+    // declared: a range that depends on another param would otherwise offer a
+    // ceiling the render clamps away.
     const spec = effectiveSpec(generator, declared, params);
     return (
-    <Control
-      key={spec.key}
-      spec={spec}
-      value={params[spec.key] ?? spec.default}
-      detail={size}
-      {...(gesture ? { gesture } : {})}
-      onChange={(v) => onChange(spec.key, v)}
-      onCommit={onCommit}
-    />
+      <Control
+        key={spec.key}
+        spec={spec}
+        value={params[spec.key] ?? spec.default}
+        detail={size}
+        {...(gesture ? { gesture } : {})}
+        onChange={(v) => onChange(spec.key, v)}
+        onCommit={onCommit}
+      />
     );
   };
 
-  // A pattern that has not chosen its three is left exactly as it was: one
-  // flat list, no disclosure, nothing hidden.
+  // A pattern that has not chosen its three is one flat list, as it always was.
   if (bindings.length === 0) return <div>{generator.params.map((spec) => control(spec))}</div>;
 
-  return (
-    <div>
-      <div className={ui.promoted}>
-        {bindings.map((b) => (b.spec ? control(b.spec, b.role) : null))}
-      </div>
-
-      <div className={ui.advanced} data-advanced={choice}>
-        <button
-          type="button"
-          className={ui.advancedToggle}
-          aria-expanded={open}
-          aria-controls={advancedId}
-          onClick={() => setChoice(open ? 'closed' : 'open')}
-        >
-          <span className={ui.caret} aria-hidden="true" />
-          Advanced
-          <span className={ui.advancedCount}>{rest.length}</span>
-        </button>
-        {/* Always rendered, shown or hidden by CSS. `aria-controls` can point
-            at it honestly because the id always resolves — which is the thing
-            the note on TabList says to avoid doing when it would not. */}
-        <div className={ui.advancedBody} id={advancedId}>
-          {rest.map((spec) => control(spec))}
-        </div>
-      </div>
-    </div>
-  );
+  // The three it is driven by, and only those. Everything else lives behind the
+  // gear on the preview: this panel is the explanation, that sheet is the
+  // reach. Two copies of one slider would also be two things `getByLabel`
+  // matches, which is its own argument.
+  return <div className={ui.promoted}>{bindings.map((b) => (b.spec ? control(b.spec, b.role) : null))}</div>;
 }

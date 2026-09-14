@@ -454,6 +454,16 @@ Two things had to move with it, and both are the same lesson in different clothe
 
 Both of those were found by instrumenting rather than by reasoning. Three plausible diagnoses were tried and shipped nothing; dumping per-ring counts found it in one run.
 
+**The flat-unit rule applies to every mark, and the arcs were the one that never got it.** Truchet's chords have been cut into pieces for colour since the fault was found on them — no piece carries one colour across more than 6% of the canvas width. The arcs were not, and one colour per arc is one colour across `(pi/2)*rho` of the canvas with rho reaching `s/sqrt(2)`: at five columns a single arc carries one colour across 18.5% of the width, three times the rule the chords hold to. Two arcs meeting at a cell edge then sample a whole cell apart, and a ribbon running through the grid changes hue in a hard vertical line at the join.
+
+It was reported at full colour blend, and that is where it *shows* rather than where it starts — a fine ramp makes the step a different colour where a coarse one lands on a neighbouring shade. The blend slider was in effect a control for how visible this bug was, which is a fair sign it was carrying weight that belonged to a fix. It is gone; the ramp is always full.
+
+Two details worth keeping. The cut points are a **hard-coded table of sin and cos**, because this file calls no trigonometry anywhere and that is deliberate: each piece is coloured by the field at its own midpoint, so those coordinates feed a *decision* about which band it lands in, and `Math.cos` is implementation-approximated where `sqrt` is not. And the undivided case still emits the exact string it always emitted, sampled at the same 45-degree point — past about nineteen columns an arc is already shorter than the rule allows, which is also the grid where the render is heaviest and quadrupling the mark count would hurt most.
+
+Measured at full blend, worst colour step between two arc ends that touch, before and after: 227.7 to 62.7 at three columns, 140.3 to 66.6 at five, 114.6 to 48.9 at eight, and 66.6 to 66.6 at twenty where nothing is cut. That 66.6 floor is the step between neighbouring bands of a 48-colour ramp — it is present in correct output, so a bound tight enough to call it a fault would fail against the fix.
+
+The reusable part: when one kind of mark gets a fix about how big an area is painted one colour, check every other kind in the same generator. The note about where colour is sampled says the same thing about *tiles*; this is the same lesson about *marks*, and the arcs sat wrong for as long as the chords sat right.
+
 **A control can mean a different amount in different modes, and one range cannot serve both.** Truchet's divisions draw n concentric rings on quarter arcs, where twelve is the point of raising it, and 2n-1 parallel chords on diagonals, where twelve is twenty-three lines through one cell and the tiling reads as grey. The same slider, the same number, two unrelated amounts of ink.
 
 `Generator.limits` states a ceiling that depends on another param's value, and it is on the generator rather than on the spec for the reason string art's picture-and-detail lookup gives: a spec describes itself, and one parameter's range depending on another's is a fact about the pattern they both belong to.
@@ -501,9 +511,13 @@ result. Each was arrived at by breaking it first.
   rather than the gap accommodating the stroke.
 - **Sweep flag 0** on every arc, so each is centred on its corner.
 - **Colour comes from a noise field** in normalised canvas coordinates
-  (`COLOR_FIELD` cycles across the image), sampled **per arc at its own
-  midpoint** — per tile gives every arc in a cell one step of the ramp and the
-  cell boundary shows as an edge. `colorBlend` is the ramp's resolution.
+  (`COLOR_FIELD` cycles across the image), sampled **per piece of an arc** —
+  per tile gives every arc in a cell one step of the ramp and the cell boundary
+  shows as an edge, and per whole arc is still a flat unit up to 18.5% of the
+  canvas wide, which steps in colour where two arcs meet. Arcs are cut on the
+  same 6% rule the chords follow, from a table of literals rather than
+  trigonometry. The ramp is always at full resolution; `colorBlend` was a
+  control and is not one any more.
 - **Ends are structural.** They come from neighbours facing different corners,
   not from a probability knob. Three attempts to manufacture them each broke
   something else.
@@ -565,7 +579,9 @@ result. Each was arrived at by breaking it first.
 
 Controls: density, tileSet, weight, colorSpread,
 arcCount (labelled Divisions; max 6 on diagonals, 12 elsewhere), arcSpacing
-(spread; quarter arcs only), colorBlend. Removed as not worth their slots: `mixed`, row
+(spread; quarter arcs only). The three it is driven by are promoted into the
+panel; the rest live behind the gear on the preview, as name and slider with no
+explanation, alongside a button for a fresh seed. Removed as not worth their slots: `colorBlend`, `mixed`, row
 weight variation, `gap`, `subdivide`, `quietTop` and `openEnds`. The last four
 went together and each had the same shape of problem — a knob whose effect was
 either invisible (`gap`), a band across a uniform grid (`quietTop`), a patch

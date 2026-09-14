@@ -20,6 +20,7 @@ import {
 import { PreviewFrame, PREVIEW_MODES, type PreviewMode } from './PreviewFrame';
 import { PatternImage } from './PatternImage';
 import { ParamControls } from './ParamControls';
+import { PreviewSettings } from './PreviewSettings';
 import { PalettePanel } from './PalettePanel';
 import { ExportPanel } from './ExportPanel';
 import { Button, Notice, Switch, TabList, Tag, uiStyles as ui } from './ui';
@@ -187,6 +188,14 @@ export function Editor({ generatorId }: { generatorId: string }) {
     [generator],
   );
   const [scrubbing, setScrubbing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  /** A fresh seed, from the sheet or from a tap bound to it. */
+  const newSeed = useCallback(() => {
+    const next = randomSeed();
+    setSeed(next);
+    commitNow({ seed: next });
+  }, [commitNow]);
 
   /**
    * A continuous gesture: the newest value, rendered now.
@@ -218,9 +227,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
       if (!tap) return;
       if (tap.spec === null) {
         // Bound to the seed rather than to a param: another one of these.
-        const next = randomSeed();
-        setSeed(next);
-        commitNow({ seed: next });
+        newSeed();
         return;
       }
       const spec = tap.spec;
@@ -354,6 +361,21 @@ export function Editor({ generatorId }: { generatorId: string }) {
             onRenderError={setRenderError}
             channel="editor-preview"
             {...(bindings.length > 0 ? { gesture: { handlers: gestureHandlers, readout } } : {})}
+            {...(bindings.length > 0
+              ? {
+                  settings: (
+                    <PreviewSettings
+                      generator={generator}
+                      params={params}
+                      open={settingsOpen}
+                      onToggle={() => setSettingsOpen((v) => !v)}
+                      onChange={(key, value) => applyParams(changeParam(key, value), 110)}
+                      onCommit={() => settle({ params: latestParams.current }, 0)}
+                      onNewSeed={newSeed}
+                    />
+                  ),
+                }
+              : {})}
           />
 
           <div className={styles.underPreview}>

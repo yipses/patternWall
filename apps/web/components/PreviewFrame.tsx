@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { safeZonesFor, visibleRect, type Rect } from '@patternwall/core';
 import { PatternImage } from './PatternImage';
 import { formatValue } from '../lib/format';
@@ -61,6 +61,7 @@ export function PreviewFrame({
   onRenderError,
   channel,
   gesture,
+  settings,
 }: {
   spec: RenderSpec;
   mode: PreviewMode;
@@ -75,6 +76,8 @@ export function PreviewFrame({
    * chosen its three; absent, the preview is exactly what it always was.
    */
   gesture?: { handlers: ScrubHandlers; readout: ScrubReadout | null };
+  /** Controls drawn over the picture, above the gesture surface. */
+  settings?: ReactNode;
 }) {
   const { time, date } = useClock(mode === 'lock');
 
@@ -184,6 +187,7 @@ export function PreviewFrame({
             <span className={styles.hudValue}>{formatValue(gesture.readout.spec, gesture.readout.value)}</span>
           </div>
         ) : null}
+        {settings}
       </div>
       {caption ? <p className={styles.caption}>{caption}</p> : null}
     </div>
