@@ -143,6 +143,102 @@ describe('truchet stroke weight', () => {
   });
 });
 
+/**
+ * The worst colour step between two arc ends that touch, in RGB distance, and
+ * the longest straight span any single colour covers.
+ */
+function arcSeams(svg: string, width: number): { worst: number; span: number } {
+  const marks: { colour: string; a: [number, number]; b: [number, number] }[] = [];
+  for (const gm of svg.matchAll(/<g [^>]*stroke="(#[0-9a-f]{6})"[^>]*>(.*?)<\/g>/gs)) {
+    const colour = gm[1] as string;
+    for (const pm of (gm[2] as string).matchAll(/d="M([-\d.]+) ([-\d.]+)A[\d.]+ [\d.]+ 0 0 0 ([-\d.]+) ([-\d.]+)"/g)) {
+      marks.push({ colour, a: [Number(pm[1]), Number(pm[2])], b: [Number(pm[3]), Number(pm[4])] });
+    }
+  }
+  const rgb = (h: string): number[] => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const at = new Map<string, string[]>();
+  for (const m of marks) {
+    for (const p of [m.a, m.b]) {
+      const k = `${p[0].toFixed(1)},${p[1].toFixed(1)}`;
+      const list = at.get(k);
+      if (list) list.push(m.colour);
+      else at.set(k, [m.colour]);
+    }
+  }
+  let worst = 0;
+  for (const cols of at.values()) {
+    for (let i = 0; i < cols.length; i++) {
+      for (let j = i + 1; j < cols.length; j++) {
+        const [r1, g1, b1] = rgb(cols[i] as string) as [number, number, number];
+        const [r2, g2, b2] = rgb(cols[j] as string) as [number, number, number];
+        worst = Math.max(worst, Math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2));
+      }
+    }
+  }
+  let span = 0;
+  for (const m of marks) span = Math.max(span, Math.hypot(m.b[0] - m.a[0], m.b[1] - m.a[1]) / width);
+  return { worst, span };
+}
+
+describe('truchet arc colour', () => {
+  /**
+   * A ribbon does not change colour in a step where it crosses a cell edge.
+   *
+   * The chords have been cut into pieces for colour since the fault was found
+   * on them; the arcs never were, and it shows in exactly the way the note
+   * about flat units predicts. One colour per arc is one colour across
+   * (pi/2)*rho of the canvas, and rho reaches s/sqrt(2) — so at five columns a
+   * single arc carries one colour across 18.5% of the width, against the 6%
+   * the chords hold to. Two arcs meeting at a cell edge then sample a whole
+   * cell apart, and the ribbon running through them changes hue in a hard
+   * vertical line at the join.
+   *
+   * It was reported at full colour blend, and that is where it shows worst
+   * rather than where it starts: a fine ramp makes the step a different colour
+   * where a coarse one would have landed on a neighbour.
+   *
+   * So the assertion is the symptom, measured where it appears — the colour
+   * distance between two arc ends that touch — and the rule underneath it.
+   * Measured at full blend, worst join and longest one-colour span:
+   *
+   *     columns    before            after
+   *      3         227.7 / 33.3%     62.7 / 6.2%
+   *      5         140.3 / 20.0%     66.6 / 5.5%
+   *      8         114.6 / 12.5%     48.9 / 4.6%
+   *     12         100.0 /  8.3%     57.3 / 4.5%
+   *     20          66.6 /  5.0%     66.6 / 5.0%   (no cutting either way)
+   *
+   * The bounds sit between those two columns rather than at the rule, and the
+   * reason is the 66.6 floor: that is the step between neighbouring bands of a
+   * 48-colour ramp, which is what full blend *is*, and it is there at twenty
+   * columns where nothing changed. A bound tight enough to call it a fault
+   * would fail against correct output.
+   *
+   * The span bound is 7% and not the 6% the chords hold to, for the reason the
+   * cut table gives: six pieces is the ceiling, and at three columns that
+   * leaves 6.2%.
+   */
+  it('does not step in colour where two arcs meet', () => {
+    for (const [density, before] of [[3, 227.7], [5, 140.3], [8, 114.6], [12, 100]] as const) {
+      const svg = render({ tileSet: 'arcs', density, arcCount: 6, colorSpread: 1 });
+      const { worst, span } = arcSeams(svg, 400);
+      expect(worst, `at ${density} columns the worst join steps ${worst.toFixed(1)}, where it was ${before}`).toBeLessThan(80);
+      expect(span, `at ${density} columns one colour runs ${(span * 100).toFixed(1)}% of the width`).toBeLessThan(0.07);
+    }
+  });
+
+  /**
+   * And it costs nothing where there is no fault to fix. Past about nineteen
+   * columns an arc is already shorter than the rule allows, so it is emitted
+   * exactly as it always was — which is also the grid where the render is
+   * heaviest and quadrupling the mark count would hurt most.
+   */
+  it('leaves a fine grid emitting exactly what it always emitted', () => {
+    // Pinned from before the arcs were cut, measured under `git stash`.
+    expect(render({ tileSet: 'arcs', density: 20, arcCount: 6 }).length).toBe(334434);
+  });
+});
+
 describe('truchet quarter arcs', () => {
   /**
    * Two circles of a given radius pass through any two points closer together
@@ -263,22 +359,35 @@ describe('truchet quarter arcs', () => {
   });
 
   /**
-   * Colour is sampled from a field across the image, so neighbouring marks land
-   * on neighbouring steps of the ramp and a region of one accent eases into a
-   * region of another. Blend is the resolution of that ramp: at zero only the
-   * palette's own accents are used and the regions meet at hard edges.
+   * The palette is resolved into a ramp, not shown as its bare accents.
+   *
+   * This used to be a control — `colorBlend`, a slider from the accents
+   * themselves up to a 48-step ramp between them — and the assertion was that
+   * the two ends differed. The control is gone and the ramp is always full,
+   * so what is left to claim is the thing the top of that slider bought: the
+   * render uses colours the palette does not literally contain, which is what
+   * makes a region ease into the next instead of meeting it at an edge.
+   *
+   * The bottom end went because it had one idea and the rest of the range was
+   * a finer version of it, and because it was where the arcs' flat-unit fault
+   * showed worst — a slider carrying the weight of a bug rather than an idea.
    */
-  it('resolves the palette into a ramp only when blend is raised', () => {
+  it('resolves the palette into a ramp rather than its bare accents', () => {
     const strokeHexes = (svg: string): Set<string> =>
       new Set([...svg.matchAll(/stroke="(#[0-9a-f]{6})"/gi)].map((m) => (m[1] as string).toLowerCase()));
 
-    const flat = strokeHexes(render({ colorBlend: 0 }));
-    const blended = strokeHexes(render({ colorBlend: 1 }));
+    const drawn = strokeHexes(render({ colorSpread: 1 }));
     const accents = new Set(palette.accents.map((a) => a.toLowerCase()));
 
-    expect(flat.size).toBeGreaterThan(0);
-    for (const c of flat) expect(accents.has(c)).toBe(true);
-    expect(blended.size).toBeGreaterThan(flat.size * 2);
+    expect(drawn.size, 'nothing was drawn').toBeGreaterThan(0);
+    expect(
+      drawn.size,
+      `${drawn.size} stroke colours for a palette of ${accents.size} accents`,
+    ).toBeGreaterThan(accents.size * 3);
+    const between = [...drawn].filter((c) => !accents.has(c));
+    expect(between.length, 'every colour drawn is a bare accent, so nothing is interpolated').toBeGreaterThan(
+      drawn.size / 2,
+    );
   });
 
   /**
@@ -460,7 +569,7 @@ describe('truchet diagonal colour resolution', () => {
   for (const density of [3, 6, 8, 12, 26]) {
     it(`keeps a single-colour piece under ${MAX_SEGMENT * 100}% of the canvas at density ${density}`, () => {
       const W = 900;
-      const svg = render({ tileSet: 'diagonals', density, arcCount: 4, colorBlend: 1 }, W);
+      const svg = render({ tileSet: 'diagonals', density, arcCount: 4 }, W);
       // Measure the first line segment of every path; the one path that also
       // carries the corner spur is measured on its chord piece alone.
       const lengths: number[] = [];
@@ -501,7 +610,7 @@ describe('truchet colour resolution', () => {
         width: SIZE,
         height: SIZE,
         palette,
-        params: { ...defaultParams(truchet), tileSet, density: COLS, arcCount: 6, colorBlend: 1 },
+        params: { ...defaultParams(truchet), tileSet, density: COLS, arcCount: 6 },
         seed: 'colour-resolution',
         bleed: 0,
       });

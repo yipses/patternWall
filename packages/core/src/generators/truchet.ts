@@ -36,6 +36,41 @@ const COLOR_FIELD = 1.6;
 const MAX_SEGMENT = 0.06;
 
 /**
+ * The points a quarter arc may be cut at, as [sin, cos] of k*(90/n) degrees.
+ *
+ * Written out rather than computed, because this file calls no trigonometry at
+ * all and that is deliberate. These coordinates do not only position a mark —
+ * each piece is coloured by the field at its own midpoint, so the numbers feed
+ * a *decision* about which band it lands in, and `Math.cos` and `Math.sin` are
+ * both explicitly implementation-approximated where `sqrt` is not. A last-bit
+ * difference between two engines would put one piece of one arc in a different
+ * band, and the browser and Node would stop agreeing about the picture.
+ *
+ * Only counts whose angles are writable exactly enough to matter: 1, 2, 3, 4
+ * and 6. Six is the ceiling, which at the coarsest grid leaves a piece
+ * spanning 6.2% of the canvas against the 6% the chords hold to — near enough
+ * that buying eight, and the eleven-and-a-quarter-degree table that comes with
+ * it, is not worth the lines.
+ */
+const ARC_CUTS: Record<number, readonly (readonly [number, number])[]> = {
+  1: [[0, 1], [1, 0]],
+  2: [[0, 1], [0.70710678, 0.70710678], [1, 0]],
+  3: [[0, 1], [0.5, 0.8660254], [0.8660254, 0.5], [1, 0]],
+  4: [[0, 1], [0.38268343, 0.92387953], [0.70710678, 0.70710678], [0.92387953, 0.38268343], [1, 0]],
+  6: [
+    [0, 1],
+    [0.25881905, 0.96592583],
+    [0.5, 0.8660254],
+    [0.70710678, 0.70710678],
+    [0.8660254, 0.5],
+    [0.96592583, 0.25881905],
+    [1, 0],
+  ],
+};
+/** Cut counts available, smallest first. */
+const ARC_CUT_COUNTS = [1, 2, 3, 4, 6];
+
+/**
  * Triangles are laid down just short of opaque, so a mass of them keeps some of
  * the background's depth rather than going flat. This is what the old
  * expression settled on for a full-size tile in the unquieted part of the
@@ -95,7 +130,6 @@ export const truchet: Generator = {
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'How much of the colour comes from the drifting field rather than from height. At zero the palette runs top to bottom; at one it pools into regions that wander across the image.' },
     { key: 'arcCount', label: 'Divisions', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'How many parts each cell’s mark is divided into. Quarter arcs become concentric, added either side of the radius that joins the neighbouring cells, and how far they reach is Arc spread’s job rather than this one. A diagonal becomes a family of parallel chords across the cell. A triangle is sliced into bands parallel to its hypotenuse with every other one filled, so the solid mass becomes ribbons. All three divide on a spacing that puts each part’s edges where a cell of the same size puts its own, so raising this adds detail inside a mark that keeps its size, and any stroke thins to the gap it leaves.' },
     { key: 'arcSpacing', label: 'Arc spread', type: 'number', min: 0.15, max: 1, step: 0.05, default: 1, description: 'How much of the cell the rings reach across. The gap between them is worked out from that and the division count, so every arc you ask for fits, and the stroke thins if it has to rather than closing the rings into a solid block. Quarter arcs only: a family of diagonals has no say in how far it spreads, because the spacing that makes it meet its neighbours is the spacing that fills the cell.' },
-    { key: 'colorBlend', label: 'Colour blend', type: 'number', min: 0, max: 1, step: 0.02, default: 1, description: 'How finely the palette is resolved between its accents. At zero only the accents themselves are used, so regions of colour meet at hard edges. Raise it and the steps between them are filled in, so one region eases into the next.' },
   ],
 
   /**
@@ -130,7 +164,15 @@ export const truchet: Generator = {
     const tileSet = pStr(params, 'tileSet', 'arcs');
     const weight = pNum(params, 'weight', 0.16);
     const colorSpread = pNum(params, 'colorSpread', 0.6);
-    const colorBlend = pNum(params, 'colorBlend', 1);
+// The colour ramp is always resolved to its full depth.
+    //
+    // This was a control, and it had one job worth doing at its bottom end —
+    // showing the palette's accents as flat regions — and nothing worth doing
+    // anywhere else, because every step above that is just a finer version of
+    // the same wash. It was also the setting that made the arcs' flat-unit
+    // fault visible, which is a fair sign that the slider was carrying the
+    // weight of a bug rather than an idea.
+    const colorBlend = 1;
     const arcCount = Math.max(1, Math.round(pNum(params, 'arcCount', 1)));
     const arcSpacing = pNum(params, 'arcSpacing', 1);
 
@@ -355,6 +397,26 @@ export const truchet: Generator = {
         const r = s / 2;
         const mid = 0.70710678; // the 45 degree point of a quarter arc, and the outward ceiling
 
+        // How many pieces each arc is cut into for colour, by the same rule the
+        // chords already follow and for the same reason — which the arcs never
+        // got, and it shows.
+        //
+        // One flat colour per arc is a flat colour across (pi/2)*rho of the
+        // canvas, and rho reaches s/sqrt(2), so at five columns a single arc
+        // carries one colour across 22% of the width against the 6% the chords
+        // hold to. Two arcs that meet across a cell edge sample a whole cell
+        // apart, so a ribbon running through the grid changes colour in a hard
+        // step at the join: reported as strange non-smooth colour at full
+        // blend, which is exactly where the ramp is fine enough for the step to
+        // be a different hue rather than a neighbouring one.
+        //
+        // Keyed on the column count and never on pixels, so a thumbnail and an
+        // export cut their arcs the same way. Past about nineteen columns an
+        // arc is already short enough to need no cutting at all, which is
+        // where the render is heaviest.
+        const wantCuts = (1.5708 / (cols * 1.4142)) / MAX_SEGMENT;
+        const cuts = ARC_CUT_COUNTS.find((n) => n >= wantCuts) ?? ARC_CUT_COUNTS[ARC_CUT_COUNTS.length - 1] ?? 1;
+
         // The gap is derived, not given. Asking for twelve arcs at a spacing
         // that only fits eight used to drop four of them silently, and a stroke
         // heavier than the gap closed the rings into a block. Instead: divide
@@ -401,15 +463,49 @@ export const truchet: Generator = {
         // every arc in the cell the same step of the ramp, so two neighbouring
         // tiles can land on different steps and the whole cell boundary shows
         // as an edge.
+        // Where an arc sits on the circle it is drawn on, at parameter t along
+        // its quarter turn. Each corner is the same sweep reflected, and the
+        // reflections are exact arithmetic on the table's literals.
+        const arcPoint = (corner: 0 | 1 | 2 | 3, rho: number, at: readonly [number, number]): [number, number] => {
+          const [sn, cs] = at;
+          if (corner === 0) return [x0 + rho * sn, y0 + rho * cs];
+          if (corner === 1) return [x0 + s - rho * cs, y0 + rho * sn];
+          if (corner === 2) return [x0 + s - rho * sn, y0 + s - rho * cs];
+          return [x0 + rho * cs, y0 + s - rho * sn];
+        };
+
         const corners: [0 | 1 | 2 | 3, 0 | 1 | 2 | 3] = rot % 2 === 0 ? [0, 2] : [1, 3];
         corners.forEach((corner) => {
           for (const rho of radii) {
-            const k = rho * mid;
-            const mx = corner === 1 || corner === 2 ? x0 + s - k : x0 + k;
-            const my = corner === 2 || corner === 3 ? y0 + s - k : y0 + k;
-            (strokeBuckets[bandAt(mx, my)] as string[]).push(
-              el('path', { d: arcPath(corner, rho), 'stroke-width': num(fanSw, 2) }),
-            );
+            // Undivided, the arc is emitted exactly as it always was: the same
+            // path string, sampled at the same 45 degree point. Anything else
+            // repaints every render fine enough not to have the fault.
+            if (cuts === 1) {
+              const k = rho * mid;
+              const mx = corner === 1 || corner === 2 ? x0 + s - k : x0 + k;
+              const my = corner === 2 || corner === 3 ? y0 + s - k : y0 + k;
+              (strokeBuckets[bandAt(mx, my)] as string[]).push(
+                el('path', { d: arcPath(corner, rho), 'stroke-width': num(fanSw, 2) }),
+              );
+              continue;
+            }
+            const R = num(rho, 1);
+            const stops = ARC_CUTS[cuts] as readonly (readonly [number, number])[];
+            for (let c = 0; c < cuts; c++) {
+              const from = arcPoint(corner, rho, stops[c] as readonly [number, number]);
+              const to = arcPoint(corner, rho, stops[c + 1] as readonly [number, number]);
+              // Sampled at the chord midpoint rather than the arc's own, which
+              // would need the trigonometry of every half step as well. Over a
+              // piece this short the two are a pixel or two apart and the band
+              // is the same; what matters is that it is exact arithmetic on
+              // two table entries, and so identical in every engine.
+              (strokeBuckets[bandAt((from[0] + to[0]) / 2, (from[1] + to[1]) / 2)] as string[]).push(
+                el('path', {
+                  d: `M${num(from[0], 1)} ${num(from[1], 1)}A${R} ${R} 0 0 0 ${num(to[0], 1)} ${num(to[1], 1)}`,
+                  'stroke-width': num(fanSw, 2),
+                }),
+              );
+            }
           }
         });
         return;
