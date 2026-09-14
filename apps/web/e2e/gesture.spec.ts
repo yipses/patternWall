@@ -432,45 +432,6 @@ test.describe('gesture', () => {
       await expect(page.getByLabel('Stroke weight')).toHaveCount(0);
     });
 
-    test('the gear says when something behind it is not where it started', async ({ page }) => {
-      await page.goto('/p/truchet');
-      await settled(page);
-
-      const gear = page.getByTestId('preview-settings');
-      await expect(gear, 'a default config already claimed something had changed').toHaveAttribute(
-        'data-changed',
-        'false',
-      );
-
-      // A control behind the gear can hold a value nothing on screen explains.
-      // `weight` was a swipe gesture, got dragged near its minimum, and was
-      // then demoted to this sheet still holding it — the render came out as
-      // hairlines and was twice reported as a bug in the pattern, because the
-      // only thing that could have explained it was two taps away and silent.
-      await gear.click();
-      const weight = page.getByLabel('Stroke weight');
-      await weight.fill(await weight.getAttribute('min') ?? '0');
-      await weight.blur();
-      await settled(page);
-      await gear.click();
-
-      await expect(gear, 'a hidden control away from its default went unannounced').toHaveAttribute(
-        'data-changed',
-        'true',
-      );
-
-      // And one tap puts the hidden ones back, without touching the three that
-      // are on the picture.
-      const density = await numberOf(page, 'Grid density');
-      await gear.click();
-      await page.getByTestId('preview-settings-reset').click();
-      await settled(page);
-      await expect(page.getByLabel('Stroke weight')).toHaveValue('0.16');
-      await gear.click();
-      await expect(gear).toHaveAttribute('data-changed', 'false');
-      expect(await numberOf(page, 'Grid density'), 'the reset reached a promoted control').toBe(density);
-    });
-
     test('a press outside the sheet dismisses it instead of cycling the pattern', async ({ page }) => {
       await page.goto('/p/truchet');
       await settled(page);

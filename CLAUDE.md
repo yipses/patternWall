@@ -755,14 +755,20 @@ reverse, so the rule is worth stating plainly: a test that just needs a control
 should say so in a comment and name a promoted one, and moving a control means
 grepping every spec file for its label rather than the one you are working in.
 
-**Demoting a control does not reset it, and a hidden control explains
-nothing.** `weight` was a swipe gesture, got dragged near its minimum, and was
-then moved behind the gear still holding 0.04. The render came out as hairlines
-and was reported as a bug in the pattern twice — the only thing that could have
-explained it was two taps away and gave no sign of itself. The gear carries a
-mark when any control behind it is away from its default, and the sheet offers
-a reset scoped to those controls. Any time a control moves out of sight, ask
-what it is holding.
+**Demoting a control does not reset it.** `weight` was a swipe gesture, got
+dragged near its minimum while it was one, and was then moved behind the gear
+still holding 0.04. The render came out as hairlines and was twice reported as
+a bug in the pattern: the value was two taps away and nothing pointed at it.
+Before moving a control out of sight, check what it is holding and say so in
+the change, rather than leaving it for someone to find.
+
+The fix that suggests itself is wrong, and it shipped for one deploy — a dot on
+the gear whenever a hidden control sits away from its default. **A badge reads
+as "needs attention", and a setting somebody deliberately chose does not need
+attention.** It would sit there permanently after any adjustment, meaning
+nothing, and it dresses "different from the default" up as "something is
+wrong". Reverted. If a hidden value ever does need surfacing, surface the value
+itself, not an alarm about it.
 
 **A comment can be the last surviving copy of a reverted design.** The arcs
 branch carried four layers of commentary from successive attempts, two of them
