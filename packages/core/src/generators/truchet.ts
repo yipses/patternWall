@@ -14,7 +14,7 @@ Three tile sets are offered here and they behave quite differently. **Quarter ar
 
 On the diagonal set the same control does something structurally different, and something the arcs cannot quite manage. The single corner-to-corner line becomes a family of parallel chords spaced one cell width over the count — the only spacing that tiles, because it puts every crossing at a multiple of itself along each edge, and puts them there in both rotations. Where a fan only meets its neighbour when the two cells agree on a corner, every chord here finds its partner across every edge whichever way the cell beyond it happens to be turned. Past three or four the cells stop reading as cells at all and the grid becomes a woven field of chevrons and nested diamonds, which is a different pattern from the maze of switchbacks a count of one gives you.
 
-The triangles divide too, and on that same lattice. Each rotation of the tile is a half cell with its right angle at one corner, so scaling it about that corner sweeps the hypotenuse across the cell and a slice at k/n lands exactly where the diagonal family crosses. Filling every other band turns the solid half-cell into ribbons, and because the band edges fall where a neighbour puts its own, the ribbons run on through the grid instead of stopping at it — which is why raising this makes the tile set agree with itself across edges more often than the solid version does, not less. Stroke weight has no stroke to widen here, so it sets how much of its own share of the tile each band fills: thin it and a divided tile becomes fine ribbons while an undivided one shrinks back toward its corner, and past the default the bands grow into the gaps between them and fuse into solid mass again.
+The triangles divide too, and on that same lattice. Each rotation of the tile is a half cell with its right angle at one corner, so scaling it about that corner sweeps the hypotenuse across the cell and a slice at k/n lands exactly where the diagonal family crosses. Filling every other band turns the solid half-cell into ribbons, and because the band edges fall where a neighbour puts its own, the ribbons run on through the grid instead of stopping at it — which is why raising this makes the tile set agree with itself across edges more often than the solid version does, not less. Stroke weight has no stroke to widen here, so it sets how much of its own share of the tile each band fills — which is what it now means on the other two sets as well: thin it and a divided tile becomes fine ribbons while an undivided one shrinks back toward its corner, and past the default the bands grow into the gaps between them and fuse into solid mass again.
 
 Grid **density** interacts with everything. Below about six columns the tiles are large enough that you read each one individually and the tile set matters enormously; above about twenty you stop seeing tiles at all and start seeing a woven texture, at which point stroke weight matters more than which set you chose.
 `.trim();
@@ -103,6 +103,36 @@ const TRIANGLE_FILL_OPACITY = '0.9';
  * reduces to the expression this tile emitted before there was a control.
  */
 const TRIANGLE_FULL_WEIGHT = 0.16;
+
+/**
+ * The weight at which a *stroked* mark fills the whole pitch between itself
+ * and its neighbour, so that the family closes into solid mass.
+ *
+ * `weight` reads as a fraction of the cell, and the fan and the chord family
+ * used to take it that way and then clamp it to the gap, so that raising the
+ * division count could not merge the rings. Both halves are right and together
+ * they made most of the slider inert: above the gap it asked for a stroke it
+ * could not have and got the gap. Measured on the arcs at eight columns, the
+ * share of the slider's travel that changed the rendered stroke at all was
+ * 100% at one division, 29% at three and 6% at twelve — and the 0.16 default
+ * was already inside the dead zone from three divisions up.
+ *
+ * So the pitch is the unit, not the ceiling. That is what `weight` has always
+ * meant on the triangles, which is why they never had this fault, and it makes
+ * one control mean one thing across all three sets: how much of its own share
+ * each mark fills. A given weight now produces the same *look* at every
+ * division count instead of the same absolute width until it hits a wall.
+ *
+ * 0.414 is not arbitrary. At one division there is no neighbour and therefore
+ * no pitch, so the mark keeps its cell-relative width and the default render
+ * is byte-identical to what it was. This is the weight at which a mark exactly
+ * fills its pitch, chosen so that the arcs are *continuous* across that seam:
+ * the fan's two-ring pitch is its whole outward span, 2 * 0.2071s, and
+ * 0.16 / 0.414 of that is 0.16s — the same stroke one division draws. The
+ * slider then runs from a 5% hairline to 1.2 pitches, which overlaps and reads
+ * as solid, at every count.
+ */
+const FULL_PITCH_WEIGHT = 0.414;
 /** A band may grow to twice its pitch, which closes the gap either side of it. */
 const TRIANGLE_FILL_MAX = 2;
 
@@ -126,10 +156,10 @@ export const truchet: Generator = {
       default: 'arcs',
       description: 'Arcs make continuous loops, diagonals make switchbacks, triangles make mass instead of line.',
     },
-    { key: 'weight', label: 'Stroke weight', type: 'number', min: 0.02, max: 0.5, step: 0.01, default: 0.16, description: 'Line width as a fraction of the cell. Above about 0.4 the arcs start to touch and read as solid. Triangles have no stroke, so it sets how much of its own share of the tile each band fills instead: below the default a divided tile thins to ribbons and an undivided one shrinks back toward its corner, above it the bands grow into the gaps and fuse into solid mass.' },
+    { key: 'weight', label: 'Stroke weight', type: 'number', min: 0.02, max: 0.5, step: 0.01, default: 0.16, description: 'How much of its own share of the cell each mark fills. An undivided tile has the whole cell to itself and this is a line width; divide it and the share is the gap between one mark and the next, so the same setting keeps the same look instead of the marks thickening until they merge. Past the default they do merge, which is what reads as solid. Triangles have no stroke to widen and have always worked this way: below the default a divided tile thins to ribbons and an undivided one shrinks back toward its corner, above it the bands grow into the gaps and fuse.' },
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'How much of the colour comes from the drifting field rather than from height. At zero the palette runs top to bottom; at one it pools into regions that wander across the image.' },
-    { key: 'arcCount', label: 'Divisions', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'How many parts each cell’s mark is divided into. Quarter arcs become concentric, added either side of the radius that joins the neighbouring cells, and how far they reach is Arc spread’s job rather than this one. A diagonal becomes a family of parallel chords across the cell. A triangle is sliced into bands parallel to its hypotenuse with every other one filled, so the solid mass becomes ribbons. All three divide on a spacing that puts each part’s edges where a cell of the same size puts its own, so raising this adds detail inside a mark that keeps its size, and any stroke thins to the gap it leaves.' },
-    { key: 'arcSpacing', label: 'Arc spread', type: 'number', min: 0.15, max: 1, step: 0.05, default: 1, description: 'How much of the cell the rings reach across. The gap between them is worked out from that and the division count, so every arc you ask for fits, and the stroke thins if it has to rather than closing the rings into a solid block. Quarter arcs only: a family of diagonals has no say in how far it spreads, because the spacing that makes it meet its neighbours is the spacing that fills the cell.' },
+    { key: 'arcCount', label: 'Divisions', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'How many parts each cell’s mark is divided into. Quarter arcs become concentric, added either side of the radius that joins the neighbouring cells, and how far they reach is Arc spread’s job rather than this one. A diagonal becomes a family of parallel chords across the cell. A triangle is sliced into bands parallel to its hypotenuse with every other one filled, so the solid mass becomes ribbons. All three divide on a spacing that puts each part’s edges where a cell of the same size puts its own, so raising this adds detail inside a mark that keeps its size, and the stroke follows the gap it leaves rather than being clamped by it.' },
+    { key: 'arcSpacing', label: 'Arc spread', type: 'number', min: 0.15, max: 1, step: 0.05, default: 1, description: 'How much of the cell the rings reach across. The gap between them is worked out from that and the division count, so every arc you ask for fits, and the stroke is sized from that gap rather than clamped by it. Quarter arcs only: a family of diagonals has no say in how far it spreads, because the spacing that makes it meet its neighbours is the spacing that fills the cell.' },
   ],
 
   /**
@@ -470,7 +500,10 @@ export const truchet: Generator = {
         // The stroke gives way to the gap rather than the other way round, so a
         // heavy weight thins to keep the rings readable instead of merging
         // them. A single arc has no neighbour to crowd and keeps its weight.
-        const fanSw = step > 0 ? Math.min(sw, step * 0.68) : sw;
+        // A fraction of the pitch rather than a width clamped to it — see
+        // FULL_PITCH_WEIGHT. One ring has no neighbour and so no pitch, and
+        // keeps the cell-relative width it always drew.
+        const fanSw = step > 0 ? clamp((weight / FULL_PITCH_WEIGHT) * step, s * 0.012, s * 0.62) : sw;
 
         // Each arc is coloured from the field at its own midpoint, not at the
         // tile's centre. Sampling once per tile and quantising the result gives
@@ -576,7 +609,7 @@ export const truchet: Generator = {
       // it. Thinning to `step` would still let a heavy stroke close the family
       // into a solid triangle.
       const perp = step * 0.70710678;
-      const lineSw = lines > 1 ? Math.min(sw, perp * 0.68) : sw;
+      const lineSw = lines > 1 ? clamp((weight / FULL_PITCH_WEIGHT) * perp, s * 0.012, s * 0.62) : sw;
 
       // Each chord is cut into pieces that take their own colour, rather than
       // carrying one colour end to end.

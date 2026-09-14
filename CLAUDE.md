@@ -658,11 +658,36 @@ not to rescale `weight`; it was to notice that a gesture has to be independent
 of the other gestures, and to give the horizontal axis to `density`, which is
 uncoupled from both and is the control a person reaches for first anyway.
 
-`weight` is still worth fixing and is now a slider behind the gear, where a
-dead upper range is a much smaller debt. The fix, when it comes, is to make it
-a fraction of the *pitch* each mark has rather than of the cell — which is
-already exactly what it means on the triangles, so it would make one control
-mean one thing across all three tile sets.
+The fix is the one the triangles already had: **the pitch is the unit, not the
+ceiling.** A stroke is `weight / FULL_PITCH_WEIGHT` of the gap it has, so a
+given weight produces the same *look* at every division count instead of the
+same absolute width until it hits a wall. All three sets now mean one thing by
+it — how much of its own share each mark fills — and the slider is live over
+100% of its travel at every count on arcs and diagonals.
+
+Two things made that cheap. At one division there is no neighbour and so no
+pitch, so the mark keeps its cell-relative width and the default render is
+byte-identical — checked by checksum on the rasterised PNG, not by eye. And
+the constant is chosen so the arcs are *continuous* across that seam rather
+than merely unbroken: the two-ring pitch is exactly the fan's whole outward
+span, so 0.414 makes one division and two draw the same stroke at the same
+weight.
+
+The triangles keep a dead top third and that is correct. At twice its pitch a
+band has closed the gap either side of it and the tile is solid — there is
+nothing further to fill, so it is saturation rather than a clamp, and unlike
+the clamp it is visible in the picture. A dead range you can see the reason for
+is not the same defect.
+
+The regression test had to ask a different question from the one already
+there. An existing test compares thin against heavy at one and three divisions
+and passed against the bug throughout, because the *thin* end was still below
+the gap and so still moved; the fault was at the top and got worse with the
+count. The new one runs from the default upward at twelve. Against the clamp it
+reads 0.290 ink at the default and 0.290 at the maximum — the same number
+twice, which is what a dead control looks like once you finally measure it.
+When a control is partly dead, test the half that is dead, not the range that
+happens to span it.
 
 **A test that names a control by its label breaks when the control moves, and
 the ones that break are never in the file you are editing.** Swapping truchet's

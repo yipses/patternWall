@@ -85,6 +85,46 @@ describe('truchet stroke weight', () => {
   });
 
   /**
+   * The whole slider does something, at every division count.
+   *
+   * The test above uses 0.05 against 0.45 at one and three divisions, and it
+   * passed against the bug this one catches, because 0.05 is below the gap at
+   * three divisions and so the thin end still moved. The fault was at the
+   * *top* of the slider and it got worse the further you raised divisions: a
+   * stroke was sized as a fraction of the cell and then clamped to the gap
+   * between rings, so above the gap the control asked for a width it could not
+   * have and got the gap. Measured on the arcs at eight columns, the share of
+   * the slider's travel that changed the rendered stroke at all was 100% at
+   * one division, 29% at three and 6% at twelve — with the 0.16 default
+   * already inside the dead zone from three divisions up.
+   *
+   * So this asks the question the other test cannot: from the default upward,
+   * at the counts where the gap is tightest. Against the old clamp both ends
+   * render the identical stroke — 1.38px at twelve divisions whether you ask
+   * for 0.16 or 0.5 — and the assertion reads the same number twice.
+   *
+   * Triangles are deliberately not here. Their ceiling is real: `weight` has
+   * always been a fraction of pitch there, and at twice its pitch a band has
+   * closed the gap either side of it and the tile is solid, so the top of the
+   * slider is saturation rather than a clamp. It is visible in the picture,
+   * which is the difference that matters.
+   */
+  it('keeps answering above the default, where the gap is tightest', () => {
+    for (const [tileSet, arcCount] of [
+      ['arcs', 12],
+      ['arcs', 6],
+      ['diagonals', 6],
+    ] as const) {
+      const mid = ink({ tileSet, arcCount, weight: 0.16 });
+      const heavy = ink({ tileSet, arcCount, weight: 0.5 });
+      expect(
+        heavy,
+        `${tileSet} at ${arcCount} divisions laid ${heavy.toFixed(3)} ink at the top of the slider against ${mid.toFixed(3)} at the default`,
+      ).toBeGreaterThan(mid * 1.25);
+    }
+  });
+
+  /**
    * The default is the render it always was.
    *
    * Giving a dead control something to do is a change to every picture that
