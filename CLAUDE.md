@@ -498,6 +498,40 @@ matters replays the arc, because a straight vertical drag passes under both
 rules, which is exactly why this shipped with a vertical-drag test already
 green.
 
+It was also not the whole fault, which is the part worth keeping. Fixing it
+improved the gesture and the report came back as "still isn't great", and the
+two entries below are what was actually underneath. Three causes, one symptom,
+and the first one found was the smallest of them — when a fix makes a reported
+fault better without ending it, that is evidence of another cause rather than
+of tuning left to do.
+
+**Re-anchoring on the value being at a bound is not the same as the drag
+having gone past one, and a control that starts on its minimum tells them
+apart.** A scrub re-anchors its origin when you drag beyond an end, so that
+reversing responds on the first pixel instead of paying back the overshoot —
+right for a fader, and the condition for it was `value === spec.min || value
+=== spec.max`. Divisions defaults to 1, which *is* its minimum, so it satisfies
+that from the first move of every drag, long before the drag has covered a
+step. Re-anchoring discards the displacement accumulated so far, so each move
+started again from nothing and the value could never climb off the end.
+
+What made it intermittent — and it was reported as inconsistency, twice — is
+that a single move can escape on its own. Drag fast and the first move crosses
+half a step, quantises upward, leaves the bound, and everything after it works.
+Drag smoothly, as a thumb does against a 120Hz screen, and no individual move
+ever crosses half a step, so nothing happens at all. The bug was a function of
+pointer speed, which is why no amount of looking at the code for the *axis*
+found it.
+
+The test had to be a smooth drag to see any of this. The existing helper moves
+in 24 increments, which on a 150px swipe is 6.25px an event — enough to clear
+half a step on the first one, so every vertical test in the file passed for a
+reason that had nothing to do with the mechanism being right. The fix keys on
+whether the *fraction* overshot the range rather than on where the value
+landed. The general form: when a guard's condition is a proxy for a state, ask
+what else satisfies the proxy — here, being at the end and having gone past the
+end look identical in the value and are opposite in intent.
+
 **Two fills at different opacities composite, and a hole in the upper one is a
 window onto the lower.** The preview's gear was an opaque ring for the hub
 drawn under a gear body at 0.55. The body paints over the ring; the ring's hole

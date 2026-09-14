@@ -212,13 +212,33 @@ export function useScrub(options: {
       const dir = d.axis === 'x' ? 1 : -1;
       const coord = d.axis === 'x' ? e.clientX : e.clientY;
       const travel = travelFor(spec);
-      const value = scrubTo(spec, d.from, (dir * (coord - d.anchor)) / travel);
+      const span = spec.max - spec.min;
+      const fraction = (dir * (coord - d.anchor)) / travel;
+      const value = scrubTo(spec, d.from, fraction);
 
-      // At either end, re-anchor so that reversing responds on the first pixel
-      // rather than after paying back however far past the end you dragged.
+      // Past either end, re-anchor so that reversing responds on the first
+      // pixel rather than after paying back however far beyond it you dragged.
       // Rubber-banding is right for a scroll and wrong for a fader.
-      if (value === spec.min || value === spec.max) {
-        const reached = (value - d.from) / (spec.max - spec.min);
+      //
+      // The test is whether the *fraction* overshot, not whether the value is
+      // sitting on the bound. Those read as equivalent and are not, and the
+      // difference is the rest of why vertical swipes were unreliable. A
+      // control whose current value already is a bound — divisions defaults to
+      // its minimum — sits on that bound from the first move of every drag,
+      // long before the drag has covered a step. Keying on the value therefore
+      // re-anchored on every one of those moves, and re-anchoring discards the
+      // displacement accumulated so far, so the value could never climb off
+      // the end: each move started again from nothing.
+      //
+      // What made it intermittent is that one move can escape on its own. Drag
+      // fast and the first move crosses half a step, quantises upward, and
+      // everything from there works; drag smoothly, as a thumb does at 120Hz,
+      // and no single move ever crosses half a step, so nothing happens at
+      // all. The fault was a function of pointer speed, which is why looking
+      // at the axis logic never found it.
+      const overshot = fraction > (spec.max - d.from) / span || fraction < (spec.min - d.from) / span;
+      if (overshot) {
+        const reached = (value - d.from) / span;
         d.anchor = coord - dir * reached * travel;
       }
 

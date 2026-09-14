@@ -30,6 +30,23 @@ async function dragBy(page: Page, dx: number, dy: number): Promise<void> {
   await page.mouse.up();
 }
 
+/**
+ * The same drag a thumb makes: many small moves rather than a few big ones.
+ *
+ * `dragBy` moves in 24 increments, which on a 150px swipe is 6.25px an event.
+ * A finger on a 120Hz screen covers a fraction of that, and the difference is
+ * not cosmetic — it decides whether a single move crosses half a step of the
+ * control, which is what one bug here turned on.
+ */
+async function dragSmoothly(page: Page, dx: number, dy: number): Promise<void> {
+  const { cx, cy } = await phoneBox(page);
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  const steps = 60;
+  for (let i = 1; i <= steps; i++) await page.mouse.move(cx + (dx * i) / steps, cy + (dy * i) / steps);
+  await page.mouse.up();
+}
+
 async function tapPreview(page: Page): Promise<void> {
   const { cx, cy } = await phoneBox(page);
   await page.mouse.move(cx, cy);
@@ -73,6 +90,31 @@ test.describe('gesture', () => {
 
     expect(await numberOf(page, 'Divisions'), `divisions went ${before} -> ${await numberOf(page, 'Divisions')} dragging up`).toBeGreaterThan(before);
     expect(await numberOf(page, 'Stroke weight'), 'a vertical drag moved the horizontal control too').toBe(weightBefore);
+  });
+
+  test('a smooth swipe moves a control that starts on its minimum', async ({ page }) => {
+    await page.goto('/p/truchet');
+    await settled(page);
+
+    // Divisions defaults to 1, which is also its minimum, and that is the
+    // case the re-anchor rule used to destroy: it fired whenever the value sat
+    // on a bound, which such a control does from the first move of every drag.
+    // Re-anchoring discards the travel accumulated so far, so each move began
+    // again from nothing and the value never climbed off the end.
+    const before = await numberOf(page, 'Divisions');
+    expect(before, 'this test is about a control sitting on its minimum').toBe(1);
+
+    // Sixty moves over 150px is 2.5px each — under half a step at any travel
+    // this file uses, so no single move can escape the minimum on its own.
+    // That is why it had to be a smooth drag: the coarser helper's 6.25px
+    // moves cleared half a step on the first one and hid the fault.
+    await dragSmoothly(page, 0, -150);
+    await settled(page);
+
+    expect(
+      await numberOf(page, 'Divisions'),
+      'a smooth swipe up left divisions on its minimum, so the drag accumulated nothing',
+    ).toBeGreaterThan(before);
   });
 
   test('a swipe that sets off sideways is still a swipe up', async ({ page }) => {
