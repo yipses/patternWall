@@ -25,16 +25,30 @@ import { quantise, scrubTo, stepCount, type NumberSpec, type ParamSpec, type Pri
  * preview is about 200px wide, so truchet's stroke weight — 49 steps — would
  * get four pixels a step and be untunable, while divisions at 12 steps would
  * get seventeen. Worse, the same drag would mean different things on a desktop
- * and a phone, which is precisely what this design is trying not to be. Fixed
- * pixels per *step* is the one mapping that feels the same everywhere.
+ * and a phone, which is precisely what this design is trying not to be.
  *
- * The clamp keeps a two-step parameter from being a hair trigger and a
- * two-hundred-step one from needing a swipe nobody has room for. With pointer
- * capture the gesture continues past the edge of the surface, so a 520px sweep
- * on a 200px preview is fine.
+ * But pixels per step is only the right invariant while a step is a small
+ * thing. Weight has 48 of them and one is invisible; divisions has 11 and one
+ * redraws the pattern. At twelve pixels each that put the whole of divisions
+ * inside 140px — a third of the preview's height — so a swipe up pinned it at
+ * twelve and the next swipe did nothing, because there was nothing left. That
+ * is what "swipe up and down isn't great" was: not a gesture that failed to
+ * register, a control that had already finished. Measured on the two axes
+ * truchet is driven by, a 150px drag moved weight 29% of its range and
+ * divisions 107% of its.
+ *
+ * So the floor is a real swipe rather than a nominal one, and what it buys is
+ * that a coarse parameter spends its range over about a thumb's length while a
+ * fine one still gets its twelve pixels a step. The ceiling is unchanged and
+ * still the other guard: with pointer capture a gesture continues past the
+ * edge of the surface, so a 520px sweep on a 200px-wide preview is fine.
+ *
+ * Both numbers are relative to the preview, which is `min(62svh, 460px)` tall
+ * on a phone — 300 is two thirds of that, reachable in one movement without
+ * being reachable by accident.
  */
 const PX_PER_STEP = 12;
-const TRAVEL_MIN = 140;
+const TRAVEL_MIN = 300;
 const TRAVEL_MAX = 520;
 
 /**
@@ -234,8 +248,9 @@ export function useScrub(options: {
       // fast and the first move crosses half a step, quantises upward, and
       // everything from there works; drag smoothly, as a thumb does at 120Hz,
       // and no single move ever crosses half a step, so nothing happens at
-      // all. The fault was a function of pointer speed, which is why looking
-      // at the axis logic never found it.
+      // all. Raising the travel floor made every move smaller and turned an
+      // intermittent fault into a total one, which is how it was finally
+      // caught — by a test that had passed for the wrong reason.
       const overshot = fraction > (spec.max - d.from) / span || fraction < (spec.min - d.from) / span;
       if (overshot) {
         const reached = (value - d.from) / span;

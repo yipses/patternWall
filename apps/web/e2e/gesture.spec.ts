@@ -117,6 +117,28 @@ test.describe('gesture', () => {
     ).toBeGreaterThan(before);
   });
 
+  test('a moderate swipe up does not spend the whole control', async ({ page }) => {
+    await page.goto('/p/truchet');
+    await settled(page);
+
+    const divisions = page.getByLabel('Divisions');
+    const max = Number(await divisions.getAttribute('max'));
+    const before = await numberOf(page, 'Divisions');
+
+    // 150px: a third of the preview's height on a phone, and nobody's idea of
+    // a full sweep. Divisions used to cross its entire range inside 140px, so
+    // this pinned it at the ceiling and every swipe after it did nothing —
+    // which is indistinguishable, from the outside, from a gesture that never
+    // registered at all. The horizontal axis moved 29% of its range over the
+    // same distance, so the two axes did not feel like one control scheme.
+    await dragBy(page, 0, -150);
+    await settled(page);
+    const after = await numberOf(page, 'Divisions');
+
+    expect(after, 'a moderate swipe did not move the vertical control').toBeGreaterThan(before);
+    expect(after, `a 150px swipe took divisions to ${after} of a possible ${max}`).toBeLessThan(max);
+  });
+
   test('a swipe that sets off sideways is still a swipe up', async ({ page }) => {
     await page.goto('/p/truchet');
     await settled(page);

@@ -532,6 +532,32 @@ landed. The general form: when a guard's condition is a proxy for a state, ask
 what else satisfies the proxy — here, being at the end and having gone past the
 end look identical in the value and are opposite in intent.
 
+**Pixels per step is the wrong invariant once a step stops being a small
+thing.** The gesture gives every parameter twelve pixels of travel per step,
+which is deliberate and right against surface-relative travel: it means a drag
+means the same on a phone and a desktop. It also put truchet's two axes on
+wildly different scales, because the number of steps is not a measure of how
+much a step does. Weight has 48 and one of them is invisible; divisions has 11
+and one of them redraws the pattern. Measured, a 150px drag moved weight 29% of
+its range and divisions 107% of its — so the vertical axis saturated inside a
+third of the preview's height and every swipe after the first did nothing.
+From the outside that is indistinguishable from a gesture that never
+registered, which is what it was reported as.
+
+The floor on total travel exists for exactly this and was set at 140px by eye,
+which is no floor at all for an 11-step control — 132 of those pixels were what
+the step rule already asked for. It is 300px now, about two thirds of the
+preview's height on a phone, so a coarse parameter spends its range over a
+thumb's length while a fine one still gets its twelve pixels a step. Ask what a
+person sees: not how many steps they crossed, but how much the picture moved
+under their thumb.
+
+Worth noting how the second bug hid the third and the third exposed the second.
+Raising the travel made every pointer move smaller, which turned the
+re-anchor fault from intermittent into total and failed a test that had been
+passing for the wrong reason since it was written. A calibration change is a
+good way to find out which of your tests were only ever passing by luck.
+
 **Two fills at different opacities composite, and a hole in the upper one is a
 window onto the lower.** The preview's gear was an opaque ring for the hub
 drawn under a gear body at 0.55. The body paints over the ring; the ring's hole
