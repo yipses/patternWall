@@ -294,6 +294,100 @@ describe('truchet triangles and their neighbours', () => {
   });
 });
 
+/**
+ * Band ends on a cell seam that have no partner facing them.
+ *
+ * Pixels could not answer this. Counting samples with ink on one side of a
+ * seam only rewards a render for being empty; normalising by inked samples
+ * rewards thickness instead and called the shipping default worse than solid.
+ * Both were tried and both disagreed with the pictures. This reads the
+ * polygons out of the document and asks the question directly, so a thinner
+ * band changes nothing about the score unless it also stops meeting its
+ * neighbour.
+ */
+function unpartneredEnds(density: number, arcCount: number, weight: number): number {
+  const size = 600;
+  const svg = renderToSvg({
+    generator: truchet,
+    width: size,
+    height: size,
+    palette,
+    params: { ...defaultParams(truchet), tileSet: 'triangles', density, arcCount, weight },
+    seed: 'truchet-geometry',
+    bleed: 0,
+  });
+  const polys = [...svg.matchAll(/<polygon points="([^"]+)"/g)].map((m) =>
+    (m[1] as string).split(' ').map((p) => p.split(',').map(Number) as [number, number]),
+  );
+  const cell = size / density;
+  const EPS = 0.25;
+  let total = 0;
+  let alone = 0;
+  for (let c = 1; c < density; c++) {
+    const sx = c * cell;
+    const left: [number, number][] = [];
+    const right: [number, number][] = [];
+    for (const pts of polys) {
+      const xs = pts.map((p) => p[0]);
+      const on = pts.filter((p) => Math.abs(p[0] - sx) < EPS).map((p) => p[1]);
+      if (on.length < 2) continue;
+      const iv: [number, number] = [Math.min(...on), Math.max(...on)];
+      if (iv[1] - iv[0] < 0.1) continue;
+      if (Math.max(...xs) - sx < EPS) left.push(iv);
+      else if (sx - Math.min(...xs) < EPS) right.push(iv);
+    }
+    for (const [side, other] of [
+      [left, right],
+      [right, left],
+    ] as const) {
+      for (const iv of side) {
+        total += 1;
+        let cover = 0;
+        for (const o of other) cover += Math.max(0, Math.min(iv[1], o[1]) - Math.max(iv[0], o[0]));
+        if (cover < (iv[1] - iv[0]) * 0.5) alone += 1;
+      }
+    }
+  }
+  return total === 0 ? 0 : (alone / total) * 100;
+}
+
+describe('truchet triangle ribbons meet across a seam', () => {
+  /**
+   * A band is centred in its slot rather than anchored on its corner-side
+   * edge, and the reason is a bound that can be written down before choosing
+   * the fix.
+   *
+   * Band k of n covers [k, k + fill] of its legs, in slots of s/n, measured
+   * from its own right-angle corner. Across a seam where the neighbour is
+   * turned the other way, that neighbour measures from the far end, so its
+   * band k' covers [n - k' - fill, n - k']. The two coincide only when
+   * k = n - k' - fill — which needs `fill` to be a whole number. Anchoring
+   * therefore misaligns every band by (1 - fill)/n at every division count,
+   * and only the default weight, where fill is exactly 1, escaped it.
+   *
+   * Centre the band instead and the condition becomes k' = n - 1 - k with no
+   * mention of fill, so it holds at every weight. Measured here at the lowest
+   * weight: 51.5% of band ends unpartnered anchored, 15.2% centred.
+   *
+   * Odd counts only, deliberately. k' = n - 1 - k has the parity of n - 1, so
+   * for even n the partner of a filled slot is always an empty one and no
+   * anchoring can fix it — that fault predates this, shows at the default
+   * weight too, and is recorded in the repo notes as open. A test that spanned
+   * both would have to be loose enough to pass the broken case.
+   */
+  it('leaves few band ends without a partner, at every weight', () => {
+    for (const arcCount of [3, 5, 11]) {
+      for (const weight of [0.02, 0.04, 0.08, 0.16]) {
+        const pct = unpartneredEnds(6, arcCount, weight);
+        expect(
+          pct,
+          `at ${arcCount} divisions and weight ${weight}, ${pct.toFixed(1)}% of band ends on a seam had nothing facing them`,
+        ).toBeLessThan(30);
+      }
+    }
+  });
+});
+
 describe('truchet triangles stay a tiling at the narrowest weight', () => {
   /**
    * The rule this guards is available before knowing the fix, which is the

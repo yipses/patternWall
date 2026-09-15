@@ -509,9 +509,12 @@ export const truchet: Generator = {
         // becoming a band across the middle of one: scaling about the right
         // angle keeps the two legs on the cell edges, where the neighbouring
         // tiles meet them, and retreats only the hypotenuse.
+        // Centred in its slot rather than anchored on the corner-side edge,
+        // wherever there is more than one band.
+        const lead = bands === 1 ? 0 : (1 - fill) / 2;
         for (let k = bands - 1; k >= 0; k -= 2) {
-          const t0 = k / bands;
-          const t1 = Math.min(1, (k + fill) / bands);
+          const t0 = Math.max(0, (k + lead) / bands);
+          const t1 = Math.min(1, (k + lead + fill) / bands);
           emit(t0 === 0 ? [corner, at(legA, t1), at(legB, t1)] : [at(legA, t0), at(legA, t1), at(legB, t1), at(legB, t0)]);
         }
         return;
