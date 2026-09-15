@@ -500,6 +500,16 @@ cannot go wrong.
 
 **A check that subsumes another does not make the other redundant — measure before deleting it.** With every tick validated against the field, removing the per-ring vote that decides *whether* a ring is a hollow changed nothing the tests could see, which looked like proof the vote was dead. It is not: without it, summit rings pick up two or three stray ticks where a kink happens to face a local dip, and a scattering of ticks on a hill is exactly the error the convention exists to prevent. It showed up as the emptiest ticked ring filling 0.23 of its tick slots against 0.74 with the vote in place. The test that was passing against the bug was asking about direction; the fault was about density.
 
+**`createRng` takes a number, and a string silently becomes seed 0.** It is
+typed `seed: number`, so real code is safe — but a scratch `.mjs` script is not
+typechecked, and `createRng('delta-631')` coerces to 0 without complaining. Four
+renders at four different seeds therefore came out byte-identical, and that was
+about to be reported as "the seed does nothing on triangles" before the rng was
+tested on its own. Scripts want `renderToSvg({ seed })`, which converts the
+string, or `seedToInt` first. The general form is the instrument rule again:
+when a measurement says a control does nothing at all, test the control's own
+input before the code it feeds.
+
 **Test files import `src`, not `dist`.** Twice in one session a measurement script gave results that contradicted the arithmetic, because the script imports `packages/core/dist` and the last thing built there was a deliberately broken version from a bug injection. Vitest resolves the TypeScript directly, so tests are never stale this way and scripts always are. Rebuild before measuring, or read the number twice and believe neither.
 
 **Past a point a quantity stops being the lever, and thinning a stroke is the usual way to find that out.** Contours crowd into a solid mass at high line counts, and the obvious fix — thin the stroke to the gap, which is the rule the truchet arcs settled on — moves almost nothing at default weight: sixteen lines through sixteen pixels is solid at any width, and measured, mean ink went 0.175 to 0.170. It is not a useless mechanism; it is the right answer to a different cause, and at weight 3 it takes 0.447 to 0.242. The lever that moves the real case is the interval, which is also what a printed sheet changes — steep ground carries fewer contours. The general form: when a fix barely moves the measurement, ask which cause it addresses rather than how to tune it, and check whether the thing you are varying has the range the problem needs.
