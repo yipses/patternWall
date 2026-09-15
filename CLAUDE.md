@@ -726,6 +726,15 @@ see mid-drag wrapping. It can; the injected bug was not the bug. When a bug
 injection fails to fail, check that you injected the thing you meant before
 concluding anything about the test.
 
+> **The triangles are gone.** Everything from here to the end of the diamond
+> entries is about a truchet tile set that was removed when arcs and diagonals
+> became separate patterns. The code is not in the repo. The entries stay
+> because every one of them is a lesson about something else — where colour is
+> sampled, what a budget may be spent on, what a constraint leaves free, which
+> instrument can see a fault — and because the diamond derivation is the
+> clearest worked example in this file of a picture being determined by
+> structure rather than by the seed.
+
 **Filling the empty half of a truchet triangle fixes the measurement and
 destroys the pattern.** A triangle fills half its cell and leaves the other half
 as paper; that blank half *is* the tile set. Two real faults sit under it — a
@@ -993,6 +1002,73 @@ was true when written. Prose near a change is part of the change: when you
 revert, revert what explains it too, and when you read a comment as evidence,
 check it against the code.
 
+**Promoting a gesture to the registry moves three bugs with it.** Tap used to
+cycle whichever parameter a generator nominated; it moves to the next pattern
+now. The gesture is the same event and the mechanism underneath it is entirely
+different, and each of the three things that broke is the same shape: state that
+was safe while the pattern could not change under it.
+
+The worst was an effect keyed on `generator.id`. It decodes the share link into
+the editor, and while the id came from the route it could only change by
+navigating — so `[generator.id]` was exactly right. The id is state now, so a
+tap re-ran it against `window.location.search`, which still holds the previous
+pattern's `q` until the 220ms URL debounce catches up, and would have been read
+against the new pattern's params in any case. It would have undone the tap with
+values that never meant anything. Mount only. **When you move a value from a
+prop into state, grep every dependency array that names it** — each one was
+written under a promise that no longer holds.
+
+The second: two things legitimately called "Pattern". The editor's tab panel is
+named Pattern by its tab, and the new control is a select labelled Pattern, so
+`getByLabel('Pattern')` matched both and eleven tests died on a strict-mode
+violation. Playwright's `getByLabel` is a case-insensitive substring match, which
+is also why the dice's "Draw a new seed" collided with the Seed field and the
+book's "Open your saved wallpapers" collided with the "3 saved" link. Two of
+those were fixed by making the locator say which *kind* of thing it wants; one
+was fixed by renaming the button, because "Open your collection" is the app's
+own vocabulary and was better wording anyway. **A new button with an aria-label
+is a new thing every label-based locator in the suite can match.**
+
+The third was a test that had been passing on a coincidence. The browser-vs-Node
+parity check renders a configuration and then asserts the editor's preview shows
+exactly that — and it named the seed and the palette as literals. They happened
+to be the ones `initialConfig` hands that pattern, so it passed; pointed at any
+other pattern it fails immediately, with a diff of a thousand polygons that says
+nothing about parity. It reads `initialConfig(g.id)` now. **A literal that
+matches a derived value is a test that works where it was written and nowhere
+else.**
+
+**A desktop panel does not become a phone sheet by being put in one.** The
+palette overlay is the same `PalettePanel` the Palette tab renders, and at 390px
+it had 177px of width beside the button rail — enough to clip its own tab strip
+to two of four, with the rest reachable only by a horizontal swipe nobody would
+guess at. The fix was structural rather than cosmetic: the sheet takes the whole
+preview and the rail hides while it is open, which then needs a real way out, so
+it has a Done button. That button was absolutely positioned first, which puts it
+over a scrolling container — it scrolled away with the content it was supposed
+to sit above. Sticky, with an opaque background.
+
+Worth recording how both were found: by rasterising the built page at 390px and
+looking at it. Neither is visible in a test, both are obvious in a screenshot,
+and the second one only exists because the first was fixed.
+
+**Five buttons do not fit across a phone preview.** The rail is book, heart,
+droplet, dice, gear. At 40px with 8px gaps that is 232px, and below 1000px the
+preview is sized from its height — about 240px wide on a 390px phone — so a row
+would span the entire picture. A column costs the same 232px of a preview two
+and a half times as tall, and the sheet stops short of it rather than padding
+itself away from the bottom. The general form is the arithmetic one this file
+keeps returning to: work out what the space is before choosing how to fill it.
+
+Two glyph notes, since the cog entry above was written about exactly this.
+The palette button was three discs overlapping at different opacities, which is
+two fills compositing into a third colour where they cross — the fault reported
+twice on the cog, reintroduced from the other side within an hour of reading it.
+Separated, they can all be opaque; but three dots beside a die, which is a
+rounded square full of pips, is a shape you have to look at twice. A droplet has
+a silhouette neither of the others can be confused with. **Compared at 19px,
+which is the size it ships at**, not at a size that flatters it.
+
 ---
 
 ## Truchet, as settled
@@ -1055,76 +1131,29 @@ result. Each was arrived at by breaking it first.
   about 23 columns a chord is already short enough to want a single piece,
   which is exactly where the render is heaviest.
 
-- **Triangles divide on that same lattice, and an even count sits half a step
-  off it.** Every rotation lists its right-angle corner first, so scaling about
-  that vertex sweeps the hypotenuse across the cell and a slice at `k/n` lands
-  on the chord `k*(s/n)`. Fill every other band, counting down from the
-  hypotenuse, and the mass becomes ribbons; filling every band instead just
-  reassembles the triangle.
+Controls, on both: density, weight, colorSpread, arcCount (labelled Divisions;
+max 12 on arcs, 6 on diagonals), and arcSpacing (spread) on the arcs alone.
+The two the picture is driven by — horizontal for density, vertical for
+arcCount — are promoted into the panel with their gesture written beside them;
+the rest live behind the gear on the preview, as name and slider with no
+explanation. Tap belongs to the registry now and moves to the next pattern.
 
-  Alternating is what makes the count's parity matter. A filled slot's `k` has
-  the parity of `n-1`, and across a seam where the neighbour is turned the other
-  way slot `k` faces slot `n-1-k`, of parity 0 — the same only when `n` is odd.
-  At an even count every filled slot faced an empty one, half the seams had a
-  ribbon running into blank paper, and the chevrons came apart into jogged
-  fragments. It was reported at thirteen columns and six divisions, and it is
-  visible in resvg, so unlike the diagonals' seams it was never a rasteriser
-  question. Shifting the family half a slot changes the partner to `n-k`, of
-  parity 1, which is what an even count needs; odd counts keep a phase of zero
-  and are byte-identical. Measured band ends with no partner facing them, at six
-  divisions: 51.5% before, 15.2% after — which was the floor `JOIN_NEIGHBOUR`
-  left at 0.7, and is 0 now that it is 1. That 15.2% is its own lesson: every
-  count read "same as the odd ones" and was called fixed, while the picture
-  still showed ribbons stopping dead. A number that matches a baseline says
-  nothing if the baseline was never checked against the render.
+`weight` held the horizontal slot until its range turned out to be eaten by the
+division count, which the bug note above records. Removed as not worth their
+slots, over the life of the generator: `colorBlend`, `mixed`, row weight
+variation, `gap`, `subdivide`, `quietTop` and `openEnds` — and then `tileSet`,
+`diamonds` and `diamondBreak` with the triangles. Every stroke is one width and
+fully opaque.
 
-  Two things that entry cost, both worth keeping. **Edges coinciding was never
-  sufficient** — at an even count the edges always met and the filled slots
-  never did, so the lattice test was asserting a proxy that held while the
-  property it stood for failed. And an even count no longer has a band flush
-  against the hypotenuse; the outermost stops half a band short. That edge is
-  what gives the tile its direction, so it is a real trade, taken because
-  ribbons that run through the grid beat ribbons that stop at every other cell.
+The divisions ceiling used to be `limits`, a range declared against another
+parameter's value and applied in a second pass of `coerceParams` because it
+cannot be resolved until that parameter has settled. Splitting the tile sets
+turned it into a number in a spec. **Nothing in the registry declares `limits`
+any more**, and the machinery stays anyway: a mode switch with a dependent range
+is the obvious next thing a generator will reach for, and its tests run against
+a fabricated generator that declares the condition *after* the thing it limits,
+which is the order that catches a single-pass implementation.
 
-  **Rotations are biased toward meeting their neighbours** rather than drawn
-  freely — a half cell shows ink to only two of four edges, so a free rotation
-  leaves about half the grid's seams with a ribbon stopping against blank paper.
-  See `JOIN_NEIGHBOUR` and the bug note above for why it is a dial and not a fix.
-
-- **`weight` sets how much of its pitch a triangle band fills**, since there is
-  no stroke here to widen. One is the width this set always drew, so the
-  default is byte-identical to what it was; below it the band pulls back toward
-  the corner-side edge it is anchored on, above it the band grows past its
-  pitch and the alternating ribbons fuse into solid mass. Anchored at that edge
-  and never centred on itself: at one division the anchored version scales
-  about the right angle and stays a triangle with its legs on the cell edges,
-  where the neighbours meet it, while a centred one becomes a four-sided strip
-  floating across the middle of the cell, joined to nothing. The two are the
-  same expression at full fill, which is why every test but the one about
-  corner counts passes either way.
-
-- **Divisions stops at six on diagonals**, through `limits`, because the count
-  is a different amount of ink on each set: n rings on arcs against 2n-1 chords
-  on diagonals. Tapping between sets scales the value to the new ceiling rather
-  than clamping it, so half way along stays half way along.
-
-Controls: density, tileSet, weight, colorSpread,
-arcCount (labelled Divisions; max 6 on diagonals, 12 elsewhere), arcSpacing
-(spread; quarter arcs only), diamonds (triangles only; how much of the tiling
-closes into rings rather than running on, steered through the phases the join
-leaves free), diamondBreak (triangles only; how often a row or column changes
-phase part way across, at one broken seam per fault, which is the only way out
-of the plaid the join forces). The three it is driven by — tap for tileSet,
-horizontal for density, vertical for arcCount — are promoted into the panel;
-`weight` held the horizontal slot until its range turned out to be eaten by
-the division count, which the bug note above records; the rest live behind the gear on the preview, as name and slider with no
-explanation, alongside a button for a fresh seed. Removed as not worth their slots: `colorBlend`, `mixed`, row
-weight variation, `gap`, `subdivide`, `quietTop` and `openEnds`. The last four
-went together and each had the same shape of problem — a knob whose effect was
-either invisible (`gap`), a band across a uniform grid (`quietTop`), a patch
-that broke the lattice it sat in (`subdivide`), or an effect the tiling already
-produced structurally (`openEnds`). Every stroke is now one width and fully
-opaque, and the triangles fill at a flat 0.9.
 
 ---
 
@@ -1147,12 +1176,40 @@ from this build environment. Do not quietly upgrade a guess to a fact.
 
 ## Current state
 
-Seven generators: `flow-dots`, `truchet`, `phyllotaxis`, `ridgelines`,
-`contours`, `chevron-blocks`, `string-art`. Two taxonomy tags — `distortion` and `physics` —
-have no patterns yet. Truchet and contours are by far the most worked over; the
-rest have had little iteration and should be assumed rougher rather than better.
+Four patterns in the app: `truchet-arcs`, `truchet-diagonals`, `chevron-blocks`,
+`contours`. Four more are written, tested and **not registered** — `flow-dots`,
+`phyllotaxis`, `ridgelines`, `string-art` live in `retired` in
+`generators/index.ts`, which means no page, no gallery card and no slot in the
+tap cycle. `getGenerator` deliberately does not search `retired`: a pattern that
+is not in the app must not resolve from a URL or from a saved collection item,
+or it would render a page the gallery says does not exist.
 
-`string-art` is the only generator that takes an *input*. Its picture is a
+They are not deleted, and the seam that keeps that honest is `ALL_GENERATORS` in
+`packages/core/test/helpers.ts`, which is `[...generators, ...retired]`. Every
+suite that sweeps "all generators" sweeps the retired ones too, so a change to a
+shared helper cannot quietly rot the four nobody is looking at. A test about
+what the *app* offers reads `generators` directly — the primaries contract is
+the one that does.
+
+Truchet used to be one generator with a `tileSet` select: arcs, diagonals and
+triangles. Tap cycles the *pattern* now rather than a parameter, so a select
+whose whole job was to be the tap had nothing left to be. Arcs and diagonals
+became two registry entries sharing one render through `makeTruchet(kind, …)`,
+and the triangles were removed outright. The bug notes about them are kept
+below because the lessons are general — the flat-unit rule, dividing mass into
+ribbons removing ink, a fully joined tiling being a plaid — but **the code they
+describe is gone**, so do not go looking for it.
+
+Two consequences of that rename worth knowing before reading any old number in
+this file. The generator id is part of what `seedToInt` hashes, so the same seed
+word draws a different picture under `truchet-arcs` than it did under `truchet`
+— measured, the drawing itself is byte-identical across 120 configs once the
+`<title>` is normalised, and every single hash still differs. And `/p/truchet/`
+links are dead: the id is gone and the params shifted anyway when `tileSet` left
+slot 1. That was taken knowingly, and it is the last time it will be free.
+
+`string-art` is the only generator that takes an *input*, and it is one of
+the four set aside. Its picture is a
 param like any other — an `image` ParamSpec holding a 4-bit darkness grid
 packed by `imagegrid.ts` into link-safe characters — so a share link is the
 portrait rather than a reference to one, and nothing about the upload leaves

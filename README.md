@@ -56,8 +56,8 @@ The workflow sets this from the repository name. Leave the variable unset for lo
 builds, a custom domain, or a `<user>.github.io` root site. Two details that the
 subpath makes load-bearing:
 
-- `trailingSlash` is on, so routes export as `p/flow-dots/index.html` rather than
-  `p/flow-dots.html`. That resolves on every static host, including the ones that do
+- `trailingSlash` is on, so routes export as `p/contours/index.html` rather than
+  `p/contours.html`. That resolves on every static host, including the ones that do
   no extensionless lookup.
 - The workflow writes `.nojekyll`, without which Pages refuses to serve the
   `_next` directory.
@@ -213,9 +213,14 @@ a non-blank canvas on six palettes, share-link round-tripping, and browser/Node 
   canvas edge can fall inside at one resolution and outside at another, so a 108px thumbnail and a
   1399px export can differ by a handful of shapes out of several thousand. The test suite holds this
   to half a percent per element type.
-- **Seven generators.** The taxonomy has eight tags; `distortion` and `physics` have no patterns yet.
-- **String art carries its picture in the link.** That is a deliberate trade — the whole portrait
-  travels in a URL rather than living on a server — but it is the only pattern whose input is lossy
-  before you see it, and the Picture detail control is where you pay for it: about 1,500 characters
-  of URL at the coarsest and about 11,000 at the finest. A link that long will survive a browser but
-  not a text message, which is what the rest of the share encoding was designed for.
+- **Four patterns in the app, four written and set aside.** `truchet-arcs`, `truchet-diagonals`,
+  `chevron-blocks` and `contours` are the registry; `flow-dots`, `phyllotaxis`, `ridgelines` and
+  `string-art` are in `retired` — no page, no gallery card, no slot in the tap cycle, but the code
+  and its tests are still here and still run. The taxonomy has eight tags and most of them now have
+  no pattern at all, which is a consequence of narrowing rather than a gap to fill.
+- **String art is one of the four set aside, and it carried its picture in the link.** That was a
+  deliberate trade — the whole portrait travelling in a URL rather than living on a server — and it
+  is the only pattern whose input is lossy before you see it: about 1,500 characters of URL at the
+  coarsest Picture detail and about 11,000 at the finest. A link that long survives a browser but
+  not a text message, which is what the rest of the share encoding was designed for. Worth knowing
+  before it comes back.
