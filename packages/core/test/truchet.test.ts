@@ -353,49 +353,54 @@ function unpartneredEnds(density: number, arcCount: number, weight: number): num
 
 describe('truchet diagonals do not leave a seam for a renderer to open', () => {
   /**
-   * A chord is cut into pieces so each can take its own colour, and the pieces
-   * used to share an endpoint exactly. A shared edge between two separately
-   * rasterised shapes is the classic hairline: two antialiased edges at 50%
-   * coverage composite to 75%, not 100%, and the paper shows through. Chrome
-   * and resvg composite exactly and show nothing; it was reported on Safari,
-   * where the lines came out dashed end to end at the spacing of the pieces.
+   * A chord used to be cut into pieces so each could take its own colour, and
+   * each cut left two paths sharing an endpoint exactly. A shared edge between
+   * two separately rasterised shapes is the classic hairline: two antialiased
+   * edges at 50% coverage composite to 75%, not 100%, and the paper shows
+   * through. Chrome and resvg composite exactly and show nothing; it was
+   * reported on Safari, where the lines came out dashed end to end at the
+   * spacing of the pieces rather than of the cells.
    *
-   * So the guard is about the geometry rather than about any one renderer:
-   * consecutive pieces of a chord must overlap, not meet. Pieces that share a
-   * colour are written as one path, and what is left is grown at its interior
-   * ends, which leaves nothing for a seam to open along.
-   *
-   * Measured as coincident endpoints per emitted path, at the configuration
-   * this was reported at: 0.966 before, 0.140 after. What remains is where a
-   * chord meets the next cell's chord, which is a different join and is not
-   * grown — stretching those moved 22% of the pixels at fourteen columns.
+   * A chord is one path now, stroked with a gradient where its colour changes,
+   * so there is no cut to seam. This counts the cuts: 420 points inside a cell
+   * had two marks meeting at them before, none now.
    */
   it('does not leave pieces of a chord sharing an endpoint', () => {
-    for (const [density, arcCount] of [
-      [3, 3],
-      [5, 4],
+    // Square renders whose density divides the size, so the grid starts at the
+    // origin and a cell boundary is an exact multiple of the cell.
+    for (const [size, density, arcCount] of [
+      [600, 3, 3],
+      [600, 5, 4],
     ] as const) {
-      const svg = render({
-        tileSet: 'diagonals',
-        density,
-        arcCount,
-        weight: 0.04,
-        colorSpread: 1,
-        arcSpacing: 0.75,
-      });
+      const svg = render({ tileSet: 'diagonals', density, arcCount, weight: 0.04, colorSpread: 1 }, size);
+      const cell = size / density;
       const ends = new Map<string, number>();
-      let paths = 0;
+      const ys: number[] = [];
       for (const m of svg.matchAll(/d="M([\d.-]+) ([\d.-]+)L([\d.-]+) ([\d.-]+)/g)) {
-        paths += 1;
         for (const k of [`${m[1]}:${m[2]}`, `${m[3]}:${m[4]}`]) ends.set(k, (ends.get(k) ?? 0) + 1);
+        ys.push(Number(m[2]), Number(m[4]));
       }
-      let coincident = 0;
-      for (const v of ends.values()) if (v > 1) coincident += 1;
-      const perPath = coincident / paths;
+      // Columns start at zero, but the rows are centred and carry a row beyond
+      // each edge, so the horizontal boundaries sit at some negative offset and
+      // are not multiples of the cell. Take that offset from the topmost point
+      // any mark reaches, which is the first row's own edge. Assuming it was
+      // zero scored eighteen legitimate chord ends as seams.
+      const originY = Math.min(...ys);
+      // A chord runs corner to corner in its cell, so both its ends lie on a
+      // cell boundary. A shared point that lies on neither is two pieces of one
+      // chord meeting — the seam this is about.
+      const onBoundary = (v: number, origin: number): boolean =>
+        Math.abs((v - origin) / cell - Math.round((v - origin) / cell)) < 0.02;
+      let interior = 0;
+      for (const [k, n] of ends) {
+        if (n < 2) continue;
+        const [x, y] = k.split(':').map(Number) as [number, number];
+        if (!onBoundary(x, 0) && !onBoundary(y, originY)) interior += 1;
+      }
       expect(
-        perPath,
-        `at ${density} columns and ${arcCount} divisions there were ${coincident} coincident endpoints across ${paths} paths`,
-      ).toBeLessThan(0.5);
+        interior,
+        `${interior} points inside a cell had two marks meeting at them at ${density} columns`,
+      ).toBe(0);
     }
   });
 });
@@ -415,7 +420,7 @@ describe('truchet triangle ribbons meet across a seam', () => {
    * and only the default weight, where fill is exactly 1, escaped it.
    *
    * Centre the band instead and the condition becomes k' = n - 1 - k with no
-   * mention of fill, so it holds at every weight. Measured here at the lowest
+   * mention of fill, so it holds at every weight. Measured at the lowest
    * weight: 51.5% of band ends unpartnered anchored, 15.2% centred.
    *
    * Odd counts only, deliberately. k' = n - 1 - k has the parity of n - 1, so
@@ -908,24 +913,90 @@ describe('truchet triangles', () => {
 describe('truchet diagonal colour resolution', () => {
   const MAX_SEGMENT = 0.06;
 
+  /**
+   * A chord is one path stroked with a gradient, so the guard is on how often
+   * the field is read along it rather than on how long a piece is.
+   *
+   * The fault this protects against is unchanged: sampling once per chord put
+   * every colour boundary in the gap between chords, and since every chord
+   * runs at 45 degrees the field's contours snapped onto a lattice of parallel
+   * lines and came out as straight-edged diamond facets. The cure used to be
+   * cutting the chord into pieces short enough that no piece carried one
+   * colour across more than 6% of the canvas, and the length of a path was
+   * therefore the thing to measure. It is not any more — a path is now a whole
+   * chord, up to 47% of the canvas at three columns, and carries a ramp rather
+   * than a colour.
+   *
+   * What survives is the sampling interval, which is the rule stated directly:
+   * the field is read every 6% of the canvas along a chord, so no colour
+   * change larger than that can be missed. Measured, the worst gap between
+   * two stops is 5.9% at every density.
+   */
   for (const density of [3, 6, 8, 12, 26]) {
-    it(`keeps a single-colour piece under ${MAX_SEGMENT * 100}% of the canvas at density ${density}`, () => {
+    it(`reads the colour field every ${MAX_SEGMENT * 100}% of the canvas at density ${density}`, () => {
       const W = 900;
       const svg = render({ tileSet: 'diagonals', density, arcCount: 4 }, W);
-      // Measure the first line segment of every path; the one path that also
-      // carries the corner spur is measured on its chord piece alone.
-      const lengths: number[] = [];
-      for (const m of svg.matchAll(/d="M([-\d.]+) ([-\d.]+)L([-\d.]+) ([-\d.]+)/g)) {
-        lengths.push(Math.hypot(Number(m[3]) - Number(m[1]), Number(m[4]) - Number(m[2])));
+      const stopsById = new Map<string, number[]>();
+      for (const m of svg.matchAll(/<linearGradient id="(tg\d+)"[^>]*>(.*?)<\/linearGradient>/gs)) {
+        stopsById.set(m[1] as string, [...(m[2] as string).matchAll(/offset="([\d.]+)"/g)].map((o) => Number(o[1])));
       }
-      expect(lengths.length, 'no diagonal marks to measure').toBeGreaterThan(20);
-      const worst = Math.max(...lengths) / W;
+      let marks = 0;
+      let worstGap = 0;
+      let worstFlatRamp = 0;
+      for (const m of svg.matchAll(/<path d="M([\d.-]+) ([\d.-]+)L([\d.-]+) ([\d.-]+)"([^>]*)>/g)) {
+        marks += 1;
+        const len = Math.hypot(Number(m[3]) - Number(m[1]), Number(m[4]) - Number(m[2])) / W;
+        const ref = /stroke="url\(#(tg\d+)\)"/.exec(m[5] as string);
+        if (!ref) continue;
+        const offs = stopsById.get(ref[1] as string) ?? [];
+        for (let i = 1; i < offs.length; i++) {
+          worstGap = Math.max(worstGap, ((offs[i] as number) - (offs[i - 1] as number)) * len);
+        }
+        // Before the first stop and after the last, a gradient is flat.
+        if (offs.length > 0) {
+          worstFlatRamp = Math.max(worstFlatRamp, (offs[0] as number) * len, (1 - (offs[offs.length - 1] as number)) * len);
+        }
+      }
+      expect(marks, 'no diagonal marks to measure').toBeGreaterThan(20);
       expect(
-        worst,
-        `a mark carries one colour across ${(worst * 100).toFixed(1)}% of the canvas at density ${density}`,
+        worstGap,
+        `the field went unread across ${(worstGap * 100).toFixed(1)}% of the canvas at density ${density}`,
+      ).toBeLessThanOrEqual(MAX_SEGMENT * 1.02);
+      expect(
+        worstFlatRamp,
+        `a gradient ran flat across ${(worstFlatRamp * 100).toFixed(1)}% of the canvas at density ${density}`,
       ).toBeLessThanOrEqual(MAX_SEGMENT * 1.02);
     });
   }
+
+  /**
+   * The other half of the same rule, and the one that fails if the gradient is
+   * ever taken back out. A chord painted one flat colour is correct only when
+   * the field really is flat along it; if every chord is flat, the facets are
+   * back. Measured where chords are long: 95% carry a ramp at three columns
+   * and 83% at six, against 0% for one colour per chord. Past about 23 columns
+   * a chord is shorter than the rule's own bound and flat is right for all of
+   * them, which is why this asks only at the low densities.
+   */
+  it('lets colour change along a chord wherever the field does', () => {
+    for (const [density, floor] of [
+      [3, 0.8],
+      [6, 0.7],
+    ] as const) {
+      const svg = render({ tileSet: 'diagonals', density, arcCount: 4 }, 900);
+      let ramped = 0;
+      let total = 0;
+      for (const m of svg.matchAll(/<path d="M[\d.-]+ [\d.-]+L[\d.-]+ [\d.-]+"([^>]*)>/g)) {
+        total += 1;
+        if (/stroke="url\(#tg\d+\)"/.test(m[1] as string)) ramped += 1;
+      }
+      const share = ramped / total;
+      expect(
+        share,
+        `only ${(share * 100).toFixed(0)}% of chords carried a colour ramp at ${density} columns`,
+      ).toBeGreaterThan(floor);
+    }
+  });
 });
 
 describe('truchet colour resolution', () => {
@@ -963,6 +1034,28 @@ describe('truchet colour resolution', () => {
         if (!perCell.has(key)) perCell.set(key, new Set());
         (perCell.get(key) as Set<string>).add(colour);
       };
+      // A diagonal chord whose colour changes along it is one path stroked
+      // with a gradient, so its colours live in the defs rather than on a
+      // group. Without this the whole tile set reads as having no colour at
+      // all and the test scores it as unresolved — the trap this file's notes
+      // record about a new kind of mark joining the document.
+      const gradientStops = new Map<string, string[]>();
+      for (const gm of svg.matchAll(/<linearGradient id="(tg\d+)"[^>]*>(.*?)<\/linearGradient>/gs)) {
+        gradientStops.set(
+          gm[1] as string,
+          [...(gm[2] as string).matchAll(/stop-color="(#[0-9a-f]{6})"/gi)].map((o) => o[1] as string),
+        );
+      }
+      for (const pm of svg.matchAll(/<path d="M([\d.-]+) ([\d.-]+)L([\d.-]+) ([\d.-]+)"[^>]*stroke="url\(#(tg\d+)\)"/g)) {
+        const [ax, ay, bx, by] = [Number(pm[1]), Number(pm[2]), Number(pm[3]), Number(pm[4])];
+        const colours = gradientStops.get(pm[5] as string) ?? [];
+        // Each stop sits at its own point along the chord, so attribute it to
+        // the cell it actually falls in rather than to the chord's midpoint.
+        colours.forEach((colour, i) => {
+          const t = (i + 0.5) / colours.length;
+          add(ax + (bx - ax) * t, ay + (by - ay) * t, colour);
+        });
+      }
       for (const m of svg.matchAll(/<g [^>]*(?:stroke|fill)="(#[0-9a-f]{6})"[^>]*>(.*?)<\/g>/gi)) {
         const colour = m[1] as string;
         const body = m[2] as string;

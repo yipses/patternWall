@@ -307,15 +307,18 @@ export const truchet: Generator = {
     // exactly one band per accent with no interpolation at all. Both were true
     // when written and neither describes this code, which is the trap CLAUDE.md
     // warns about; they contradicted each other and the block below them.
-    const defs = el(
-      'defs',
-      {},
-      el(
-        'linearGradient',
-        { id: 'tr-bg', x1: '0', y1: '0', x2: '0', y2: '1' },
-        el('stop', { offset: '0', 'stop-color': tintTop }) + el('stop', { offset: '1', 'stop-color': tintBottom }),
-      ),
+    const bgGradient = el(
+      'linearGradient',
+      { id: 'tr-bg', x1: '0', y1: '0', x2: '0', y2: '1' },
+      el('stop', { offset: '0', 'stop-color': tintTop }) + el('stop', { offset: '1', 'stop-color': tintBottom }),
     );
+
+    // A chord whose colour changes along its length is stroked with a gradient
+    // of its own, so these accumulate as tiles are drawn and join the defs at
+    // the end. A chord of one colour never makes one.
+    const chordGradients: string[] = [];
+    const gradientIds = new Map<string, string>();
+    const gradientPaths: string[] = [];
 
     // Tiles are grouped by colour so the SVG carries one fill/stroke per group
     // rather than per shape.
@@ -757,13 +760,10 @@ export const truchet: Generator = {
       //
       // Keyed on the column count, never on pixels: a thumbnail and an export
       // must cut their chords the same way or they stop being the same picture.
-      // The growth below lengthens the stretch a piece carries one colour
-      // across, so the piece count has to be taken against what is left of the
-      // 6% budget after it, not against the whole of it. Without this the
-      // pieces come out at 6.4% and the rule is quietly broken by the fix that
-      // was meant to leave it alone.
-      const growRel = Math.min(lineSw / 2, w * 0.0025) / w;
-      const segments = Math.max(1, Math.min(12, Math.ceil(1.4142 / (cols * (MAX_SEGMENT - 2 * growRel)))));
+      // How finely the colour is read along a chord. It is not a count of
+      // marks any more — see below — but the same 6% rule sets it: no stretch
+      // of one colour may cross more than that fraction of the canvas.
+      const samples = Math.max(1, Math.min(12, Math.ceil(1.4142 / (cols * MAX_SEGMENT))));
       for (let k = -kMax; k <= kMax; k++) {
         const o = k * step;
         // Each chord is written from its top-most end so that the single-line
@@ -775,62 +775,78 @@ export const truchet: Generator = {
           : k <= 0
             ? [x0 + s + o, y0, x0, y0 + s + o]
             : [x0 + s, y0 + o, x0 + o, y0 + s];
-        // Two pieces of a chord used to be written as two paths that shared an
-        // endpoint exactly, and a shared edge between two separately rasterised
-        // shapes is the classic hairline: two antialiased edges at 50% coverage
-        // composite to 75%, not 100%, and the paper shows through. A render of
-        // three columns at three divisions carried 927 of those joins. Chrome
-        // and resvg composite exactly and show nothing; it was reported on
-        // Safari, where the lines came out dashed end to end at the spacing of
-        // the pieces rather than of the cells.
+
+        // One path for the whole chord, and where its colour changes along the
+        // way that path is stroked with a gradient rather than cut into pieces.
         //
-        // So each piece is grown at its interior ends and neighbours overlap
-        // instead of meeting. The growth is bounded twice and needs both
-        // bounds. Half a stroke width keeps it inside the round cap the
-        // neighbour already paints, so a renderer that composites exactly puts
-        // ink on the same pixels. A quarter of a percent of the canvas keeps a
-        // heavy stroke from stretching the chord — at weight 0.4 half a stroke
-        // is a visible extension. That second bound is keyed on the canvas and
-        // not on the cell, because a seam is about one device pixel wide
-        // whatever the grid is doing, so a bound that shrinks with the cell
-        // stops covering one by the time the grid is fine; keyed on the canvas
-        // it still scales with the render, so a thumbnail and an export stay
-        // the same picture.
+        // Cutting was the fix for a real fault — a chord carrying one colour
+        // end to end put every colour boundary in the gap between chords, and
+        // since every chord runs at 45 degrees the field's contours snapped
+        // onto a lattice of parallel lines and came out as diamond facets. But
+        // each cut left two paths sharing an endpoint exactly, and a shared
+        // edge between two separately rasterised shapes is the classic
+        // hairline: two antialiased edges at 50% coverage composite to 75%,
+        // not 100%, and the paper shows through. Three columns at three
+        // divisions carried 927 of those. Chrome and resvg composite exactly
+        // and show nothing; Safari drew the lines dashed end to end, at the
+        // spacing of the pieces.
         //
-        // Interior ends only. A chord's own ends meet the next cell's chord,
-        // and growing those stretches the family past its cell: at fourteen
-        // columns it moved 22% of the pixels, against 4.7% for this.
-        //
-        // The chords run at exactly 45 degrees — every branch above moves x and
-        // y by the same amount — so the unit vector along one is a literal
-        // rather than a call to a trigonometric builtin this file may not use.
-        const ux = Math.sign(qx - px) * 0.70710678;
-        const uy = Math.sign(qy - py) * 0.70710678;
-        const grow = growRel * w;
-        for (let j = 0; j < segments; j++) {
-          const t0 = j / segments;
-          const t1 = (j + 1) / segments;
-          const ax = px + (qx - px) * t0;
-          const ay = py + (qy - py) * t0;
-          const bx = px + (qx - px) * t1;
-          const by = py + (qy - py) * t1;
-          // The colour is still read at the piece's own midpoint, off the
-          // geometry the ramp was designed around rather than off the grown
-          // path, so growing a piece cannot change which band it lands in.
-          const segBand = bandAt((ax + bx) / 2, (ay + by) / 2);
-          const gx0 = j === 0 ? ax : ax - ux * grow;
-          const gy0 = j === 0 ? ay : ay - uy * grow;
-          const gx1 = j === segments - 1 ? bx : bx + ux * grow;
-          const gy1 = j === segments - 1 ? by : by + uy * grow;
-          // Collinear pieces under a round linecap: the join is invisible, and
-          // the stroke is the same width either side of it.
-          const d = `M${num(gx0, 1)} ${num(gy0, 1)}L${num(gx1, 1)} ${num(gy1, 1)}`;
-          (strokeBuckets[segBand] as string[]).push(
-            el('path', {
-              d: d + (k === kMax && j === segments - 1 ? extra : ''),
-              'stroke-width': num(lineSw, 2),
-            }),
+        // A gradient buys what the cutting bought without the seam, and buys
+        // it better: the colour is continuous along the chord rather than
+        // stepped, so the 6% rule is satisfied by there being no flat stretch
+        // at all rather than by keeping each one short.
+        const d0 = `M${num(px, 1)} ${num(py, 1)}L${num(qx, 1)} ${num(qy, 1)}`;
+        const d = d0 + (k === kMax ? extra : '');
+
+        // Read the field where the pieces used to take it: at the midpoint of
+        // each equal division of the chord.
+        let uniform = true;
+        const along: number[] = [];
+        for (let j = 0; j < samples; j++) {
+          const t = (j + 0.5) / samples;
+          along.push(bandAt(px + (qx - px) * t, py + (qy - py) * t));
+          if (along[j] !== along[0]) uniform = false;
+        }
+
+        if (uniform) {
+          (strokeBuckets[along[0] as number] as string[]).push(
+            el('path', { d, 'stroke-width': num(lineSw, 2) }),
           );
+        } else {
+          // Keyed on the chord's own bounding box rather than on the canvas,
+          // which is what lets two chords share one definition. Every chord
+          // here runs at exactly 45 degrees and downward, so its box is a
+          // square and the gradient axis is one of its two diagonals — the
+          // chord is the diagonal. A definition therefore depends only on
+          // which way the chord leans and what colours run along it, and a
+          // render reuses a handful of them instead of writing one per mark.
+          // Keying on the canvas instead cost 57% more bytes at fourteen
+          // columns, because the axis then carries four coordinates that no
+          // two chords ever share.
+          const leansRight = qx > px;
+          let stops = '';
+          for (let j = 0; j < samples; j++) {
+            stops += el('stop', {
+              offset: num((j + 0.5) / samples, 3),
+              'stop-color': bandColors[along[j] as number] as string,
+            });
+          }
+          const key = `${leansRight ? 'r' : 'l'}|${stops}`;
+          let id = gradientIds.get(key);
+          if (id === undefined) {
+            id = `tg${gradientIds.size}`;
+            gradientIds.set(key, id);
+            chordGradients.push(
+              el(
+                'linearGradient',
+                leansRight
+                  ? { id, x1: '0', y1: '0', x2: '1', y2: '1' }
+                  : { id, x1: '1', y1: '0', x2: '0', y2: '1' },
+                stops,
+              ),
+            );
+          }
+          gradientPaths.push(el('path', { d, stroke: `url(#${id})`, 'stroke-width': num(lineSw, 2) }));
         }
       }
     };
@@ -841,7 +857,9 @@ export const truchet: Generator = {
       }
     }
 
-    let body = defs + el('rect', { x: 0, y: 0, width: w, height: h, fill: 'url(#tr-bg)' });
+    let body =
+      el('defs', {}, bgGradient + chordGradients.join('')) +
+      el('rect', { x: 0, y: 0, width: w, height: h, fill: 'url(#tr-bg)' });
 
     for (let b = 0; b < bands; b++) {
       const fills = fillBuckets[b] as string[];
@@ -851,6 +869,12 @@ export const truchet: Generator = {
       if (strokes.length > 0) {
         body += el('g', { fill: 'none', stroke: color, 'stroke-linecap': 'round' }, strokes.join(''));
       }
+    }
+
+    // The chords that carry a gradient cannot sit in a group that names one
+    // stroke, so they go in a group of their own after the flat ones.
+    if (gradientPaths.length > 0) {
+      body += el('g', { fill: 'none', 'stroke-linecap': 'round' }, gradientPaths.join(''));
     }
 
     return svgRoot(w, h, `${truchet.name} wallpaper`, body);
