@@ -7,6 +7,7 @@ import {
   defaultParams,
   encodeConfig,
   generators,
+  getGenerator,
   initialConfig,
   normalizePalette,
   packPalette,
@@ -165,5 +166,39 @@ describe('share links', () => {
     expect(unpackPalette('~d0000001111112222')).toBeNull();
     expect(unpackPalette('')).toBeNull();
     expect(unpackPalette('~d000000111111222222')).not.toBeNull();
+  });
+});
+
+describe('a link older than the pattern it names', () => {
+  /**
+   * Params are positional and append-only, so a link made before a param was
+   * added carries fewer values than the generator has. That case is normal and
+   * decodes correctly — every value it does carry lands where it did, and the
+   * new one takes its default.
+   *
+   * It used to be reported as "unrecognised settings were reset", which is
+   * false: nothing was reset. Appending `tileJoin` to truchet put that in front
+   * of every truchet link ever shared, which is how it was found. Carrying more
+   * values than the pattern has params is the case that message belongs to.
+   */
+  it('says the link is old rather than claiming settings were lost', () => {
+    const truchet = getGenerator('truchet')!;
+    const short = Array.from({ length: truchet.params.length - 1 }, (_, i) => (i === 0 ? '17' : '1')).join('_');
+    const { config, notes } = decodeConfig('truchet', `?s=yarrow-129&q=${short}`);
+
+    expect(notes.join(' '), 'a shorter link must not claim anything was reset').not.toMatch(/reset/i);
+    expect(notes.join(' ')).toMatch(/predates/i);
+    // the values it does carry still land where they did
+    expect(config.params.density).toBe(17);
+    // and the appended one takes its own default
+    const last = truchet.params[truchet.params.length - 1]!;
+    expect(config.params[last.key]).toBe(last.default);
+  });
+
+  it('still says settings were reset when the link carries more than the pattern has', () => {
+    const truchet = getGenerator('truchet')!;
+    const long = Array.from({ length: truchet.params.length + 3 }, () => '1').join('_');
+    const { notes } = decodeConfig('truchet', `?s=yarrow-129&q=${long}`);
+    expect(notes.join(' ')).toMatch(/reset/i);
   });
 });

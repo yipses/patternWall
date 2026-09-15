@@ -108,8 +108,18 @@ function unpackParams(generatorId: string, token: string, notes: string[]): Reco
   const out = defaultParams(g);
   if (!token) return out;
   const parts = token.split('_');
-  if (parts.length !== g.params.length) {
+  // Too many values and too few are different events, and saying "reset" about
+  // both is a lie half the time. A link carrying more values than the pattern
+  // has params really does have settings this build cannot place. A link
+  // carrying fewer is simply older than a param that was appended since: every
+  // value it does carry lands where it did, and the new one takes its default.
+  // Nothing is reset, and telling somebody it was sends them looking for
+  // damage that is not there. Appending `tileJoin` to truchet put that message
+  // in front of every truchet link ever shared.
+  if (parts.length > g.params.length) {
     notes.push('The link was written for a different version of this pattern; unrecognised settings were reset.');
+  } else if (parts.length < g.params.length) {
+    notes.push('This link predates some of the settings below, which are at their defaults.');
   }
   g.params.forEach((spec, i) => {
     const raw = parts[i];
