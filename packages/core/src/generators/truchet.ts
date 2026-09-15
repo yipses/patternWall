@@ -178,6 +178,33 @@ const WEIGHT_MAX = 0.5;
 /** A band may grow to twice its pitch, which closes the gap either side of it. */
 const TRIANGLE_FILL_MAX = 2;
 
+/** The bottom of the weight slider. */
+const WEIGHT_MIN = 0.02;
+
+/**
+ * The narrowest a triangle band may be drawn, as a share of its own pitch.
+ *
+ * A band is anchored on its corner-side edge, so at one division `fill` does
+ * not thin the mark — it scales the whole triangle about its right angle, and
+ * a triangle at 0.125 of its cell is 1.6% of that cell's area. The tile set
+ * stopped being a tiling and became specks, which is what the low end of the
+ * slider was doing on every undivided render.
+ *
+ * The bound is the reversed neighbour. A band covering [k, k+f] of its legs
+ * faces, across a seam where the neighbour is turned the other way, a band
+ * covering [n-k'-f, n-k']; the two overlap for k+k' = n-1 exactly when
+ * f > 1/2, at every division count. Below that a ribbon has no partner to run
+ * into and stops against the cell boundary. 0.6 takes the bound with enough
+ * margin that the overlap is a third of a band rather than a knife edge.
+ *
+ * Two pixel metrics were tried on the seams and neither can see this. Counting
+ * samples with ink on one side only rewards a render for being empty — the
+ * specks score best of anything. Normalising by inked samples inverts the bias
+ * and rewards thickness, marking the shipping default as worse than solid at
+ * every count. The bound above is derived and the floor was chosen by looking.
+ */
+const TRIANGLE_FILL_MIN = 0.6;
+
 export const truchet: Generator = {
   id: 'truchet',
   name: 'Truchet',
@@ -419,7 +446,21 @@ export const truchet: Generator = {
         // How much of its own pitch each band fills. One is the width this
         // tile has always drawn; less pulls the band back toward the corner it
         // is anchored on, more grows it across the gap into its neighbour.
-        const fill = clamp(weight / TRIANGLE_FULL_WEIGHT, 0.12, TRIANGLE_FILL_MAX);
+        //
+        // Below the default the slider is remapped onto [TRIANGLE_FILL_MIN, 1]
+        // rather than clamped there. A clamp would leave the bottom eight of
+        // the slider's forty-eight steps doing nothing, and unlike the dead top
+        // third — where a band has closed its gaps and there is visibly nothing
+        // left to fill — that one has no reason a person could see. Remapping a
+        // control normally means moving every value it already had, which is
+        // what made the arcs thinner than they were; here every value it had
+        // below the default drew specks, so there is nothing under this range
+        // worth preserving. The default and everything above it are untouched.
+        const fill =
+          weight >= TRIANGLE_FULL_WEIGHT
+            ? Math.min(weight / TRIANGLE_FULL_WEIGHT, TRIANGLE_FILL_MAX)
+            : TRIANGLE_FILL_MIN +
+              clamp((weight - WEIGHT_MIN) / (TRIANGLE_FULL_WEIGHT - WEIGHT_MIN), 0, 1) * (1 - TRIANGLE_FILL_MIN);
 
         // t >= 1 returns the vertex itself rather than corner + (p - corner),
         // which is the same point in algebra and not always the same float. A
@@ -468,9 +509,12 @@ export const truchet: Generator = {
         // becoming a band across the middle of one: scaling about the right
         // angle keeps the two legs on the cell edges, where the neighbouring
         // tiles meet them, and retreats only the hypotenuse.
+        // Centred in its slot rather than anchored on the corner-side edge,
+        // wherever there is more than one band.
+        const lead = bands === 1 ? 0 : (1 - fill) / 2;
         for (let k = bands - 1; k >= 0; k -= 2) {
-          const t0 = k / bands;
-          const t1 = Math.min(1, (k + fill) / bands);
+          const t0 = Math.max(0, (k + lead) / bands);
+          const t1 = Math.min(1, (k + lead + fill) / bands);
           emit(t0 === 0 ? [corner, at(legA, t1), at(legB, t1)] : [at(legA, t0), at(legA, t1), at(legB, t1), at(legB, t0)]);
         }
         return;
@@ -713,7 +757,13 @@ export const truchet: Generator = {
       //
       // Keyed on the column count, never on pixels: a thumbnail and an export
       // must cut their chords the same way or they stop being the same picture.
-      const segments = Math.max(1, Math.min(12, Math.ceil(1.4142 / (cols * MAX_SEGMENT))));
+      // The growth below lengthens the stretch a piece carries one colour
+      // across, so the piece count has to be taken against what is left of the
+      // 6% budget after it, not against the whole of it. Without this the
+      // pieces come out at 6.4% and the rule is quietly broken by the fix that
+      // was meant to leave it alone.
+      const growRel = Math.min(lineSw / 2, w * 0.0025) / w;
+      const segments = Math.max(1, Math.min(12, Math.ceil(1.4142 / (cols * (MAX_SEGMENT - 2 * growRel)))));
       for (let k = -kMax; k <= kMax; k++) {
         const o = k * step;
         // Each chord is written from its top-most end so that the single-line
@@ -725,6 +775,38 @@ export const truchet: Generator = {
           : k <= 0
             ? [x0 + s + o, y0, x0, y0 + s + o]
             : [x0 + s, y0 + o, x0 + o, y0 + s];
+        // Two pieces of a chord used to be written as two paths that shared an
+        // endpoint exactly, and a shared edge between two separately rasterised
+        // shapes is the classic hairline: two antialiased edges at 50% coverage
+        // composite to 75%, not 100%, and the paper shows through. A render of
+        // three columns at three divisions carried 927 of those joins. Chrome
+        // and resvg composite exactly and show nothing; it was reported on
+        // Safari, where the lines came out dashed end to end at the spacing of
+        // the pieces rather than of the cells.
+        //
+        // So each piece is grown at its interior ends and neighbours overlap
+        // instead of meeting. The growth is bounded twice and needs both
+        // bounds. Half a stroke width keeps it inside the round cap the
+        // neighbour already paints, so a renderer that composites exactly puts
+        // ink on the same pixels. A quarter of a percent of the canvas keeps a
+        // heavy stroke from stretching the chord — at weight 0.4 half a stroke
+        // is a visible extension. That second bound is keyed on the canvas and
+        // not on the cell, because a seam is about one device pixel wide
+        // whatever the grid is doing, so a bound that shrinks with the cell
+        // stops covering one by the time the grid is fine; keyed on the canvas
+        // it still scales with the render, so a thumbnail and an export stay
+        // the same picture.
+        //
+        // Interior ends only. A chord's own ends meet the next cell's chord,
+        // and growing those stretches the family past its cell: at fourteen
+        // columns it moved 22% of the pixels, against 4.7% for this.
+        //
+        // The chords run at exactly 45 degrees — every branch above moves x and
+        // y by the same amount — so the unit vector along one is a literal
+        // rather than a call to a trigonometric builtin this file may not use.
+        const ux = Math.sign(qx - px) * 0.70710678;
+        const uy = Math.sign(qy - py) * 0.70710678;
+        const grow = growRel * w;
         for (let j = 0; j < segments; j++) {
           const t0 = j / segments;
           const t1 = (j + 1) / segments;
@@ -732,10 +814,17 @@ export const truchet: Generator = {
           const ay = py + (qy - py) * t0;
           const bx = px + (qx - px) * t1;
           const by = py + (qy - py) * t1;
+          // The colour is still read at the piece's own midpoint, off the
+          // geometry the ramp was designed around rather than off the grown
+          // path, so growing a piece cannot change which band it lands in.
+          const segBand = bandAt((ax + bx) / 2, (ay + by) / 2);
+          const gx0 = j === 0 ? ax : ax - ux * grow;
+          const gy0 = j === 0 ? ay : ay - uy * grow;
+          const gx1 = j === segments - 1 ? bx : bx + ux * grow;
+          const gy1 = j === segments - 1 ? by : by + uy * grow;
           // Collinear pieces under a round linecap: the join is invisible, and
           // the stroke is the same width either side of it.
-          const d = `M${num(ax, 1)} ${num(ay, 1)}L${num(bx, 1)} ${num(by, 1)}`;
-          const segBand = bandAt((ax + bx) / 2, (ay + by) / 2);
+          const d = `M${num(gx0, 1)} ${num(gy0, 1)}L${num(gx1, 1)} ${num(gy1, 1)}`;
           (strokeBuckets[segBand] as string[]).push(
             el('path', {
               d: d + (k === kMax && j === segments - 1 ? extra : ''),
