@@ -151,9 +151,14 @@ describe('truchet stroke weight', () => {
     // family half a slot so its bands meet their neighbours moved 17283 to
     // 17871. That the two odd counts did not move is the point — it is what
     // shows the fill arithmetic, and so the weight default, was not touched.
-    expect(render({ tileSet: 'triangles' }).length).toBe(5690);
-    expect(render({ tileSet: 'triangles', arcCount: 3 }).length).toBe(11270);
-    expect(render({ tileSet: 'triangles', arcCount: 6 }).length).toBe(17871);
+    // Re-pinned a third time for the same reason as the first: taking the
+    // neighbour join to 1 changes which corner each triangle sits on, and so
+    // its coordinates, while leaving the shape, its area and everything
+    // `weight` does untouched. 5690 / 11270 / 17871 were the values at a join
+    // of 0.7.
+    expect(render({ tileSet: 'triangles' }).length).toBe(5686);
+    expect(render({ tileSet: 'triangles', arcCount: 3 }).length).toBe(11258);
+    expect(render({ tileSet: 'triangles', arcCount: 6 }).length).toBe(17847);
   });
 
   /**
@@ -436,8 +441,13 @@ describe('truchet triangle ribbons meet across a seam', () => {
    * family half a slot makes the partner n - k, of parity 1, which is what an
    * even count needs. Measured at six divisions: 51.5% before, 15.2% after.
    *
-   * So this now asks at every count, and 15.2% is the floor the rotation bias
-   * leaves behind — the number the odd counts always read.
+   * So this now asks at every count. It used to allow 30% because the rotation
+   * bias left a floor of about 15% — a ribbon facing blank paper across the
+   * seam, which no amount of band alignment reaches. That floor was the real
+   * fault all along and this test's bound was hiding it: every count read
+   * "15.2%, same as the odd ones" and was called fixed while the picture still
+   * showed ribbons stopping dead in mid-air. The join is 1 now and the answer
+   * is 0, so the bound is tight enough to notice if either half regresses.
    */
   it('leaves few band ends without a partner, at every weight', () => {
     for (const arcCount of [2, 3, 4, 5, 6, 8, 11, 12]) {
@@ -446,7 +456,7 @@ describe('truchet triangle ribbons meet across a seam', () => {
         expect(
           pct,
           `at ${arcCount} divisions and weight ${weight}, ${pct.toFixed(1)}% of band ends on a seam had nothing facing them`,
-        ).toBeLessThan(30);
+        ).toBeLessThan(2);
       }
     }
   });

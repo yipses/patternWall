@@ -122,17 +122,29 @@ const TRIANGLE_FILL_OPACITY = '0.9';
  * total, and makes the seed meaningless for this tile set. Joining everything
  * and staying random are not both available.
  *
- * This is the dial between them, applied per axis. Measured one-sided edges at
- * three, six and fourteen columns: 51/47/52% at 0, 35/32/31% at 0.4, 16/14/17%
- * at 0.7, and 0% at 1 with the pattern frozen. 0.7 keeps the seed doing real
- * work while most families run on through the grid, which is what an A/B at
- * three columns and at fourteen, on paper and on a dark ground, actually
- * looks like.
+ * It shipped at 0.7 for a while, and that was calibrated on the wrong case.
+ * Measured band ends with no partner facing them: 13-20% at 0.7, 7-13% at
+ * 0.85, 1-4% at 0.95, 0% at 1.
+ *
+ * What makes 0.7 wrong is that the damage from a broken seam scales with the
+ * division count, and the dial was set when a tile was one solid triangle.
+ * Undivided, a seam with ink on one side and paper on the other is just
+ * negative space — the A/B at three columns is hard to call. Divide the tile
+ * into six ribbons and that same seam stops six ribbons dead in mid-air, and
+ * it is the first thing anybody sees. It was reported four times.
+ *
+ * So it is 1, and the cost is real and stated rather than discovered later:
+ * a fully joined tiling determines every cell from the first, leaving four
+ * layouts in total, so the seed does much less on this tile set than on the
+ * others. A regular pattern that is correct beats a varied one that is
+ * visibly broken, and the renders bear it out — at thirteen columns and six
+ * divisions the zigzag bands and rows of nested diamonds run unbroken, on
+ * paper and on a dark ground alike.
  *
  * It costs no ink and no negative space: the rotation decides which half of a
  * cell is filled, never how much of it.
  */
-const JOIN_NEIGHBOUR = 0.7;
+const JOIN_NEIGHBOUR = 1;
 
 const TRIANGLE_FULL_WEIGHT = 0.16;
 

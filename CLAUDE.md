@@ -771,12 +771,28 @@ needs R to alternate by column and D by row — which fixes every cell from the
 first one, leaves four layouts in total, and makes the seed do nothing on this
 tile set. There is no assignment that joins everything and keeps variety.
 
-`JOIN_NEIGHBOUR` is the dial, applied per axis. Measured one-sided edges at
-three, six and fourteen columns: 51/47/52% free, 35/32/31% at 0.4, 16/14/17% at
-0.7, 0% at 1 with the pattern frozen. It ships at 0.7. It costs no ink and no
-negative space — the rotation decides which half of a cell is filled, never how
-much — which is exactly what the earlier attempt at this got wrong by drawing
-the opposite triangle as well.
+`JOIN_NEIGHBOUR` is the dial, applied per axis, and **it ships at 1**. Measured
+band ends with nothing facing them: 13-20% at 0.7, 7-13% at 0.85, 1-4% at 0.95,
+0% at 1. It costs no ink and no negative space — the rotation decides which half
+of a cell is filled, never how much — which is exactly what the earlier attempt
+at this got wrong by drawing the opposite triangle as well.
+
+It shipped at 0.7 for a while, and **the reason that was wrong is worth more
+than the number**: the damage a broken seam does scales with the division count,
+and the dial was calibrated when a tile was one solid triangle. Undivided, a
+seam with ink on one side and paper on the other is just negative space and the
+A/B at three columns is genuinely hard to call. Divide the tile into six ribbons
+and the same seam stops six ribbons dead in mid-air, which is the first thing
+anybody sees. It was reported four times before the dial was suspected at all.
+The general form: when a compromise is measured on one setting of another
+control, re-measure it at that control's extreme before calling it settled.
+
+The cost is real and stated rather than discovered later. A fully joined tiling
+determines every cell from the first, so there are four layouts and the seed
+does much less here than on the other tile sets. That is the right trade — a
+regular pattern that is correct beats a varied one that is visibly broken — but
+if the seed ever needs to matter on triangles again, it needs a different
+mechanism, not a lower dial.
 
 The regression test asks about the symptom, ink stopping at a boundary, rather
 than about the rotation bias that produces it, so a better way of joining would
@@ -883,8 +899,11 @@ result. Each was arrived at by breaking it first.
   question. Shifting the family half a slot changes the partner to `n-k`, of
   parity 1, which is what an even count needs; odd counts keep a phase of zero
   and are byte-identical. Measured band ends with no partner facing them, at six
-  divisions: 51.5% before, 15.2% after, which is the floor `JOIN_NEIGHBOUR`
-  leaves and what odd counts already read.
+  divisions: 51.5% before, 15.2% after — which was the floor `JOIN_NEIGHBOUR`
+  left at 0.7, and is 0 now that it is 1. That 15.2% is its own lesson: every
+  count read "same as the odd ones" and was called fixed, while the picture
+  still showed ribbons stopping dead. A number that matches a baseline says
+  nothing if the baseline was never checked against the render.
 
   Two things that entry cost, both worth keeping. **Edges coinciding was never
   sufficient** — at an even count the edges always met and the filled slots
