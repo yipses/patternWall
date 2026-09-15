@@ -866,15 +866,38 @@ result. Each was arrived at by breaking it first.
   about 23 columns a chord is already short enough to want a single piece,
   which is exactly where the render is heaviest.
 
-- **Triangles divide on that same lattice.** Every rotation lists its
-  right-angle corner first, so scaling about that vertex sweeps the hypotenuse
-  across the cell and a slice at `k/n` lands on the chord `k*(s/n)`. Fill every
-  other band, counting down from the hypotenuse, and the mass becomes ribbons;
-  filling every band instead just reassembles the triangle. **Rotations are
-  biased toward meeting their neighbours** rather than drawn freely — a half
-  cell shows ink to only two of four edges, so a free rotation leaves about half
-  the grid's seams with a ribbon stopping against blank paper. See
-  `JOIN_NEIGHBOUR` and the bug note above for why it is a dial and not a fix.
+- **Triangles divide on that same lattice, and an even count sits half a step
+  off it.** Every rotation lists its right-angle corner first, so scaling about
+  that vertex sweeps the hypotenuse across the cell and a slice at `k/n` lands
+  on the chord `k*(s/n)`. Fill every other band, counting down from the
+  hypotenuse, and the mass becomes ribbons; filling every band instead just
+  reassembles the triangle.
+
+  Alternating is what makes the count's parity matter. A filled slot's `k` has
+  the parity of `n-1`, and across a seam where the neighbour is turned the other
+  way slot `k` faces slot `n-1-k`, of parity 0 — the same only when `n` is odd.
+  At an even count every filled slot faced an empty one, half the seams had a
+  ribbon running into blank paper, and the chevrons came apart into jogged
+  fragments. It was reported at thirteen columns and six divisions, and it is
+  visible in resvg, so unlike the diagonals' seams it was never a rasteriser
+  question. Shifting the family half a slot changes the partner to `n-k`, of
+  parity 1, which is what an even count needs; odd counts keep a phase of zero
+  and are byte-identical. Measured band ends with no partner facing them, at six
+  divisions: 51.5% before, 15.2% after, which is the floor `JOIN_NEIGHBOUR`
+  leaves and what odd counts already read.
+
+  Two things that entry cost, both worth keeping. **Edges coinciding was never
+  sufficient** — at an even count the edges always met and the filled slots
+  never did, so the lattice test was asserting a proxy that held while the
+  property it stood for failed. And an even count no longer has a band flush
+  against the hypotenuse; the outermost stops half a band short. That edge is
+  what gives the tile its direction, so it is a real trade, taken because
+  ribbons that run through the grid beat ribbons that stop at every other cell.
+
+  **Rotations are biased toward meeting their neighbours** rather than drawn
+  freely — a half cell shows ink to only two of four edges, so a free rotation
+  leaves about half the grid's seams with a ribbon stopping against blank paper.
+  See `JOIN_NEIGHBOUR` and the bug note above for why it is a dial and not a fix.
 
 - **`weight` sets how much of its pitch a triangle band fills**, since there is
   no stroke here to widen. One is the width this set always drew, so the

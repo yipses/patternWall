@@ -513,8 +513,33 @@ export const truchet: Generator = {
         // angle keeps the two legs on the cell edges, where the neighbouring
         // tiles meet them, and retreats only the hypotenuse.
         // Centred in its slot rather than anchored on the corner-side edge,
-        // wherever there is more than one band.
-        const lead = bands === 1 ? 0 : (1 - fill) / 2;
+        // wherever there is more than one band — and at an even count, shifted
+        // half a slot as well.
+        //
+        // The bands are every other slot counting down from the hypotenuse, so
+        // a filled slot has k of the same parity as n - 1. Across a seam where
+        // the neighbour is turned the other way, slot k faces slot n - 1 - k,
+        // which has parity 0 — the same as k only when n is odd. At an even
+        // count every filled slot therefore faces an empty one, half the seams
+        // have a ribbon running into blank paper, and the chevrons come apart
+        // into jogged fragments. No choice of anchor fixes it; the arithmetic
+        // is about which slots are filled, not where in a slot the ink sits.
+        //
+        // Shifting the family half a slot changes the partner to n - k, whose
+        // parity is 1 — which matches when n is even, and is why this is a
+        // half-slot rather than a whole one. Odd counts keep a phase of zero
+        // and are byte-identical; a single band has no slot to shift within.
+        // Measured band ends with no partner facing them, at six divisions:
+        // 51.5% before, 15.2% after, which is the floor the rotation bias
+        // leaves behind and what the odd counts already read.
+        //
+        // The cost, stated because it is visible: an even count no longer has
+        // a band flush against the hypotenuse — the outermost one now stops
+        // half a band short of it. That edge is what gives the tile its
+        // direction, so this is a real trade, and it buys ribbons that run
+        // through the grid instead of stopping at every other cell.
+        const phase = bands % 2 === 0 ? -0.5 : 0;
+        const lead = bands === 1 ? 0 : (1 - fill) / 2 + phase;
         for (let k = bands - 1; k >= 0; k -= 2) {
           const t0 = Math.max(0, (k + lead) / bands);
           const t1 = Math.min(1, (k + lead + fill) / bands);

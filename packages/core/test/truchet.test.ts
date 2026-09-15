@@ -146,9 +146,14 @@ describe('truchet stroke weight', () => {
     // free-rotation values. What this test guards is the *weight* default, so
     // a change to the fill arithmetic still fails it; re-pin only for a reason
     // of that size, and never because the number moved.
+    //
+    // Re-pinned a second time, and only the even count: shifting an even
+    // family half a slot so its bands meet their neighbours moved 17283 to
+    // 17871. That the two odd counts did not move is the point — it is what
+    // shows the fill arithmetic, and so the weight default, was not touched.
     expect(render({ tileSet: 'triangles' }).length).toBe(5690);
     expect(render({ tileSet: 'triangles', arcCount: 3 }).length).toBe(11270);
-    expect(render({ tileSet: 'triangles', arcCount: 6 }).length).toBe(17283);
+    expect(render({ tileSet: 'triangles', arcCount: 6 }).length).toBe(17871);
   });
 
   /**
@@ -423,14 +428,19 @@ describe('truchet triangle ribbons meet across a seam', () => {
    * mention of fill, so it holds at every weight. Measured at the lowest
    * weight: 51.5% of band ends unpartnered anchored, 15.2% centred.
    *
-   * Odd counts only, deliberately. k' = n - 1 - k has the parity of n - 1, so
-   * for even n the partner of a filled slot is always an empty one and no
-   * anchoring can fix it — that fault predates this, shows at the default
-   * weight too, and is recorded in the repo notes as open. A test that spanned
-   * both would have to be loose enough to pass the broken case.
+   * Even counts need one thing more, and used to be excluded from this test
+   * because of it. The bands are every other slot, so a filled slot's k has
+   * the parity of n - 1, and the partner k' = n - 1 - k has parity 0 — the
+   * same only when n is odd. At an even count every filled slot faced an empty
+   * one and half the seams broke, which no anchoring could fix. Shifting the
+   * family half a slot makes the partner n - k, of parity 1, which is what an
+   * even count needs. Measured at six divisions: 51.5% before, 15.2% after.
+   *
+   * So this now asks at every count, and 15.2% is the floor the rotation bias
+   * leaves behind — the number the odd counts always read.
    */
   it('leaves few band ends without a partner, at every weight', () => {
-    for (const arcCount of [3, 5, 11]) {
+    for (const arcCount of [2, 3, 4, 5, 6, 8, 11, 12]) {
       for (const weight of [0.02, 0.04, 0.08, 0.16]) {
         const pct = unpartneredEnds(6, arcCount, weight);
         expect(
@@ -867,6 +877,15 @@ describe('truchet triangles', () => {
    * Slice anywhere else — s/(n+0.5), say — and every interior band edge lands
    * where the neighbour has nothing, so the bands butt against the cell
    * boundary instead of continuing through it.
+   *
+   * At an even count the whole family is shifted half a step, so its edges ride
+   * that same lattice offset by half. What the lattice is for is that every
+   * cell uses the same one, and a reversed neighbour still puts its edges in
+   * the same places — 1 - (k + 0.5)/n is (n - k - 0.5)/n, half-integer either
+   * way. The shift is there because edges coinciding was never sufficient: at
+   * an even count the edges always met and the filled slots never did, so a
+   * band faced a gap. Asserting whole multiples of s/n was therefore asserting
+   * a proxy that held while the property it stood for failed.
    */
   it('puts every band edge on the shared s/n lattice', () => {
     const cell = SIZE / COLS;
@@ -875,15 +894,18 @@ describe('truchet triangles', () => {
 
     for (const arcCount of [2, 3, 4, 8]) {
       const step = cell / arcCount;
+      // Even families sit half a step off, odd ones on the whole step.
+      const phase = arcCount % 2 === 0 ? 0.5 : 0;
       const isMultiple = (v: number, of: number): boolean => Math.abs(v / of - Math.round(v / of)) < 0.02;
+      const onStep = (v: number): boolean => Math.abs(v / step - phase - Math.round(v / step - phase)) < 0.02;
       const offGrid = vertices(triangles(arcCount)).filter(([x, y]) => {
         const lx = x - Math.floor(x / cell + 1e-6) * cell;
         const ly = y - originY - Math.floor((y - originY) / cell + 1e-6) * cell;
         // Bands are trapezoids whose corners ride the two legs of the triangle,
         // and the legs are cell edges — so each vertex sits on an edge, a
         // whole number of steps from the corner it was scaled about.
-        const onVertical = (isMultiple(lx, cell) && isMultiple(ly, step));
-        const onHorizontal = (isMultiple(ly, cell) && isMultiple(lx, step));
+        const onVertical = isMultiple(lx, cell) && onStep(ly);
+        const onHorizontal = isMultiple(ly, cell) && onStep(lx);
         return !(onVertical || onHorizontal);
       });
       expect(vertices(triangles(arcCount)).length).toBeGreaterThan(50);
