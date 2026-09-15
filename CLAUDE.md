@@ -883,6 +883,44 @@ setting of it, measured. At 0 no two neighbours agree and the marks run unbroken
 from one edge of the picture to the other; at 1 they all agree and the grid fills
 with concentric diamonds; the middle mixes long runs with clusters.
 
+**Those free bits are one per row and one per column, so a fully joined triangle
+tiling is a plaid, and no seed will ever make it look otherwise.** This was
+reported twice — "the diamonds are so symmetrical, they all seem to follow the
+same vertical line", then "a lot of symmetry still that suggests it's not
+random" — and the phases are not the problem: measured over a dozen seeds they
+are a fair coin with a mean run of 2.0, and 200 seeds give 200 distinct tilings.
+The structure is.
+
+Write the join as `R(i,j) = (i + a_j) % 2` and `D(i,j) = (j + b_i) % 2` and put
+the diamond condition beside it. A vertex closes into a diamond exactly when
+
+    a_j == a_{j+1}   and   b_i == b_{i+1}   and   i + a_j is odd   and   j + b_i is odd
+
+which was checked against the rendered rotation grid at four seeds and matches
+it cell for cell, so this is the picture rather than a model of it. Every clause
+is keyed on a *row* or a *column* and none on a cell. So whether a column
+boundary can carry diamonds at all is one bit that holds for its entire height,
+and whether a row boundary can is one bit that holds for its entire width: the
+verticals run edge to edge because there is nothing in the construction that
+could stop one part way down. A 13-wide render is 13x30 cells, and triangles get
+43 free bits where diagonals — whose every rotation joins on all four edges —
+get 390. That is the whole of why diagonals look unforced beside them and it is
+not a tuning difference.
+
+The trade is therefore not "more randomness" against "less". It is every seam
+joined against features that do not span the canvas, and you cannot have both
+with a half-cell mark on a square grid: a triangle shows ink to two of four
+edges, so joining forces alternation, and alternation leaves only a phase. A
+mark that touched all four edges would break the forcing, which is what the
+other two tile sets are.
+
+Two smaller things fell out of measuring it. **Both ends of the `diamonds`
+slider are deterministic** — at 0 the phases must all disagree and at 1 they
+must all agree, so each end admits exactly four tilings and 200 seeds returned
+4. Only the middle of the control is random at all, which is worth knowing
+before reading a render at an extreme as evidence about the seed. And the
+entry above says the middle "mixes long runs with clusters", which is true and
+understates it: the clusters are rectangles, because they are a product.
 The general form, which is why this is worth the space: "joining everything
 fixes everything" was an inference from a real constraint, never measured, and
 it shut down a whole design direction for a day. When a constraint forces a
