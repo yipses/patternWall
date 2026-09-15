@@ -241,6 +241,7 @@ export const truchet: Generator = {
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'How much of the colour comes from the drifting field rather than from height. At zero the palette runs top to bottom; at one it pools into regions that wander across the image.' },
     { key: 'arcCount', label: 'Divisions', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'How many parts each cell’s mark is divided into. Quarter arcs become concentric, added either side of the radius that joins the neighbouring cells, and how far they reach is Arc spread’s job rather than this one. A diagonal becomes a family of parallel chords across the cell. A triangle is sliced into bands parallel to its hypotenuse with every other one filled, so the solid mass becomes ribbons. All three divide on a spacing that puts each part’s edges where a cell of the same size puts its own, so raising this adds detail inside a mark that keeps its size, and the stroke follows the gap it leaves rather than being clamped by it.' },
     { key: 'arcSpacing', label: 'Arc spread', type: 'number', min: 0.15, max: 1, step: 0.05, default: 1, description: 'How much of the cell the rings reach across. The gap between them is worked out from that and the division count, so every arc you ask for fits, and the stroke is sized from that gap rather than clamped by it. Quarter arcs only: a family of diagonals has no say in how far it spreads, because the spacing that makes it meet its neighbours is the spacing that fills the cell.' },
+    { key: 'tileJoin', label: 'Tile join', type: 'number', min: 0, max: 1, step: 0.05, default: 1, description: 'How hard each tile is turned to meet the one before it. Triangles only, and it is a trade rather than a quality setting. A triangle fills half its cell, so it shows ink to two of the four edges and blank paper to the other two — which half is decided by the rotation. At one, every cell is turned to face its neighbours, so no ribbon stops against blank paper; the catch is that this fixes the whole grid from the first cell, leaving four layouts and little for the seed to do, and the paths close into small repeating loops. Lower it and the rotation comes loose: loops wander and vary in size and the seed matters again, at the price of ribbons that stop dead at a boundary. Around 0.9 keeps most of the joining and most of the variety.' },
   ],
 
   /**
@@ -300,6 +301,9 @@ export const truchet: Generator = {
     const colorBlend = 1;
     const arcCount = Math.max(1, Math.round(pNum(params, 'arcCount', 1)));
     const arcSpacing = pNum(params, 'arcSpacing', 1);
+    // A control now, and the constant is its default, so a link made before it
+    // existed decodes with one value short and lands on exactly what it drew.
+    const tileJoin = clamp(pNum(params, 'tileJoin', JOIN_NEIGHBOUR), 0, 1);
 
     const cell = w / cols;
     const rows = Math.ceil(h / cell) + 1;
@@ -412,8 +416,8 @@ export const truchet: Generator = {
         const dBase = rot === 2 || rot === 3 ? 1 : 0;
         const left = rx > 0 ? (chosen[ry * cols + rx - 1] ?? -1) : -1;
         const up = ry > 0 ? (chosen[(ry - 1) * cols + rx] ?? -1) : -1;
-        const r = left >= 0 && rng.bool(JOIN_NEIGHBOUR) ? 1 - (left === 1 || left === 2 ? 1 : 0) : rBase;
-        const d = up >= 0 && rng.bool(JOIN_NEIGHBOUR) ? 1 - (up === 2 || up === 3 ? 1 : 0) : dBase;
+        const r = left >= 0 && rng.bool(tileJoin) ? 1 - (left === 1 || left === 2 ? 1 : 0) : rBase;
+        const d = up >= 0 && rng.bool(tileJoin) ? 1 - (up === 2 || up === 3 ? 1 : 0) : dBase;
         rot = r === 0 && d === 0 ? 0 : r === 1 && d === 0 ? 1 : r === 1 && d === 1 ? 2 : 3;
         chosen[ry * cols + rx] = rot;
       }

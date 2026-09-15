@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { curatedPalettes, defaultParams, getGenerator, renderToSvg } from '../src/index.js';
+import { curatedPalettes, decodeConfig, defaultParams, getGenerator, renderToSvg } from '../src/index.js';
 import { rasterize } from './helpers.js';
 
 const truchet = getGenerator('truchet')!;
@@ -315,14 +315,21 @@ describe('truchet triangles and their neighbours', () => {
  * band changes nothing about the score unless it also stops meeting its
  * neighbour.
  */
-function unpartneredEnds(density: number, arcCount: number, weight: number): number {
+function unpartneredEnds(density: number, arcCount: number, weight: number, tileJoin?: number): number {
   const size = 600;
   const svg = renderToSvg({
     generator: truchet,
     width: size,
     height: size,
     palette,
-    params: { ...defaultParams(truchet), tileSet: 'triangles', density, arcCount, weight },
+    params: {
+      ...defaultParams(truchet),
+      tileSet: 'triangles',
+      density,
+      arcCount,
+      weight,
+      ...(tileJoin === undefined ? {} : { tileJoin }),
+    },
     seed: 'truchet-geometry',
     bleed: 0,
   });
@@ -459,6 +466,61 @@ describe('truchet triangle ribbons meet across a seam', () => {
         ).toBeLessThan(2);
       }
     }
+  });
+});
+
+describe('truchet tile join', () => {
+  /**
+   * The control says it decides how hard each tile is turned to meet the one
+   * before it, so the guard is that claim and nothing about how it is wired:
+   * raise it and fewer band ends are left facing blank paper, and at the top
+   * none are. That is writable from the description alone, which is the test
+   * this file keeps asking for.
+   *
+   * Measured at six columns and six divisions: 40.5% of band ends unmet at 0,
+   * 29.7% at 0.3, 22.2% at 0.6, 5.9% at 0.9, 0% at 1.
+   */
+  it('leaves fewer ends unmet the higher it goes, and none at the top', () => {
+    const steps = [0, 0.3, 0.6, 0.9, 1] as const;
+    const unmet = steps.map((v) => unpartneredEnds(6, 6, 0.04, v));
+
+    for (let i = 1; i < steps.length; i++) {
+      expect(
+        unmet[i] as number,
+        `raising the join from ${steps[i - 1]} to ${steps[i]} left more ends unmet, ${(unmet[i - 1] as number).toFixed(1)}% to ${(unmet[i] as number).toFixed(1)}%`,
+      ).toBeLessThanOrEqual((unmet[i - 1] as number) + 0.01);
+    }
+    expect(unmet[steps.length - 1], 'a full join still left ends unmet').toBe(0);
+    // And it is not a dead control: the bottom of the range has to be somewhere
+    // else entirely, or the slider is decoration.
+    expect(unmet[0] as number, 'the loose end of the range matched the joined end').toBeGreaterThan(20);
+  });
+
+  /**
+   * A link made before this param existed carries six values, and the seventh
+   * has to land on the value those links were drawn with. Params are
+   * positional in the share URL, so the only safe place for a new one is the
+   * end of the array, and the only safe default is the old constant.
+   *
+   * This asserts the decode rather than the render, and the difference matters.
+   * The first version of it rendered with the param omitted from the overrides
+   * and compared that against an explicit 1 — but `defaultParams` fills the
+   * spec default in, so both sides had a join of 1 whatever the spec said. It
+   * passed happily against an injected default of 0.7. What actually carries an
+   * old link is the spec default and `coerceParams`, so that is what is tested.
+   */
+  it('decodes a link that predates the param as a full join', () => {
+    const spec = truchet.params.find((q) => q.key === 'tileJoin');
+    expect(spec?.default, 'the default is what every pre-existing link decodes to').toBe(1);
+    expect(truchet.params[truchet.params.length - 1]?.key, 'tileJoin must stay last in the params array').toBe('tileJoin');
+
+    // Six values, as every link made before today carries.
+    const { config } = decodeConfig('truchet', '?s=card-truchet&q=6_2_0.04_1_6_0.75');
+    expect(config.params.tileJoin).toBe(1);
+    // and the six it does carry still land where they did
+    expect(config.params.density).toBe(6);
+    expect(config.params.arcCount).toBe(6);
+    expect(config.params.arcSpacing).toBe(0.75);
   });
 });
 

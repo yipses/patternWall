@@ -440,12 +440,23 @@ test.describe('gesture', () => {
       await gear.click();
       await expect(page.getByLabel('Stroke weight')).toBeVisible();
 
-      // The upper fifth of the preview: over the picture, clear of the sheet,
-      // and squarely on the gesture surface — which would have taken this as a
-      // tap and cycled the tile set under a menu asking about something else.
+      // Over the picture, clear of the sheet, and squarely on the gesture
+      // surface — which would have taken this as a tap and cycled the tile set
+      // under a menu asking about something else.
+      //
+      // Measured against the sheet rather than assumed. This used to press a
+      // fifth of the way down, which was clear of the sheet until a seventh
+      // param took it to its 78% cap and moved its top edge to 19.5%; the press
+      // then landed half a percent inside it and the test failed for a reason
+      // that had nothing to do with dismissal. Anything that changes how many
+      // controls live behind the gear moves that edge.
       const box = await page.locator('[class*="phone"]').first().boundingBox();
       if (!box) throw new Error('the preview frame has no box');
-      await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.2);
+      const sheetBox = await page.locator('[class*="sheet"]').first().boundingBox();
+      if (!sheetBox) throw new Error('the settings sheet has no box');
+      const clearOfSheet = (sheetBox.y - box.y) / 2;
+      expect(clearOfSheet, 'no room above the sheet to press in').toBeGreaterThan(8);
+      await page.mouse.click(box.x + box.width / 2, box.y + clearOfSheet);
       await settled(page);
 
       await expect(gear, 'the press outside the sheet did not close it').toHaveAttribute('aria-expanded', 'false');
