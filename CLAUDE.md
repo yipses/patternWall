@@ -838,9 +838,10 @@ needs R to alternate by column and D by row — which fixes every cell from the
 first one, leaves four layouts in total, and makes the seed do nothing on this
 tile set. There is no assignment that joins everything and keeps variety.
 
-`JOIN_NEIGHBOUR` is the dial, applied per axis, and **it ships at 1**. Measured
-band ends with nothing facing them: 13-20% at 0.7, 7-13% at 0.85, 1-4% at 0.95,
-0% at 1. It costs no ink and no negative space — the rotation decides which half
+`JOIN_NEIGHBOUR` is 1 and is no longer a dial — the control that replaced it,
+`diamonds`, steers the free phases instead and keeps the join whole. Measured
+band ends with nothing facing them when it *was* a dial: 13-20% at 0.7, 7-13% at
+0.85, 1-4% at 0.95, 0% at 1. It costs no ink and no negative space — the rotation decides which half
 of a cell is filled, never how much — which is exactly what the earlier attempt
 at this got wrong by drawing the opposite triangle as well.
 
@@ -854,12 +855,29 @@ anybody sees. It was reported four times before the dial was suspected at all.
 The general form: when a compromise is measured on one setting of another
 control, re-measure it at that control's extreme before calling it settled.
 
-The cost is real and stated rather than discovered later. A fully joined tiling
-determines every cell from the first, so there are four layouts and the seed
-does much less here than on the other tile sets. That is the right trade — a
-regular pattern that is correct beats a varied one that is visibly broken — but
-if the seed ever needs to matter on triangles again, it needs a different
-mechanism, not a lower dial.
+**The cost that entry used to record was not a real cost, and the mistake in it
+is the useful part.** It said a fully joined tiling determines every cell from
+the first, leaving four layouts and little for the seed to do. The first half is
+right and the conclusion does not follow. Joining needs R to alternate *along
+each row* and D *down each column*, which determines every cell in a row from
+its first one — and says nothing about what that first one is. The first cell of
+each row sets that row's phase, the first cell of each column sets its own, and
+the join constrains neither. There are 2^(rows+cols) joined layouts, not four.
+
+Those free phases are exactly the diamonds. Four cells close a ring around a
+vertex only when all four turn their right angle to it, which needs the two rows
+either side of that vertex to share a phase and the two columns either side to
+share one too. So the `diamonds` control biases whether neighbouring rows and
+columns agree, and it costs no join at all: 0% of band ends unmet at every
+setting of it, measured. At 0 no two neighbours agree and the marks run unbroken
+from one edge of the picture to the other; at 1 they all agree and the grid fills
+with concentric diamonds; the middle mixes long runs with clusters.
+
+The general form, which is why this is worth the space: "joining everything
+fixes everything" was an inference from a real constraint, never measured, and
+it shut down a whole design direction for a day. When a constraint forces a
+relation between neighbours, check whether it also fixes the starting value —
+a rule about differences leaves the constant free.
 
 The regression test asks about the symptom, ink stopping at a boundary, rather
 than about the rotation bias that produces it, so a better way of joining would
@@ -1004,7 +1022,9 @@ result. Each was arrived at by breaking it first.
 
 Controls: density, tileSet, weight, colorSpread,
 arcCount (labelled Divisions; max 6 on diagonals, 12 elsewhere), arcSpacing
-(spread; quarter arcs only). The three it is driven by — tap for tileSet,
+(spread; quarter arcs only), diamonds (triangles only; how much of the tiling
+closes into rings rather than running on, steered through the phases the join
+leaves free). The three it is driven by — tap for tileSet,
 horizontal for density, vertical for arcCount — are promoted into the panel;
 `weight` held the horizontal slot until its range turned out to be eaten by
 the division count, which the bug note above records; the rest live behind the gear on the preview, as name and slider with no

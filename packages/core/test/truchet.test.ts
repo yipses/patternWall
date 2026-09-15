@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { curatedPalettes, decodeConfig, defaultParams, getGenerator, renderToSvg } from '../src/index.js';
+import { curatedPalettes, defaultParams, getGenerator, renderToSvg } from '../src/index.js';
 import { rasterize } from './helpers.js';
 
 const truchet = getGenerator('truchet')!;
@@ -315,7 +315,7 @@ describe('truchet triangles and their neighbours', () => {
  * band changes nothing about the score unless it also stops meeting its
  * neighbour.
  */
-function unpartneredEnds(density: number, arcCount: number, weight: number, tileJoin?: number): number {
+function unpartneredEnds(density: number, arcCount: number, weight: number, diamonds?: number): number {
   const size = 600;
   const svg = renderToSvg({
     generator: truchet,
@@ -328,7 +328,7 @@ function unpartneredEnds(density: number, arcCount: number, weight: number, tile
       density,
       arcCount,
       weight,
-      ...(tileJoin === undefined ? {} : { tileJoin }),
+      ...(diamonds === undefined ? {} : { diamonds }),
     },
     seed: 'truchet-geometry',
     bleed: 0,
@@ -469,58 +469,140 @@ describe('truchet triangle ribbons meet across a seam', () => {
   });
 });
 
-describe('truchet tile join', () => {
-  /**
-   * The control says it decides how hard each tile is turned to meet the one
-   * before it, so the guard is that claim and nothing about how it is wired:
-   * raise it and fewer band ends are left facing blank paper, and at the top
-   * none are. That is writable from the description alone, which is the test
-   * this file keeps asking for.
-   *
-   * Measured at six columns and six divisions: 40.5% of band ends unmet at 0,
-   * 29.7% at 0.3, 22.2% at 0.6, 5.9% at 0.9, 0% at 1.
-   */
-  it('leaves fewer ends unmet the higher it goes, and none at the top', () => {
-    const steps = [0, 0.3, 0.6, 0.9, 1] as const;
-    const unmet = steps.map((v) => unpartneredEnds(6, 6, 0.04, v));
-
-    for (let i = 1; i < steps.length; i++) {
-      expect(
-        unmet[i] as number,
-        `raising the join from ${steps[i - 1]} to ${steps[i]} left more ends unmet, ${(unmet[i - 1] as number).toFixed(1)}% to ${(unmet[i] as number).toFixed(1)}%`,
-      ).toBeLessThanOrEqual((unmet[i - 1] as number) + 0.01);
+/**
+ * Grid vertices the ink has closed a ring around — a diamond, as anybody
+ * looking at it would count them. One flood from the frame marks every patch
+ * of paper the outside can reach; a vertex whose surrounding paper cannot is
+ * enclosed.
+ */
+function closedVertices(density: number, arcCount: number, diamonds: number): { closed: number; checked: number } {
+  const W = density * 48;
+  const svg = renderToSvg({
+    generator: truchet,
+    width: W,
+    height: W,
+    palette,
+    params: { ...defaultParams(truchet), tileSet: 'triangles', density, arcCount, weight: 0.16, colorSpread: 0, diamonds },
+    seed: 'yarrow-129',
+    bleed: 0,
+  });
+  const { pixels, width: w } = rasterize(svg, W);
+  const h = pixels.length / 4 / w;
+  const [pr, pg, pb] = [1, 3, 5].map((i) => parseInt(palette.background.slice(i, i + 2), 16)) as [number, number, number];
+  const paperLum = (0.2126 * pr + 0.7152 * pg + 0.0722 * pb) / 255;
+  const isPaper = new Uint8Array(w * h);
+  for (let i = 0, j = 0; j < w * h; i += 4, j++) {
+    const lum =
+      (0.2126 * (pixels[i] as number) + 0.7152 * (pixels[i + 1] as number) + 0.0722 * (pixels[i + 2] as number)) / 255;
+    isPaper[j] = Math.abs(lum - paperLum) < 0.08 ? 1 : 0;
+  }
+  const outside = new Uint8Array(w * h);
+  const stack: number[] = [];
+  const push = (p: number): void => {
+    if (isPaper[p] && !outside[p]) {
+      outside[p] = 1;
+      stack.push(p);
     }
-    expect(unmet[steps.length - 1], 'a full join still left ends unmet').toBe(0);
-    // And it is not a dead control: the bottom of the range has to be somewhere
-    // else entirely, or the slider is decoration.
-    expect(unmet[0] as number, 'the loose end of the range matched the joined end').toBeGreaterThan(20);
+  };
+  for (let x = 0; x < w; x++) {
+    push(x);
+    push((h - 1) * w + x);
+  }
+  for (let y = 0; y < h; y++) {
+    push(y * w);
+    push(y * w + w - 1);
+  }
+  while (stack.length > 0) {
+    const p = stack.pop() as number;
+    const x = p % w;
+    if (x > 0) push(p - 1);
+    if (x < w - 1) push(p + 1);
+    if (p >= w) push(p - w);
+    if (p < w * h - w) push(p + w);
+  }
+  const cell = w / density;
+  const rows = Math.ceil(h / cell) + 1;
+  const originY = (h - rows * cell) / 2;
+  const R = Math.max(3, Math.round(cell * 0.18));
+  let closed = 0;
+  let checked = 0;
+  for (let ry = 1; ry < rows; ry++) {
+    for (let rx = 1; rx < density; rx++) {
+      const vx = Math.round(rx * cell);
+      const vy = Math.round(originY + ry * cell);
+      if (vy < R + 2 || vy > h - R - 3 || vx < R + 2 || vx > w - R - 3) continue;
+      checked += 1;
+      let sawPaper = false;
+      let sawOutside = false;
+      for (let dy = -R; dy <= R; dy++) {
+        for (let dx = -R; dx <= R; dx++) {
+          if (dx * dx + dy * dy > R * R) continue;
+          const p = (vy + dy) * w + (vx + dx);
+          if (!isPaper[p]) continue;
+          sawPaper = true;
+          if (outside[p]) sawOutside = true;
+        }
+      }
+      if (sawPaper && !sawOutside) closed += 1;
+    }
+  }
+  return { closed, checked };
+}
+
+describe('truchet diamonds', () => {
+  /**
+   * This control exists because the obvious reading of the tiling is wrong.
+   * Joining every edge looks like it must fix the whole grid — R has to
+   * alternate along each row and D down each column, which determines every
+   * cell in a row from its first one. But it says nothing about what that
+   * first cell *is*. The first cell of each row is free to set that row's
+   * phase, the first cell of each column its own, and the join constrains
+   * neither.
+   *
+   * Four cells close a ring around a vertex only when all four turn their
+   * right angle to it, which needs the two rows either side to share a phase
+   * and the two columns either side to share one too. So the free phases
+   * decide the diamonds, and steering them costs no join at all. That is the
+   * claim, and it is the one thing here worth guarding.
+   */
+  it('stays fully joined at every setting', () => {
+    for (const diamonds of [0, 0.25, 0.5, 0.75, 1]) {
+      const pct = unpartneredEnds(6, 6, 0.04, diamonds);
+      expect(pct, `at ${diamonds} diamonds, ${pct.toFixed(1)}% of band ends had nothing facing them`).toBe(0);
+    }
   });
 
   /**
-   * A link made before this param existed carries six values, and the seventh
-   * has to land on the value those links were drawn with. Params are
-   * positional in the share URL, so the only safe place for a new one is the
-   * end of the array, and the only safe default is the old constant.
-   *
-   * This asserts the decode rather than the render, and the difference matters.
-   * The first version of it rendered with the param omitted from the overrides
-   * and compared that against an explicit 1 — but `defaultParams` fills the
-   * spec default in, so both sides had a join of 1 whatever the spec said. It
-   * passed happily against an injected default of 0.7. What actually carries an
-   * old link is the spec default and `coerceParams`, so that is what is tested.
+   * And it has to actually count for something. Measured at ten columns and
+   * six divisions: 0 of 90 grid vertices closed at 0 and at 0.25, then 8, 20
+   * and 25 as it rises. The ends are what the picture shows — unbroken
+   * diagonals running corner to corner at the bottom, a full lattice of
+   * concentric diamonds at the top.
    */
-  it('decodes a link that predates the param as a full join', () => {
-    const spec = truchet.params.find((q) => q.key === 'tileJoin');
-    expect(spec?.default, 'the default is what every pre-existing link decodes to').toBe(1);
-    expect(truchet.params[truchet.params.length - 1]?.key, 'tileJoin must stay last in the params array').toBe('tileJoin');
+  it('closes more of the tiling into diamonds the higher it goes', () => {
+    const steps = [0, 0.5, 1] as const;
+    const counts = steps.map((v) => closedVertices(10, 6, v));
 
-    // Six values, as every link made before today carries.
-    const { config } = decodeConfig('truchet', '?s=card-truchet&q=6_2_0.04_1_6_0.75');
-    expect(config.params.tileJoin).toBe(1);
-    // and the six it does carry still land where they did
-    expect(config.params.density).toBe(6);
-    expect(config.params.arcCount).toBe(6);
-    expect(config.params.arcSpacing).toBe(0.75);
+    expect(counts[0]?.closed, 'the bottom of the range still closed rings').toBe(0);
+    for (let i = 1; i < steps.length; i++) {
+      expect(
+        counts[i]?.closed as number,
+        `raising diamonds from ${steps[i - 1]} to ${steps[i]} closed fewer rings`,
+      ).toBeGreaterThan(counts[i - 1]?.closed as number);
+    }
+    expect(counts[steps.length - 1]?.closed as number, 'the top of the range barely closed anything').toBeGreaterThan(15);
+  });
+
+  /**
+   * Triangles only. The rotation block it steers is guarded to that tile set,
+   * and the other two must not move when it does.
+   */
+  it('leaves the other tile sets alone', () => {
+    for (const tileSet of ['arcs', 'diagonals']) {
+      const low = render({ tileSet, density: 13, arcCount: 6, diamonds: 0 });
+      const high = render({ tileSet, density: 13, arcCount: 6, diamonds: 1 });
+      expect(low, `${tileSet} moved when the diamonds control did`).toBe(high);
+    }
   });
 });
 

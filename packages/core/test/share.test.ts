@@ -177,8 +177,8 @@ describe('a link older than the pattern it names', () => {
    * new one takes its default.
    *
    * It used to be reported as "unrecognised settings were reset", which is
-   * false: nothing was reset. Appending `tileJoin` to truchet put that in front
-   * of every truchet link ever shared, which is how it was found. Carrying more
+   * false: nothing was reset. Appending a seventh param to truchet put that in
+   * front of every truchet link ever shared, which is how it was found. Carrying more
    * values than the pattern has params is the case that message belongs to.
    */
   it('says the link is old rather than claiming settings were lost', () => {

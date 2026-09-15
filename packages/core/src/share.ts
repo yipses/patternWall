@@ -114,8 +114,8 @@ function unpackParams(generatorId: string, token: string, notes: string[]): Reco
   // carrying fewer is simply older than a param that was appended since: every
   // value it does carry lands where it did, and the new one takes its default.
   // Nothing is reset, and telling somebody it was sends them looking for
-  // damage that is not there. Appending `tileJoin` to truchet put that message
-  // in front of every truchet link ever shared.
+  // damage that is not there. Appending a seventh param to truchet put that
+  // message in front of every truchet link ever shared.
   if (parts.length > g.params.length) {
     notes.push('The link was written for a different version of this pattern; unrecognised settings were reset.');
   } else if (parts.length < g.params.length) {
