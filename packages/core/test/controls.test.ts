@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   coerceParams,
-  cycleValue,
   effectiveSpec,
   retuneParams,
   decimalsOf,
@@ -18,15 +17,63 @@ import {
   defaultParams,
   type Generator,
   type NumberSpec,
-  type ParamSpec,
   type ParamValue,
-  type SelectSpec,
 } from '../src/index.js';
 import { TEST_PALETTES } from './helpers.js';
 
-const truchet = getGenerator('truchet')!;
+const arcs = getGenerator('truchet-arcs')!;
 const numberSpecs = (g: (typeof generators)[number]): NumberSpec[] =>
   g.params.filter((p): p is NumberSpec => p.type === 'number');
+
+/**
+ * A generator that exists only here.
+ *
+ * Nothing in the registry declares `limits` any more — the ceiling that needed
+ * it was truchet's divisions depending on its tile set, and the tile sets are
+ * two patterns now with a number in each spec. The machinery stays because a
+ * mode switch with a dependent range is the obvious next thing a generator
+ * will reach for, and this is what keeps it honest in the meantime.
+ *
+ * It declares the condition *after* the parameter it limits, which is the
+ * order that catches a single-pass implementation. Truchet declared its tile
+ * set first and so would have passed either way; `params` is append-only, so
+ * the next generator to add a mode switch to a list it already had will land
+ * in exactly this order.
+ */
+const backwards: Generator = {
+  id: 'backwards',
+  name: 'Backwards',
+  tagline: 'A ceiling whose condition is declared after it.',
+  tags: ['grid'],
+  description: '',
+  params: [
+    { key: 'count', label: 'Count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: '' },
+    {
+      key: 'mode',
+      label: 'Mode',
+      type: 'select',
+      options: [
+        { value: 'wide', label: 'Wide' },
+        { value: 'narrow', label: 'Narrow' },
+      ],
+      default: 'wide',
+      description: '',
+    },
+  ],
+  limits: { count: { when: 'mode', max: { narrow: 6 } } },
+  render: () => '',
+};
+
+/** And one that has nominated nothing, which every caller must leave alone. */
+const undeclared: Generator = {
+  id: 'undeclared',
+  name: 'Undeclared',
+  tagline: 'Chooses no primaries.',
+  tags: ['grid'],
+  description: '',
+  params: [{ key: 'size', label: 'Size', type: 'number', min: 1, max: 10, step: 1, default: 5, description: '' }],
+  render: () => '',
+};
 
 describe('controls', () => {
   /**
@@ -67,7 +114,7 @@ describe('controls', () => {
    * a value and then arrow it and nothing shifts by half a step.
    */
   it('snaps to the same lattice a range input produces, and clamps at both ends', () => {
-    const weight = truchet.params.find((p) => p.key === 'weight') as NumberSpec;
+    const weight = arcs.params.find((p) => p.key === 'weight') as NumberSpec;
     expect(quantise(weight, 0.1649)).toBe(0.16);
     expect(quantise(weight, 0.1651)).toBe(0.17);
     expect(quantise(weight, -5), 'below the floor').toBe(weight.min);
@@ -91,8 +138,8 @@ describe('controls', () => {
    * pushing further into the end it is already on comes round to the other.
    */
   it('wraps a gesture that starts by pushing past an end, and only that one', () => {
-    const arcCount = truchet.params.find((p) => p.key === 'arcCount') as NumberSpec;
-    const weight = truchet.params.find((p) => p.key === 'weight') as NumberSpec;
+    const arcCount = arcs.params.find((p) => p.key === 'arcCount') as NumberSpec;
+    const weight = arcs.params.find((p) => p.key === 'weight') as NumberSpec;
 
     expect(wrapPastEnd(arcCount, arcCount.min, -1), 'down from the bottom').toBe(arcCount.max);
     expect(wrapPastEnd(arcCount, arcCount.max, 1), 'up from the top').toBe(arcCount.min);
@@ -115,7 +162,7 @@ describe('controls', () => {
    * first rather than replacing it, and putting a finger down moves nothing.
    */
   it('scrubs a fraction of the range, relative to where the gesture began', () => {
-    const arcCount = truchet.params.find((p) => p.key === 'arcCount') as NumberSpec;
+    const arcCount = arcs.params.find((p) => p.key === 'arcCount') as NumberSpec;
     expect(scrubTo(arcCount, arcCount.min, 0), 'no movement, no change').toBe(arcCount.min);
     expect(scrubTo(arcCount, arcCount.min, 1), 'a full sweep reaches the top').toBe(arcCount.max);
     expect(scrubTo(arcCount, arcCount.max, -1), 'and back down again').toBe(arcCount.min);
@@ -129,65 +176,40 @@ describe('controls', () => {
     expect(half).toBeLessThan(arcCount.max);
   });
 
-  /** A tap advances and wraps, whatever kind of control it lands on. */
-  it('cycles a value round its own options', () => {
-    const tileSet = truchet.params.find((p) => p.key === 'tileSet') as SelectSpec;
-    expect(cycleValue(tileSet, 'arcs')).toBe('diagonals');
-    expect(cycleValue(tileSet, 'diagonals')).toBe('triangles');
-    expect(cycleValue(tileSet, 'triangles'), 'wraps back to the start').toBe('arcs');
-    expect(cycleValue(tileSet, 'nonsense'), 'a stale link cycles off the default').toBe('diagonals');
-
-    const arcCount = truchet.params.find((p) => p.key === 'arcCount') as NumberSpec;
-    expect(cycleValue(arcCount, 1)).toBe(2);
-    expect(cycleValue(arcCount, arcCount.max), 'a number wraps at the top too').toBe(arcCount.min);
-
-    const taper = getGenerator('flow-dots')!.params.find((p) => p.key === 'taper') as ParamSpec;
-    expect(cycleValue(taper, true)).toBe(false);
-    expect(cycleValue(taper, false)).toBe(true);
-
-    const image = getGenerator('string-art')!.params.find((p) => p.key === 'image') as ParamSpec;
-    expect(cycleValue(image, 'abc'), 'a picture is chosen, not cycled to').toBe('abc');
-  });
-
   /**
-   * The contract every generator's three have to keep.
+   * The contract every generator's two have to keep.
    *
-   * This is the test that makes choosing the other six patterns' bindings a
-   * safe, boring job: a typo in a key, a select bound to a drag, or the same
-   * param used twice fails here rather than in a preview nobody looked at.
-   * The step ceiling on a tapped number is the one judgement call — past about
-   * a dozen taps you have built a slider and hidden it behind a gesture that
-   * cannot reach the far end.
+   * This is the test that makes choosing a new pattern's bindings a safe,
+   * boring job: a typo in a key, a select bound to a drag, or the same param
+   * used twice fails here rather than in a preview nobody looked at.
+   *
+   * It says *every registered* generator, not every generator that declares
+   * something. A pattern in the registry has a page, a gallery card and a slot
+   * in the tap cycle, and a person who drags on its preview and gets nothing
+   * has no way to tell that from a gesture that is broken — three separate
+   * faults in this repo presented as exactly that. So bindings are not
+   * optional for anything shipped, and `primary` stays optional on the type
+   * for the retired four and for a pattern still being written.
    */
-  it('holds every declared primary to its own params', () => {
-    const declared = generators.filter((g) => g.primary);
-    expect(declared.length, 'no generator declares its three yet').toBeGreaterThan(0);
-
-    for (const g of declared) {
+  it('holds every registered generator to two named number params', () => {
+    for (const g of generators) {
+      expect(g.primary, `${g.id} is in the registry with no gesture bindings`).toBeTruthy();
       const bindings = resolvePrimaries(g);
-      expect(bindings.map((b) => b.role), `${g.id} did not resolve all three`).toEqual(['tap', 'x', 'y']);
+      expect(bindings.map((b) => b.role), `${g.id} did not resolve both axes`).toEqual(['x', 'y']);
 
       const keys = bindings.map((b) => b.key);
-      expect(new Set(keys).size, `${g.id} uses the same key twice: ${keys.join(', ')}`).toBe(3);
+      expect(new Set(keys).size, `${g.id} drives both axes from '${keys[0]}'`).toBe(2);
 
-      const [tap, x, y] = bindings;
-      if (tap!.key !== 'seed') {
-        expect(tap!.spec, `${g.id} taps '${tap!.key}', which is not one of its params`).not.toBeNull();
-        expect(['select', 'boolean', 'number'], `${g.id} taps a ${tap!.spec!.type}`).toContain(tap!.spec!.type);
-        if (tap!.spec!.type === 'number') {
-          const n = stepCount(tap!.spec as NumberSpec);
-          expect(n, `${g.id} taps a number with ${n} steps, which is a slider in disguise`).toBeLessThanOrEqual(12);
-        }
-      }
-      for (const b of [x!, y!]) {
-        expect(b.spec, `${g.id} drags '${b.key}', which is not one of its params`).not.toBeNull();
-        expect(b.spec!.type, `${g.id} drags '${b.key}', a ${b.spec!.type} — a drag needs a number`).toBe('number');
+      for (const b of bindings) {
+        expect(b.spec.type, `${g.id} drags '${b.key}', a ${b.spec.type} — a drag needs a number`).toBe('number');
+        const n = stepCount(b.spec as NumberSpec);
+        expect(n, `${g.id} drags '${b.key}', which has ${n} step`).toBeGreaterThan(1);
       }
 
-      // Every param is either promoted or behind the disclosure. Neither list
-      // may drop one: a param in neither place is a control nobody can reach.
+      // Every param is either promoted or behind the gear. Neither list may
+      // drop one: a param in neither place is a control nobody can reach.
       const secondary = secondaryParams(g);
-      expect(secondary.length + 3, `${g.id} lost a param between the two groups`).toBe(g.params.length);
+      expect(secondary.length + 2, `${g.id} lost a param between the two groups`).toBe(g.params.length);
       for (const key of keys) {
         expect(secondary.some((p) => p.key === key), `${g.id} shows '${key}' twice`).toBe(false);
       }
@@ -197,56 +219,46 @@ describe('controls', () => {
   /**
    * A range that depends on another control, and what happens when it moves.
    *
-   * Truchet's divisions draw 2n-1 chords per cell on diagonals, so twelve is
-   * twenty-three lines through one cell and the tiling reads as grey. Six is
-   * the ceiling there and twelve everywhere else.
-   *
    * The half worth testing hardest is the carry-across. Clamping alone would
-   * put eleven of the twelve settings on the same place, so tapping through
-   * the tile sets would lose where you were and hand back "the top" whatever
-   * you had. Scaled to the ceiling, half way along stays half way along.
+   * put eleven of the twelve settings on the same place, so moving between
+   * modes would lose where you were and hand back "the top" whatever you had.
+   * Scaled to the ceiling, half way along stays half way along.
    */
-  it('limits divisions on diagonals, and carries the value across proportionally', () => {
-    const spec = truchet.params.find((p) => p.key === 'arcCount') as NumberSpec;
+  it('limits a value by another param, and carries it across proportionally', () => {
+    const spec = backwards.params.find((p) => p.key === 'count') as NumberSpec;
     expect(spec.max, 'the declared ceiling is unchanged').toBe(12);
 
-    const on = (tileSet: string): number => {
-      const eff = effectiveSpec(truchet, spec, { ...defaultParams(truchet), tileSet });
+    const on = (mode: string): number => {
+      const eff = effectiveSpec(backwards, spec, { ...defaultParams(backwards), mode });
       return eff.type === 'number' ? eff.max : Number.NaN;
     };
-    expect(on('diagonals')).toBe(6);
-    expect(on('arcs')).toBe(12);
-    expect(on('triangles')).toBe(12);
+    expect(on('narrow')).toBe(6);
+    expect(on('wide')).toBe(12);
 
-    const at = (tileSet: string, arcCount: number): Record<string, ParamValue> => ({
-      ...defaultParams(truchet),
-      tileSet,
-      arcCount,
-    });
-    const moved = (from: Record<string, ParamValue>, tileSet: string): number =>
-      Number(retuneParams(truchet, from, { ...from, tileSet }).arcCount);
+    const at = (mode: string, count: number): Record<string, ParamValue> => ({ ...defaultParams(backwards), mode, count });
+    const moved = (from: Record<string, ParamValue>, mode: string): number =>
+      Number(retuneParams(backwards, from, { ...from, mode }).count);
 
-    expect(moved(at('arcs', 6), 'diagonals'), 'half of twelve should be half of six').toBe(3);
-    expect(moved(at('diagonals', 3), 'arcs'), 'and back again').toBe(6);
-    expect(moved(at('arcs', 12), 'diagonals')).toBe(6);
-    expect(moved(at('diagonals', 6), 'triangles')).toBe(12);
-    expect(moved(at('arcs', 1), 'diagonals'), 'the floor stays the floor').toBe(1);
+    expect(moved(at('wide', 6), 'narrow'), 'half of twelve should be half of six').toBe(3);
+    expect(moved(at('narrow', 3), 'wide'), 'and back again').toBe(6);
+    expect(moved(at('wide', 12), 'narrow')).toBe(6);
+    expect(moved(at('wide', 1), 'narrow'), 'the floor stays the floor').toBe(1);
 
     // Round trips, which is the whole reason this is proportional to the
     // ceiling rather than across the range. Scaling the span would send six to
-    // three and three back to five, so tapping twice round the tile sets would
-    // walk the value down a step at a time and never say so.
+    // three and three back to five, so moving twice between modes would walk
+    // the value down a step at a time and never say so.
     for (let v = 1; v <= 12; v++) {
-      const there = moved(at('arcs', v), 'diagonals');
-      const back = moved(at('diagonals', there), 'arcs');
+      const there = moved(at('wide', v), 'narrow');
+      const back = moved(at('narrow', there), 'wide');
       expect(Math.abs(back - v), `${v} -> ${there} -> ${back} drifted`).toBeLessThanOrEqual(1);
     }
 
     // A change that moves nothing leaves everything alone, including a change
     // to the limited control itself.
-    const same = at('arcs', 9);
-    expect(retuneParams(truchet, same, { ...same, arcCount: 4 }).arcCount).toBe(4);
-    expect(retuneParams(truchet, same, { ...same, weight: 0.3 }).arcCount).toBe(9);
+    const same = at('wide', 9);
+    expect(retuneParams(backwards, same, { ...same, count: 4 }).count).toBe(4);
+    expect(retuneParams(backwards, same, { ...same, mode: 'wide' }).count).toBe(9);
   });
 
   /**
@@ -261,49 +273,16 @@ describe('controls', () => {
    * It has to be a second pass. The ceiling depends on `tileSet`, and the two
    * sit in whatever order the share encoding put them.
    */
-  it('clamps a link that asks for more divisions than its tile set allows', () => {
-    expect(coerceParams(truchet, { tileSet: 'diagonals', arcCount: 12 }).arcCount).toBe(6);
-    expect(coerceParams(truchet, { tileSet: 'arcs', arcCount: 12 }).arcCount).toBe(12);
-    expect(coerceParams(truchet, { tileSet: 'diagonals', arcCount: 4 }).arcCount).toBe(4);
-
-    // Truchet happens to declare its tile set before its divisions, so a
-    // single pass would work here by luck and prove nothing. This is the case
-    // that is actually being claimed: the parameter a ceiling depends on
-    // declared *after* the one it limits, which is the order a future
-    // generator will reach for the moment it appends a mode switch to a list
-    // it already had. Nothing stops it, since `params` is append-only.
-    const backwards: Generator = {
-      id: 'backwards',
-      name: 'Backwards',
-      tagline: 'A ceiling whose condition is declared after it.',
-      tags: ['grid'],
-      description: '',
-      params: [
-        { key: 'count', label: 'Count', type: 'number', min: 1, max: 12, step: 1, default: 1, description: '' },
-        {
-          key: 'mode',
-          label: 'Mode',
-          type: 'select',
-          options: [
-            { value: 'wide', label: 'Wide' },
-            { value: 'narrow', label: 'Narrow' },
-          ],
-          default: 'wide',
-          description: '',
-        },
-      ],
-      limits: { count: { when: 'mode', max: { narrow: 6 } } },
-      render: () => '',
-    };
+  it('clamps a link that asks for more than its mode allows', () => {
     expect(coerceParams(backwards, { count: 12, mode: 'narrow' }).count).toBe(6);
     expect(coerceParams(backwards, { count: 12, mode: 'wide' }).count).toBe(12);
+    expect(coerceParams(backwards, { count: 4, mode: 'narrow' }).count).toBe(4);
   });
 
   /** A generator that has chosen nothing is left exactly as it was. */
   it('leaves an undeclared generator flat', () => {
-    const plain = generators.find((g) => !g.primary)!;
-    expect(resolvePrimaries(plain)).toEqual([]);
-    expect(secondaryParams(plain), 'every control stays in the one list').toEqual(plain.params);
+    expect(resolvePrimaries(undeclared)).toEqual([]);
+    expect(secondaryParams(undeclared), 'every control stays in the one list').toEqual(undeclared.params);
   });
 
   it('reads the precision a step implies', () => {

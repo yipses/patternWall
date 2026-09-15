@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { settled } from './helpers';
 
-const PAGES = ['/', '/collected', '/setup', '/p/flow-dots', '/p/truchet'];
+const PAGES = ['/', '/collected', '/setup', '/p/chevron-blocks', '/p/truchet-arcs'];
 
 test.describe('layout and accessibility', () => {
   for (const width of [375, 768, 1440, 2560]) {
@@ -22,7 +22,7 @@ test.describe('layout and accessibility', () => {
   }
 
   test('keyboard reaches the editor controls and operates them', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
 
     // Tab forward until a slider takes focus, then move it with the keyboard.
@@ -60,7 +60,7 @@ test.describe('layout and accessibility', () => {
   });
 
   test('tabs and switches expose the right roles and state', async ({ page }) => {
-    await page.goto('/p/flow-dots');
+    await page.goto('/p/chevron-blocks');
     const tabs = page.getByRole('tab');
     await expect(tabs).toHaveCount(3);
     await expect(page.getByRole('tab', { name: 'Pattern' })).toHaveAttribute('aria-selected', 'true');
@@ -78,7 +78,7 @@ test.describe('layout and accessibility', () => {
    * the DOM when selected, and the panels were not focusable.
    */
   test('the tab strip is one tab stop and the arrows move between tabs', async ({ page }) => {
-    await page.goto('/p/flow-dots');
+    await page.goto('/p/chevron-blocks');
     await settled(page);
 
     // Scoped to the editor's own strip: opening the Palette panel reveals a
@@ -160,7 +160,7 @@ test.describe('layout and accessibility', () => {
     });
     page.on('pageerror', (e) => noisy.push(`pageerror: ${e.message}`));
     await page.goto('/');
-    await page.goto('/p/phyllotaxis');
+    await page.goto('/p/contours');
     await settled(page);
     await page.getByRole('tab', { name: 'Palette' }).click();
     await settled(page);
@@ -169,7 +169,7 @@ test.describe('layout and accessibility', () => {
 
   test('reduced motion is honoured', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto('/p/flow-dots');
+    await page.goto('/p/chevron-blocks');
     const duration = await page.evaluate(() => {
       const el = document.querySelector('button');
       return el ? getComputedStyle(el).transitionDuration : '';
@@ -182,7 +182,7 @@ test.describe('layout and accessibility', () => {
     // The stamp exists so a reader can tell whether they are looking at the
     // version that was just published. A green deploy is not proof the site
     // changed, so the page has to be able to answer that itself.
-    for (const path of ['/', '/collected', '/setup', '/p/truchet']) {
+    for (const path of ['/', '/collected', '/setup', '/p/truchet-arcs']) {
       await page.goto(path);
       const stamp = page.getByTestId('build-stamp');
       await expect(stamp).toBeVisible();

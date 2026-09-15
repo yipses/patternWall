@@ -1,26 +1,35 @@
 import { accentAt, accentRamp } from '../palette.js';
 import { hexToOklch, mixOklch, oklchToHex } from '../color.js';
 import { createNoise2D } from '../noise.js';
-import { hashSeed } from '../rng.js';
 import { clamp } from '../geometry.js';
 import { el, num, svgRoot } from '../svg.js';
-import { pNum, pStr, type Generator, type RenderContext } from '../types.js';
+import { pNum, type Generator, type ParamSpec, type RenderContext } from '../types.js';
 
-const description = `
+const arcsDescription = `
 A Truchet tile is a square with an asymmetric mark on it — Sébastien Truchet’s original was a square split into two triangles — and a Truchet tiling is what you get when you fill a grid with copies of that square in random rotations. The remarkable thing is how little you have to specify. One tile, four rotations and a coin flip per cell produce paths that wander across the whole grid, close into loops, and look considered in a way that no part of the rule accounts for.
 
-Three tile sets are offered here and they behave quite differently. **Quarter arcs** join edge midpoints with two 90° curves centred on opposite corners, so every cell edge is a connection point and the marks meet: the result is a tangle of closed loops. The corner is the whole trick — two circles of a given radius pass through any pair of points, and centring these on the cell's middle instead produces marks that still meet at the edges but can never curl around a grid vertex, so no loop, half circle or full circle ever forms. **Diagonals** connect corners instead, which means paths meet at cell corners rather than edges and the tiling reads as a lattice of switchbacks rather than as loops. **Triangles** fill half of each cell, which turns the whole thing from line work into a mass of light and dark, and is by far the strongest option at low densities.
+This one draws **quarter arcs**: two 90° curves per cell, centred on opposite corners, joining the midpoints of the edges they touch. Every cell edge is therefore a connection point and every mark meets whatever its neighbour offers, so the tiling comes out as a tangle of closed loops. The corner is the whole trick, and it is easy to get wrong — two circles of a given radius pass through any pair of points, and centring these on the cell’s middle instead gives marks that still meet at the edges but can never curl around a grid vertex. That version looks plausible and no loop, half circle or full circle ever forms in it at any density or seed.
 
-**Divisions** decides how much the arcs behave like a single continuous system. It replaces each single quarter arc with a fan of concentric ones sharing the same corner. Because a neighbour's fan is centred on that same physical point whenever the rotations agree, every radius in the fan meets its opposite number across the edge and the marks become nested ribbons; where the rotations disagree, the lines simply stop. Those stopped ends are the structure of the tiling rather than an effect applied to it — a rotation that faces away from its neighbour terminates a path, and no probability control is needed to produce one. Both of the cell’s marks are fanned, and the two sets stay clear of each other because the radii stop where circles centred on opposite corners would touch; carried past that point they would cross, and the result is moiré rather than pattern.
+**Divisions** decides how much the arcs behave like a single continuous system. It replaces each quarter arc with a fan of concentric ones sharing the same corner. Because a neighbour’s fan is centred on that same physical point whenever the rotations agree, every radius in the fan meets its opposite number across the edge and the marks become nested ribbons; where the rotations disagree, the lines simply stop. Those stopped ends are the structure of the tiling rather than an effect applied to it — a rotation facing away from its neighbour terminates a path, and no probability control is needed to produce one. What makes the fan join is that its radii mirror about the half cell, not that any particular radius is present: they are spread evenly and centred there, so odd counts include the middle radius and even counts straddle it, and both mirror exactly.
 
-On the diagonal set the same control does something structurally different, and something the arcs cannot quite manage. The single corner-to-corner line becomes a family of parallel chords spaced one cell width over the count — the only spacing that tiles, because it puts every crossing at a multiple of itself along each edge, and puts them there in both rotations. Where a fan only meets its neighbour when the two cells agree on a corner, every chord here finds its partner across every edge whichever way the cell beyond it happens to be turned. Past three or four the cells stop reading as cells at all and the grid becomes a woven field of chevrons and nested diamonds, which is a different pattern from the maze of switchbacks a count of one gives you.
+Both of the cell’s marks are fanned, and the two sets stay clear of each other because the radii stop where circles centred on opposite corners would touch. Carried past that point they cross, and the result is moiré rather than pattern. **Arc spread** moves that ceiling inward, and the gap between rings is worked out from the spread and the count rather than being set independently — so every arc you ask for fits, and the stroke thins to the gap it is left rather than the gap having to accommodate the stroke.
 
-The triangles divide too, and on that same lattice. Each rotation of the tile is a half cell with its right angle at one corner, so scaling it about that corner sweeps the hypotenuse across the cell and a slice at k/n lands exactly where the diagonal family crosses. Filling every other band turns the solid half-cell into ribbons, and because the band edges fall where a neighbour puts its own, the ribbons run on through the grid instead of stopping at it — which is why raising this makes the tile set agree with itself across edges more often than the solid version does, not less. Stroke weight has no stroke to widen here, so it sets how much of its own share of the tile each band fills — which is what it now means on the other two sets as well: thin it and a divided tile becomes fine ribbons while an undivided one shrinks back toward its corner, and past the default the bands grow into the gaps between them and fuse into solid mass again.
-
-Grid **density** interacts with everything. Below about six columns the tiles are large enough that you read each one individually and the tile set matters enormously; above about twenty you stop seeing tiles at all and start seeing a woven texture, at which point stroke weight matters more than which set you chose.
+Grid **density** interacts with everything. Below about six columns the tiles are large enough that you read each one individually and the loops are the subject; above about twenty you stop seeing tiles at all and start seeing a woven texture, at which point stroke weight matters more than anything else on the panel.
 `.trim();
 
-type TileKind = 'arcs' | 'diagonals' | 'triangles';
+const diagonalsDescription = `
+A Truchet tile is a square with an asymmetric mark on it, and a Truchet tiling is what you get when you fill a grid with copies of that square in random rotations. One tile, four rotations and a coin flip per cell produce paths that wander across the whole grid and look considered in a way that no part of the rule accounts for. Sébastien Truchet was cataloguing floor tiles in 1704; the arrangement outlives the tile.
+
+This one connects **corners** rather than edge midpoints. Paths meet at the cell’s corners, which makes the tiling read as a lattice of switchbacks rather than as the loops the arcs give you — sharper, more woven, and more obviously a grid. At one division it is a maze of diagonal zigzags, and it is the tile set that survives being pushed hardest.
+
+**Divisions** does something here that the arcs cannot quite manage. The single corner-to-corner line becomes a family of parallel chords spaced one cell width over the count — the only spacing that tiles, because it puts every crossing at a multiple of itself along each edge, and puts them there in both rotations. Where a fan only meets its neighbour when the two cells agree on a corner, every chord here finds its partner across every edge whichever way the cell beyond it happens to be turned. Past three or four the cells stop reading as cells at all and the grid becomes a woven field of chevrons and nested diamonds. The count stops at six: a family is 2n-1 chords, so six already crosses one cell with eleven lines, and past that the tiling reads as grey rather than as a pattern.
+
+The extent of the family is not a free choice either, which is why there is no spread control here. Truncating it to the chords nearest the diagonal leaves a cell crossing its right edge near one corner and its left edge near the other, so two neighbours turned the same way miss each other entirely. The spacing that makes the family join is the spacing that fills the cell.
+
+Colour comes from a field drifting across the canvas, and each chord is cut into pieces small enough that no piece carries one colour across more than a fraction of the image. Sampling once per chord sounds sufficient and is not: a colour boundary could then only fall in the gap between chords, and since every chord runs at 45° the field’s contours snapped onto a lattice of parallel lines and came out as straight-edged facets. Grid **density** decides the rest — below about six columns you read individual tiles, above about twenty a woven texture.
+`.trim();
+
+type TileKind = 'arcs' | 'diagonals';
 
 /**
  * Swells of colour across the image, in cycles. Low on purpose: the point is
@@ -71,102 +80,7 @@ const ARC_CUTS: Record<number, readonly (readonly [number, number])[]> = {
 /** Cut counts available, smallest first. */
 const ARC_CUT_COUNTS = [1, 2, 3, 4, 6];
 
-/**
- * Triangles are laid down just short of opaque, so a mass of them keeps some of
- * the background's depth rather than going flat. This is what the old
- * expression settled on for a full-size tile in the unquieted part of the
- * canvas, which was most of them; the two terms that moved it — the quiet-top
- * factor and a subdivision depth bonus — both went with the controls that fed
- * them, so there is nothing left for it to vary with.
- */
-const TRIANGLE_FILL_OPACITY = '0.9';
 
-/**
- * The stroke weight at which a triangle band fills its whole share of the tile.
- *
- * `weight` used to do nothing at all on this set — it is the one control that
- * had no stroke to apply itself to, and it was written down as a known dead
- * knob rather than fixed. That was survivable while it was one slider among
- * seven; it stopped being survivable when the three primaries put `weight` on
- * the horizontal drag, because a dead control is a dead *gesture*, and a third
- * of the way a person drives this pattern did nothing on a third of its tile
- * sets.
- *
- * What a band has instead of a stroke is a thickness, and this is the weight
- * at which that thickness is the band's full pitch — which is to say, the
- * appearance this tile set has always had. Below it the band fills less of its
- * pitch; above it, more than its pitch, so the alternating bands grow into the
- * gaps between them and fuse back into solid mass. That saturation is the same
- * shape the arcs already have, where past about 0.4 they touch and read solid.
- *
- * Anchored on the default so that every render at or above it is the render it
- * always was, byte for byte: at a fill of exactly 1 the arithmetic below
- * reduces to the expression this tile emitted before there was a control.
- */
-/**
- * How often a triangle takes the rotation that meets its neighbours.
- *
- * A triangle covers half its cell, so it presents ink to two of the four edges
- * and nothing to the other two. With a free rotation per cell that is a coin
- * toss on every shared edge: measured, 47-52% of interior edges have ink on
- * one side and blank paper on the other, and a ribbon that runs into one stops
- * dead against a ruler-straight boundary. At low densities, where each cell is
- * read individually, that is the whole complaint — the tiling looks cut rather
- * than woven.
- *
- * Whether two cells join is not a preference between rotations, it names one.
- * Let R be 1 when the filled half touches the right edge and D when it touches
- * the bottom; the four rotations are exactly the four (R, D) pairs. Two cells
- * meet along a shared edge precisely when those bits alternate across it. So a
- * fully joined tiling needs R to alternate by column and D by row — which
- * determines every cell from the first one, leaves four possible layouts in
- * total, and makes the seed meaningless for this tile set. Joining everything
- * and staying random are not both available.
- *
- * It shipped at 0.7 for a while, and that was calibrated on the wrong case.
- * Measured band ends with no partner facing them: 13-20% at 0.7, 7-13% at
- * 0.85, 1-4% at 0.95, 0% at 1.
- *
- * What makes 0.7 wrong is that the damage from a broken seam scales with the
- * division count, and the dial was set when a tile was one solid triangle.
- * Undivided, a seam with ink on one side and paper on the other is just
- * negative space — the A/B at three columns is hard to call. Divide the tile
- * into six ribbons and that same seam stops six ribbons dead in mid-air, and
- * it is the first thing anybody sees. It was reported four times.
- *
- * So it is 1, and the cost is real and stated rather than discovered later:
- * a fully joined tiling determines every cell from the first, leaving four
- * layouts in total, so the seed does much less on this tile set than on the
- * others. A regular pattern that is correct beats a varied one that is
- * visibly broken, and the renders bear it out — at thirteen columns and six
- * divisions the zigzag bands and rows of nested diamonds run unbroken, on
- * paper and on a dark ground alike.
- *
- * It costs no ink and no negative space: the rotation decides which half of a
- * cell is filled, never how much of it.
- */
-const JOIN_NEIGHBOUR = 1;
-
-/**
- * The most seams `diamondBreak` may leave unmet, at the top of its travel.
- *
- * A fault is not free and there is no version of it that is. Joining forces
- * the filled halves to alternate across every edge, so the only way to move a
- * row or column off its phase is to make one pair of neighbours agree — which
- * is exactly one seam with ink on one side and paper on the other. The rate is
- * per seam, so the control means the same run length in cells at three columns
- * and at twenty-six, and the fraction of seams it breaks is the setting.
- *
- * The ceiling comes from the dial this replaced. `JOIN_NEIGHBOUR` at 0.7 left
- * 13-20% of band ends facing nothing and was reported as small islands; at
- * 0.85 it left 7-13% and was still visibly fragmented at six divisions. The
- * top of this slider sits at 0.10 so that the whole of its travel stays under
- * the setting that was already too broken, and the useful part of it — one
- * fault every ten to twenty cells — is in the bottom third.
- */
-const MAX_BREAK = 0.1;
-
-const TRIANGLE_FULL_WEIGHT = 0.16;
 
 /**
  * How much of its own pitch a stroked mark may fill.
@@ -207,108 +121,90 @@ const PITCH_AT_DEFAULT = 0.68;
 
 /** The top of the weight slider, where a mark fills its pitch and marks touch. */
 const WEIGHT_MAX = 0.5;
-/** A band may grow to twice its pitch, which closes the gap either side of it. */
-const TRIANGLE_FILL_MAX = 2;
 
-/** The bottom of the weight slider. */
-const WEIGHT_MIN = 0.02;
+
 
 /**
- * The narrowest a triangle band may be drawn, as a share of its own pitch.
+ * One implementation, two patterns.
  *
- * A band is anchored on its corner-side edge, so at one division `fill` does
- * not thin the mark — it scales the whole triangle about its right angle, and
- * a triangle at 0.125 of its cell is 1.6% of that cell's area. The tile set
- * stopped being a tiling and became specks, which is what the low end of the
- * slider was doing on every undivided render.
+ * Arcs and diagonals were a `tileSet` select on a single generator for as long
+ * as this file existed, and the tap gesture cycled it. Tap now cycles the
+ * *pattern*, so a select whose whole job was to be the tap has nothing left to
+ * be: the two tile sets are two entries in the registry and the parameter is
+ * gone. They keep sharing a render because they share almost all of it — the
+ * grid, the rotation, the colour field and the stroke rule are one program
+ * with a single branch in it.
  *
- * The bound is the reversed neighbour. A band covering [k, k+f] of its legs
- * faces, across a seam where the neighbour is turned the other way, a band
- * covering [n-k'-f, n-k']; the two overlap for k+k' = n-1 exactly when
- * f > 1/2, at every division count. Below that a ribbon has no partner to run
- * into and stops against the cell boundary. 0.6 takes the bound with enough
- * margin that the overlap is a third of a band rather than a knife edge.
- *
- * Two pixel metrics were tried on the seams and neither can see this. Counting
- * samples with ink on one side only rewards a render for being empty — the
- * specks score best of anything. Normalising by inked samples inverts the bias
- * and rewards thickness, marking the shipping default as worse than solid at
- * every count. The bound above is derived and the floor was chosen by looking.
+ * What the split buys beyond the gesture is that each one's range can be its
+ * own. Divisions means n concentric rings on the arcs, where twelve is the
+ * point of raising it, and 2n-1 parallel chords on the diagonals, where twelve
+ * is twenty-three lines through one cell. That used to need `limits` — a
+ * ceiling declared against another parameter's value, applied in a second pass
+ * of `coerceParams` because it cannot be resolved until that parameter has
+ * settled. Now it is a number in a spec. Nothing in the registry declares
+ * `limits` any more; the machinery stays, because a mode switch with a
+ * dependent range is the obvious next thing a generator will reach for, and
+ * its tests run against a fabricated generator rather than this one.
  */
-const TRIANGLE_FILL_MIN = 0.6;
+interface TruchetFlavour {
+  id: string;
+  name: string;
+  tagline: string;
+  description: string;
+  /** The top of the divisions slider. See the note above. */
+  divisionMax: number;
+  divisionNote: string;
+}
 
-export const truchet: Generator = {
-  id: 'truchet',
-  name: 'Truchet',
-  tagline: 'One tile, four rotations, and paths nobody planned.',
+function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
+  return {
+  id: flavour.id,
+  name: flavour.name,
+  tagline: flavour.tagline,
   tags: ['grid'],
-  description,
+  description: flavour.description,
   params: [
     { key: 'density', label: 'Grid density', type: 'number', min: 3, max: 26, step: 1, default: 8, description: 'Columns across the canvas. Rows follow from the aspect ratio so cells stay square.' },
-    {
-      key: 'tileSet',
-      label: 'Tile set',
-      type: 'select',
-      options: [
-        { value: 'arcs', label: 'Quarter arcs' },
-        { value: 'diagonals', label: 'Diagonals' },
-        { value: 'triangles', label: 'Triangles' },
-      ],
-      default: 'arcs',
-      description: 'Arcs make continuous loops, diagonals make switchbacks, triangles make mass instead of line.',
-    },
-    { key: 'weight', label: 'Stroke weight', type: 'number', min: 0.02, max: 0.5, step: 0.01, default: 0.16, description: 'How much of its own share of the cell each mark fills. An undivided tile has the whole cell to itself and this is a line width; divide it and the share is the gap between one mark and the next, so the same setting keeps the same look instead of the marks thickening until they merge. Past the default they do merge, which is what reads as solid. Triangles have no stroke to widen and have always worked this way: below the default a divided tile thins to ribbons and an undivided one shrinks back toward its corner, above it the bands grow into the gaps and fuse.' },
+    { key: 'weight', label: 'Stroke weight', type: 'number', min: 0.02, max: 0.5, step: 0.01, default: 0.16, description: 'How much of its own share of the cell each mark fills. An undivided tile has the whole cell to itself and this is a line width; divide it and the share is the gap between one mark and the next, so the same setting keeps the same look instead of the marks thickening until they merge. Past the default they do merge, which is what reads as solid.' },
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'How much of the colour comes from the drifting field rather than from height. At zero the palette runs top to bottom; at one it pools into regions that wander across the image.' },
-    { key: 'arcCount', label: 'Divisions', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'How many parts each cell’s mark is divided into. Quarter arcs become concentric, added either side of the radius that joins the neighbouring cells, and how far they reach is Arc spread’s job rather than this one. A diagonal becomes a family of parallel chords across the cell. A triangle is sliced into bands parallel to its hypotenuse with every other one filled, so the solid mass becomes ribbons. All three divide on a spacing that puts each part’s edges where a cell of the same size puts its own, so raising this adds detail inside a mark that keeps its size, and the stroke follows the gap it leaves rather than being clamped by it.' },
-    { key: 'arcSpacing', label: 'Arc spread', type: 'number', min: 0.15, max: 1, step: 0.05, default: 1, description: 'How much of the cell the rings reach across. The gap between them is worked out from that and the division count, so every arc you ask for fits, and the stroke is sized from that gap rather than clamped by it. Quarter arcs only: a family of diagonals has no say in how far it spreads, because the spacing that makes it meet its neighbours is the spacing that fills the cell.' },
-    { key: 'diamonds', label: 'Diamonds', type: 'number', min: 0, max: 1, step: 0.05, default: 0.5, description: 'How much of the tiling closes into diamonds rather than running on as zigzags. Triangles only, and every tile stays joined at every setting — this is not the trade it looks like. A triangle meets its neighbour when the filled halves alternate across each edge, which fixes the alternation but leaves the first cell of each row and column free to set that row or column’s phase. A diamond closes only where two adjacent rows share a phase and two adjacent columns do too, so steering the phases decides how many there are without touching a single edge. At zero no two neighbours agree and the marks run unbroken from one side of the picture to the other; at one they all agree and the grid fills with concentric diamonds; the middle mixes long runs with clusters of them.' },
-    { key: 'diamondBreak', label: 'Diamond break', type: 'number', min: 0, max: 1, step: 0.05, default: 0, description: 'How often a row or column is allowed to change phase part way across, breaking the diamonds out of the rows and columns they otherwise run in. Triangles only. Joining every edge forces the filled halves to alternate, which leaves one free bit per row and one per column and nothing per cell \u2014 so a diamond column, once it can form, forms all the way down the picture, and no seed changes that. Turning this up mismatches the occasional seam on purpose, and the phase carries on shifted from there, so a run stops part way instead of spanning the image. The cost is exactly what it buys: the setting is the fraction of seams left with a ribbon facing blank paper, and the top of the slider is a tenth of them. At zero nothing is broken and the render is the one it always was.' },
+    { key: 'arcCount', label: 'Divisions', type: 'number', min: 1, max: flavour.divisionMax, step: 1, default: 1, description: flavour.divisionNote },
+    ...(KIND === 'arcs'
+      ? ([
+          { key: 'arcSpacing', label: 'Arc spread', type: 'number', min: 0.15, max: 1, step: 0.05, default: 1, description: 'How much of the cell the rings reach across. The gap between them is worked out from that and the division count, so every arc you ask for fits, and the stroke is sized from that gap rather than clamped by it.' },
+        ] as ParamSpec[])
+      : []),
   ],
 
   /**
-   * Tile set, grid density, divisions.
+   * Grid density across, divisions down.
    *
-   * Tile set is the only one of truchet's seven that is a choice rather than a
-   * quantity, so it takes the tap. The other two are the quantities whose
-   * whole range is worth travelling, and the horizontal one used to be
-   * `weight`.
+   * There is no third binding to choose any more: tap belongs to the registry,
+   * so a pattern nominates two quantities and everything else lives behind the
+   * gear. These are the two whose whole range is worth travelling, and the
+   * horizontal one used to be `weight`.
    *
-   * It lost the slot to the fault this file's own rules predict. `weight` is a
+   * It lost the slot to the fault this repo's own rules predict. `weight` is a
    * fraction of the cell, and the fan thins its stroke to the gap so that
    * raising the division count cannot close the rings into a block — which
-   * means the moment divisions is above one, most of the weight slider is
-   * asking for a stroke wider than the gap and gets the gap. Measured on the
-   * arcs at 8 columns: the slider changes the stroke over 100% of its travel
-   * at one division, 29% at three, and 6% at twelve, and the 0.16 default is
-   * already inside the dead zone from three divisions up. Two of the three
-   * primaries were therefore coupled, with the vertical one deciding how much
-   * of the horizontal one did anything.
+   * means the moment divisions is above one, most of the weight slider asks
+   * for a stroke wider than the gap and gets the gap. Measured on the arcs at
+   * 8 columns: the slider changes the stroke over 100% of its travel at one
+   * division, 29% at three, and 6% at twelve, and the 0.16 default is already
+   * inside the dead zone from three divisions up. The two axes were therefore
+   * coupled, with the vertical one deciding how much of the horizontal one did
+   * anything.
    *
    * Density is uncoupled from both and is the control a person reaches for
    * first anyway — it decides whether you are reading tiles or reading a
-   * texture. Arc spread was never a candidate: it does nothing on two of the
-   * three tile sets, which rules it out of a gesture that has to mean
-   * something in every mode.
+   * texture.
    */
-  primary: { tap: 'tileSet', x: 'density', y: 'arcCount' },
-
-  /**
-   * Divisions stops at six on diagonals.
-   *
-   * The count means a different amount of ink on each tile set. A diagonal
-   * becomes a family of 2n-1 parallel chords, so twelve is twenty-three lines
-   * crossing one cell and the tiling reads as grey rather than as a pattern —
-   * where twelve concentric quarter arcs, which is n rings, is the whole point
-   * of raising it. Six is where the chords stop being countable.
-   */
-  limits: { arcCount: { when: 'tileSet', max: { diagonals: 6 } } },
+  primary: { x: 'density', y: 'arcCount' },
 
   render(ctx: RenderContext): string {
     const { width: w, height: h, palette, params, rng } = ctx;
     const noise = createNoise2D(rng);
 
     const cols = Math.max(2, Math.round(pNum(params, 'density', 8)));
-    const tileSet = pStr(params, 'tileSet', 'arcs');
     const weight = pNum(params, 'weight', 0.16);
     const colorSpread = pNum(params, 'colorSpread', 0.6);
 // The colour ramp is always resolved to its full depth.
@@ -322,11 +218,6 @@ export const truchet: Generator = {
     const colorBlend = 1;
     const arcCount = Math.max(1, Math.round(pNum(params, 'arcCount', 1)));
     const arcSpacing = pNum(params, 'arcSpacing', 1);
-    // How often two neighbouring rows, or two neighbouring columns, agree on
-    // their phase. That is the whole of what decides the diamond count, and it
-    // is independent of the join — see the rotation block below.
-    const diamondBias = clamp(pNum(params, 'diamonds', 0.5), 0, 1);
-    const breakRate = clamp(pNum(params, 'diamondBreak', 0), 0, 1) * MAX_BREAK;
 
     const cell = w / cols;
     const rows = Math.ceil(h / cell) + 1;
@@ -394,14 +285,9 @@ export const truchet: Generator = {
       return Math.min(bands - 1, Math.floor(t * bands));
     };
 
-    // The rotation each cell settled on, so a cell can see what its left and
-    // upper neighbours chose. Row-major order below means both are already in.
-    const chosen = new Int8Array(cols * Math.max(1, rows) + cols + 1).fill(-1);
-    let salt = 0x811c9dc5;
 
 
-    const drawTile = (x: number, y: number, size: number, rx = -1, ry = -1): void => {
-      const cy = y + size / 2;
+    const drawTile = (x: number, y: number, size: number): void => {
       const s = size;
       const x0 = x;
       const y0 = y;
@@ -423,249 +309,8 @@ export const truchet: Generator = {
               1,
             );
 
-      const kindOf = tileSet as TileKind;
-      const band = bandAt(x + size / 2, cy);
-      let rot = rng.int(0, 3);
-      if (kindOf === 'triangles' && rx >= 0) {
-        // Where the faults go has to move with the seed, and a RenderContext
-        // carries no seed — only the stream. Drawing from it here would shift
-        // every later draw and repaint every truchet render that exists, which
-        // is the one thing a control defaulting to off must not do. What is
-        // already to hand is the raw `rng.int(0, 3)` above, which every cell
-        // draws and the join then throws away: folding those into a running
-        // mix gives a value that differs between seeds from the first cell on
-        // and costs nothing from the stream. It is read only below, so at a
-        // break of zero the render is byte-identical to one without it.
-        salt = Math.imul(salt ^ rot, 0x01000193) >>> 0;
-        // A triangle covers half its cell, so it presents ink to only two of
-        // the four edges. Whether a ribbon runs on into the neighbour or stops
-        // dead is decided by which halves face each other, and with a free
-        // rotation per cell that is a coin toss on every edge.
-        //
-        // R is 1 when the filled half touches the right edge, D when it
-        // touches the bottom. Two cells join along their shared edge exactly
-        // when those bits alternate, so the join is not a preference between
-        // rotations — it names one.
-        const rBase = rot === 1 || rot === 2 ? 1 : 0;
-        const dBase = rot === 2 || rot === 3 ? 1 : 0;
-        const left = rx > 0 ? (chosen[ry * cols + rx - 1] ?? -1) : -1;
-        const up = ry > 0 ? (chosen[(ry - 1) * cols + rx] ?? -1) : -1;
-        // Alternation is forced, the phase is not, and that gap is the whole
-        // of this control.
-        //
-        // Joining every edge means R alternates along each row and D
-        // alternates down each column. That determines every cell in a row
-        // from its first one — but says nothing about what that first one is.
-        // The first cell of each row is free to set that row's phase, and the
-        // first cell of each column its own, and the join never constrains
-        // either. `JOIN_NEIGHBOUR` is 1 and stays 1; nothing below can leave a
-        // ribbon facing paper.
-        //
-        // What the free phases decide is the diamonds. Four cells close a ring
-        // around a grid vertex only when all four turn their right angle to
-        // it, which needs the two rows either side of that vertex to share a
-        // phase and the two columns either side to share one too. So biasing
-        // whether neighbouring rows and columns agree sets how much of the
-        // tiling closes into diamonds and how much runs on as zigzags —
-        // measured, 0% of band ends unmet at every setting of it.
-        //
-        // `rng.bool` draws once whatever the probability, so moving this
-        // control changes which phases agree without moving the seeded stream
-        // under everything else.
-        const rowStart = ry > 0 ? (chosen[(ry - 1) * cols] ?? -1) : -1;
-        const colStart = rx > 0 ? (chosen[rx - 1] ?? -1) : -1;
-        const rPhase =
-          rx === 0 && rowStart >= 0
-            ? rng.bool(diamondBias)
-              ? rowStart === 1 || rowStart === 2
-                ? 1
-                : 0
-              : rowStart === 1 || rowStart === 2
-                ? 0
-                : 1
-            : rBase;
-        const dPhase =
-          ry === 0 && colStart >= 0
-            ? rng.bool(diamondBias)
-              ? colStart === 2 || colStart === 3
-                ? 1
-                : 0
-              : colStart === 2 || colStart === 3
-                ? 0
-                : 1
-            : dBase;
-        const rJoin = left >= 0 && rng.bool(JOIN_NEIGHBOUR) ? 1 - (left === 1 || left === 2 ? 1 : 0) : rPhase;
-        const dJoin = up >= 0 && rng.bool(JOIN_NEIGHBOUR) ? 1 - (up === 2 || up === 3 ? 1 : 0) : dPhase;
-        // A fault, and what it buys.
-        //
-        // Alternation leaves one free bit per row and one per column and none
-        // per cell, so every fully joined tiling is a product of a row set and
-        // a column set: whether a column boundary can carry diamonds at all is
-        // one bit holding for its entire height. That is why the verticals run
-        // edge to edge, and no seed will ever break them — it is the structure
-        // rather than the randomness, and it was reported twice as the pattern
-        // looking too regular to be random.
-        //
-        // Flipping a cell's bit against its neighbour mismatches that one seam
-        // and carries the new phase on for the rest of the row, because the
-        // next cell alternates from the flipped value like any other. So a
-        // fault costs one seam and buys a phase that stops part way across the
-        // picture instead of spanning it. The flip is applied after the join
-        // rather than in place of it, which keeps the `rng.bool` draws in the
-        // same order and the zero setting byte-identical.
-        const r =
-          left >= 0 && breakRate > 0 && hashSeed(`fault:${salt}:${rx}:${ry}:r`) / 0x100000000 < breakRate
-            ? 1 - rJoin
-            : rJoin;
-        const d =
-          up >= 0 && breakRate > 0 && hashSeed(`fault:${salt}:${rx}:${ry}:d`) / 0x100000000 < breakRate
-            ? 1 - dJoin
-            : dJoin;
-        rot = r === 0 && d === 0 ? 0 : r === 1 && d === 0 ? 1 : r === 1 && d === 1 ? 2 : 3;
-        chosen[ry * cols + rx] = rot;
-      }
-      const kind = kindOf;
-
-      if (kind === 'triangles') {
-        const pts: [number, number][][] = [
-          [
-            [x0, y0],
-            [x0 + s, y0],
-            [x0, y0 + s],
-          ],
-          [
-            [x0 + s, y0],
-            [x0 + s, y0 + s],
-            [x0, y0],
-          ],
-          [
-            [x0 + s, y0 + s],
-            [x0, y0 + s],
-            [x0 + s, y0],
-          ],
-          [
-            [x0, y0 + s],
-            [x0, y0],
-            [x0 + s, y0 + s],
-          ],
-        ];
-        const tri = pts[rot] as [number, number][];
-
-        // The count works here too, and on the same lattice as the diagonals.
-        // In all four rotations the first vertex is the right-angle corner, so
-        // scaling the triangle about it sweeps the hypotenuse across the cell:
-        // the similar triangle at parameter t carries its hypotenuse on the
-        // chord t*s from that corner. Slice at consecutive multiples of 1/n and
-        // every band edge lands on a multiple of s/n along the cell edge, which
-        // is the lattice a neighbour puts its own edges on whichever way it is
-        // turned. Measured across interior cell edges, this agrees with the
-        // neighbouring cell more often than the solid tile does, not less:
-        // 37% of samples disagree at a count of three against 52% solid.
-        const corner = tri[0] as [number, number];
-        const legA = tri[1] as [number, number];
-        const legB = tri[2] as [number, number];
-        const bands = Math.max(1, arcCount);
-        // How much of its own pitch each band fills. One is the width this
-        // tile has always drawn; less pulls the band back toward the corner it
-        // is anchored on, more grows it across the gap into its neighbour.
-        //
-        // Below the default the slider is remapped onto [TRIANGLE_FILL_MIN, 1]
-        // rather than clamped there. A clamp would leave the bottom eight of
-        // the slider's forty-eight steps doing nothing, and unlike the dead top
-        // third — where a band has closed its gaps and there is visibly nothing
-        // left to fill — that one has no reason a person could see. Remapping a
-        // control normally means moving every value it already had, which is
-        // what made the arcs thinner than they were; here every value it had
-        // below the default drew specks, so there is nothing under this range
-        // worth preserving. The default and everything above it are untouched.
-        const fill =
-          weight >= TRIANGLE_FULL_WEIGHT
-            ? Math.min(weight / TRIANGLE_FULL_WEIGHT, TRIANGLE_FILL_MAX)
-            : TRIANGLE_FILL_MIN +
-              clamp((weight - WEIGHT_MIN) / (TRIANGLE_FULL_WEIGHT - WEIGHT_MIN), 0, 1) * (1 - TRIANGLE_FILL_MIN);
-
-        // t >= 1 returns the vertex itself rather than corner + (p - corner),
-        // which is the same point in algebra and not always the same float. A
-        // single band has to emit the exact string this tile has always
-        // emitted, so the arithmetic is skipped rather than trusted.
-        const at = (p: [number, number], t: number): [number, number] =>
-          t >= 1 ? p : [corner[0] + t * (p[0] - corner[0]), corner[1] + t * (p[1] - corner[1])];
-
-        // Each band takes its colour from the field at its own centroid, the way
-        // the arcs and the diagonal chords do. Colouring every band from the
-        // cell's centre gives the whole tile one step of the ramp, so the colour
-        // can only change at a cell boundary and the grid shows as flat blocks
-        // however finely the blend resolves the palette.
-        //
-        // A single band is the whole triangle, and is left on the tile's own
-        // colour: sampling its centroid instead would be marginally more honest
-        // and would repaint every existing undivided render for no one's
-        // benefit.
-        const emit = (ps: [number, number][]): void => {
-          let cx = 0;
-          let cy2 = 0;
-          for (const pt of ps) {
-            cx += pt[0];
-            cy2 += pt[1];
-          }
-          const bandIndex = bands === 1 ? band : bandAt(cx / ps.length, cy2 / ps.length);
-          (fillBuckets[bandIndex] as string[]).push(
-            el('polygon', {
-              points: ps.map((pt) => `${num(pt[0], 1)},${num(pt[1], 1)}`).join(' '),
-              'fill-opacity': TRIANGLE_FILL_OPACITY,
-            }),
-          );
-        };
-
-        // Every other band, counted down from the hypotenuse. Filling all of
-        // them would reassemble the solid triangle; alternating is what turns
-        // the mass into ribbons, and starting at the outermost keeps the band
-        // along the hypotenuse — the edge that gives the tile its direction —
-        // at every count. One band is the whole triangle, so the tile set is
-        // unchanged until the count is raised.
-        // Anchored at `t0`, the corner-side edge, and never at the hypotenuse.
-        // That edge is the one on the lattice a neighbour puts its own band
-        // edges on, so thinning a ribbon leaves the join that makes the
-        // ribbons run on through the grid rather than stopping at it. It is
-        // also what makes the undivided tile shrink as a triangle instead of
-        // becoming a band across the middle of one: scaling about the right
-        // angle keeps the two legs on the cell edges, where the neighbouring
-        // tiles meet them, and retreats only the hypotenuse.
-        // Centred in its slot rather than anchored on the corner-side edge,
-        // wherever there is more than one band — and at an even count, shifted
-        // half a slot as well.
-        //
-        // The bands are every other slot counting down from the hypotenuse, so
-        // a filled slot has k of the same parity as n - 1. Across a seam where
-        // the neighbour is turned the other way, slot k faces slot n - 1 - k,
-        // which has parity 0 — the same as k only when n is odd. At an even
-        // count every filled slot therefore faces an empty one, half the seams
-        // have a ribbon running into blank paper, and the chevrons come apart
-        // into jogged fragments. No choice of anchor fixes it; the arithmetic
-        // is about which slots are filled, not where in a slot the ink sits.
-        //
-        // Shifting the family half a slot changes the partner to n - k, whose
-        // parity is 1 — which matches when n is even, and is why this is a
-        // half-slot rather than a whole one. Odd counts keep a phase of zero
-        // and are byte-identical; a single band has no slot to shift within.
-        // Measured band ends with no partner facing them, at six divisions:
-        // 51.5% before, 15.2% after, which is the floor the rotation bias
-        // leaves behind and what the odd counts already read.
-        //
-        // The cost, stated because it is visible: an even count no longer has
-        // a band flush against the hypotenuse — the outermost one now stops
-        // half a band short of it. That edge is what gives the tile its
-        // direction, so this is a real trade, and it buys ribbons that run
-        // through the grid instead of stopping at every other cell.
-        const phase = bands % 2 === 0 ? -0.5 : 0;
-        const lead = bands === 1 ? 0 : (1 - fill) / 2 + phase;
-        for (let k = bands - 1; k >= 0; k -= 2) {
-          const t0 = Math.max(0, (k + lead) / bands);
-          const t1 = Math.min(1, (k + lead + fill) / bands);
-          emit(t0 === 0 ? [corner, at(legA, t1), at(legB, t1)] : [at(legA, t0), at(legA, t1), at(legB, t1), at(legB, t0)]);
-        }
-        return;
-      }
+      const kind = KIND;
+      const rot = rng.int(0, 3);
 
       if (kind === 'arcs') {
         // Sweep flag 0, not 1. With sweep 1 the renderer picks the other of the
@@ -997,7 +642,7 @@ export const truchet: Generator = {
 
     for (let ry = 0; ry < rows; ry++) {
       for (let rx = 0; rx < cols; rx++) {
-        drawTile(rx * cell, originY + ry * cell, cell, rx, ry);
+        drawTile(rx * cell, originY + ry * cell, cell);
       }
     }
 
@@ -1021,6 +666,27 @@ export const truchet: Generator = {
       body += el('g', { fill: 'none', 'stroke-linecap': 'round' }, gradientPaths.join(''));
     }
 
-    return svgRoot(w, h, `${truchet.name} wallpaper`, body);
+    return svgRoot(w, h, `${flavour.name} wallpaper`, body);
   },
-};
+  };
+}
+
+export const truchetArcs = makeTruchet('arcs', {
+  id: 'truchet-arcs',
+  name: 'Truchet Arcs',
+  tagline: 'Quarter circles on a grid, closing into loops nobody planned.',
+  description: arcsDescription,
+  divisionMax: 12,
+  divisionNote:
+    'How many concentric rings each quarter arc becomes, added either side of the radius that joins the neighbouring cells. They are spread evenly and centred on that radius, which is what makes each ring meet its opposite number across an edge; how far they reach is Arc spread\u2019s job rather than this one. Raising it adds detail inside a mark that keeps its size, and the stroke follows the gap it leaves rather than being clamped by it.',
+});
+
+export const truchetDiagonals = makeTruchet('diagonals', {
+  id: 'truchet-diagonals',
+  name: 'Truchet Diagonals',
+  tagline: 'Corner to corner, and a lattice of switchbacks.',
+  description: diagonalsDescription,
+  divisionMax: 6,
+  divisionNote:
+    'How many parallel chords cross each cell. The corner-to-corner line becomes a family spaced one cell width over the count, which is the only spacing that tiles: it puts every crossing at a multiple of itself along each edge, in both rotations, so every chord meets a partner across every edge. A family is 2n-1 chords, so this stops at six \u2014 past that one cell carries more than a dozen lines and the tiling reads as grey.',
+});

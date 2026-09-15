@@ -83,8 +83,8 @@ test.describe('gallery', () => {
       window.localStorage.setItem(
         'patternwall.collected.v1',
         JSON.stringify([
-          { id: 'wrecked', generatorId: 'truchet', seed: 'no-palette-here', savedAt: 2 },
-          { id: 'intact', generatorId: 'truchet', seed: 'still-here', params: {}, savedAt: 1, palette: { id: 'obsidian', name: 'Obsidian', background: '#0b0b0d', ink: '#f4f2ec', accents: ['#ff7a3d'], mode: 'dark', tags: [] } },
+          { id: 'wrecked', generatorId: 'truchet-arcs', seed: 'no-palette-here', savedAt: 2 },
+          { id: 'intact', generatorId: 'truchet-arcs', seed: 'still-here', params: {}, savedAt: 1, palette: { id: 'obsidian', name: 'Obsidian', background: '#0b0b0d', ink: '#f4f2ec', accents: ['#ff7a3d'], mode: 'dark', tags: [] } },
         ]),
       );
     });
@@ -104,7 +104,7 @@ test.describe('gallery', () => {
         JSON.stringify([{ id: 'half-written', name: 'Half written', background: '#101014' }]),
       );
     });
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await page.getByRole('tab', { name: 'Palette' }).click();
     await expect(page.getByText('Half written')).toBeVisible();
     expect(errors, `page threw: ${errors.join(' | ')}`).toEqual([]);
@@ -122,7 +122,7 @@ test.describe('gallery', () => {
         'patternwall.collected.v1',
         JSON.stringify([
           { id: 'gone', generatorId: 'no-such-pattern', seed: 'orphan', params: {}, savedAt: 2, palette: p },
-          { id: 'here', generatorId: 'truchet', seed: 'present', params: {}, savedAt: 1, palette: p },
+          { id: 'here', generatorId: 'truchet-arcs', seed: 'present', params: {}, savedAt: 1, palette: p },
         ]),
       );
     }, palette);

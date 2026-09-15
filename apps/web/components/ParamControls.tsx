@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import {
   GRID_SIZE,
   effectiveSpec,
+  generators,
   resolvePrimaries,
   type Generator,
   type ParamSpec,
@@ -126,7 +127,9 @@ function ImageField({
  * is a shortcut to a control that is right there — announcing "swipe left or
  * right" to somebody driving a slider with arrow keys is noise.
  */
-const GESTURE_LABEL: Record<PrimaryRole, string> = {
+type GestureRole = PrimaryRole | 'tap';
+
+const GESTURE_LABEL: Record<GestureRole, string> = {
   tap: 'Tap',
   x: 'Swipe \u2194',
   y: 'Swipe \u2195',
@@ -152,7 +155,7 @@ export function Control({
    */
   detail: number;
   /** The gesture that also drives this control, when one does. */
-  gesture?: PrimaryRole;
+  gesture?: GestureRole;
   /** Name and slider only. The sheet over the preview has no room to explain. */
   compact?: boolean;
   onChange: (v: ParamValue) => void;
@@ -250,11 +253,14 @@ export function ParamControls({
   params,
   onChange,
   onCommit,
+  onPattern,
 }: {
   generator: Generator;
   params: Record<string, ParamValue>;
   onChange: (key: string, value: ParamValue) => void;
   onCommit: () => void;
+  /** Absent where there is nothing to move to, which keeps this reusable. */
+  onPattern?: (id: string) => void;
 }) {
   // A generator with a picture may also declare how finely to read one. Only
   // string art does today, and the lookup is deliberately a lookup rather than
@@ -267,7 +273,7 @@ export function ParamControls({
 
   const bindings = resolvePrimaries(generator);
 
-  const control = (declared: ParamSpec, gesture?: PrimaryRole) => {
+  const control = (declared: ParamSpec, gesture?: GestureRole) => {
     // Rendered against the spec it is actually working to, not the one it
     // declared: a range that depends on another param would otherwise offer a
     // ceiling the render clamps away.
@@ -285,12 +291,51 @@ export function ParamControls({
     );
   };
 
-  // A pattern that has not chosen its three is one flat list, as it always was.
+  // A pattern that has not chosen its two is one flat list, as it always was.
   if (bindings.length === 0) return <div>{generator.params.map((spec) => control(spec))}</div>;
 
-  // The three it is driven by, and only those. Everything else lives behind the
-  // gear on the preview: this panel is the explanation, that sheet is the
-  // reach. Two copies of one slider would also be two things `getByLabel`
-  // matches, which is its own argument.
-  return <div className={ui.promoted}>{bindings.map((b) => (b.spec ? control(b.spec, b.role) : null))}</div>;
+  // The two it is driven by, and the pattern itself. Everything else lives
+  // behind the gear on the preview: this panel is the explanation, that sheet
+  // is the reach. Two copies of one slider would also be two things
+  // `getByLabel` matches, which is its own argument.
+  return (
+    <div className={ui.promoted}>
+      {onPattern ? (
+        <Control
+          spec={patternSpec}
+          value={generator.id}
+          detail={size}
+          gesture="tap"
+          onChange={(v) => onPattern(String(v))}
+          onCommit={() => undefined}
+        />
+      ) : null}
+      {bindings.map((b) => control(b.spec, b.role))}
+    </div>
+  );
 }
+
+/**
+ * The pattern itself, as a control.
+ *
+ * Tap on the preview walks the registry, and this is the same thing with a
+ * label on it — which it needs to be for two reasons. It is the only place the
+ * tap gesture is written down, and the gesture labels are the whole of this
+ * app's discoverability. And a gesture is not a keyboard path: without a real
+ * `<select>` here, moving between patterns would be reachable by thumb and by
+ * nothing else.
+ *
+ * Synthesised rather than declared, because it is not a parameter of anything
+ * — no generator owns it, and it is not in any share link's `q`. Giving it a
+ * ParamSpec shape is only so it can go through `Control` and come out looking
+ * like every other row.
+ */
+const patternSpec: ParamSpec = {
+  key: '__pattern',
+  label: 'Pattern',
+  type: 'select',
+  options: generators.map((g) => ({ value: g.id, label: g.name })),
+  default: generators[0]?.id ?? '',
+  description:
+    'Which pattern you are looking at. Tap the preview to move to the next one and round again; the seed and the palette come with you, so the same words draw the same idea four ways.',
+};

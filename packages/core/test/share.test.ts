@@ -182,9 +182,9 @@ describe('a link older than the pattern it names', () => {
    * values than the pattern has params is the case that message belongs to.
    */
   it('says the link is old rather than claiming settings were lost', () => {
-    const truchet = getGenerator('truchet')!;
+    const truchet = getGenerator('truchet-arcs')!;
     const short = Array.from({ length: truchet.params.length - 1 }, (_, i) => (i === 0 ? '17' : '1')).join('_');
-    const { config, notes } = decodeConfig('truchet', `?s=yarrow-129&q=${short}`);
+    const { config, notes } = decodeConfig('truchet-arcs', `?s=yarrow-129&q=${short}`);
 
     expect(notes.join(' '), 'a shorter link must not claim anything was reset').not.toMatch(/reset/i);
     expect(notes.join(' ')).toMatch(/predates/i);
@@ -196,9 +196,9 @@ describe('a link older than the pattern it names', () => {
   });
 
   it('still says settings were reset when the link carries more than the pattern has', () => {
-    const truchet = getGenerator('truchet')!;
+    const truchet = getGenerator('truchet-arcs')!;
     const long = Array.from({ length: truchet.params.length + 3 }, () => '1').join('_');
-    const { notes } = decodeConfig('truchet', `?s=yarrow-129&q=${long}`);
+    const { notes } = decodeConfig('truchet-arcs', `?s=yarrow-129&q=${long}`);
     expect(notes.join(' ')).toMatch(/reset/i);
   });
 });

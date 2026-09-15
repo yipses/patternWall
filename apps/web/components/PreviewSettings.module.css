@@ -1,14 +1,20 @@
-/* Above the gesture surface, the readout, and the sheet it opens.
+/* Above the gesture surface, the readout, and the sheets these open.
    Above the sheet specifically: the two share a corner, and the padding that
-   keeps the gear *looking* clear does nothing about hit testing — the sheet's
+   keeps a button *looking* clear does nothing about hit testing — the sheet's
    box still covers it, so at equal z-index the later element wins and the
    press that should close the sheet lands on the sheet instead. It reads as
-   the gear simply not working the second time. */
-.gear {
+   the button simply not working the second time. */
+.buttons {
   position: absolute;
   z-index: 11;
   right: 3.5%;
   bottom: 2.5%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.round {
   display: grid;
   place-items: center;
   width: 40px;
@@ -22,12 +28,12 @@
   transition: color 120ms ease, background 120ms ease;
 }
 
-.gear:hover {
+.round:hover {
   color: var(--text);
   background: rgba(10, 10, 11, 0.88);
 }
 
-.gear[aria-expanded='true'] {
+.round[aria-expanded='true'] {
   color: var(--accent);
   border-color: var(--accent-dim);
 }
@@ -58,8 +64,51 @@
   border-radius: var(--r-md);
   border: 1px solid var(--line-strong);
   background: rgba(10, 10, 11, 0.93);
-  /* The gear sits under the sheet's own corner; leave it reachable. */
-  padding-bottom: 52px;
+  /* The rail runs down the right edge, so the sheet stops short of it rather
+     than padding itself away from the bottom. Five buttons in a row would be
+     232px, and below 1000px the preview is sized from its height — about
+     240px wide on a phone — so a row would span the whole picture. A column
+     costs 232px of a preview that is two and a half times as tall. */
+  right: calc(3.5% + 48px);
+}
+
+/* The palette sheet carries a whole panel rather than four rows, so it takes
+   the height it needs and scrolls. Still not the full preview: seeing the
+   picture behind it is the point of putting colour here at all. */
+/* Full width, because the rail is hidden while this is open. A palette
+   library in the 177px a phone preview leaves beside the rail clips its own
+   tab strip, and a tab strip you have to know to swipe is not a tab strip. */
+.tall {
+  top: 2.5%;
+  right: 3.5%;
+}
+
+.buttons[data-hidden='true'] {
+  display: none;
+}
+
+/* Sticky rather than absolute: the sheet is the scroll container, so an
+   absolutely positioned button scrolls away with the content it is sitting
+   over and the palette library runs underneath it. */
+.done {
+  position: sticky;
+  bottom: -10px;
+  width: 100%;
+  margin-top: 12px;
+  background: rgba(10, 10, 11, 0.97);
+}
+
+/* A button holding a state rather than opening something: the heart, once
+   what is on screen is kept. Same treatment as an open sheet, because both
+   are saying "this one is on". */
+.on {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+/* The rail's links have to look like its buttons. */
+a.round {
+  text-decoration: none;
 }
 
 .rows > :last-child {

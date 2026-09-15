@@ -1,6 +1,19 @@
-import { expect, test } from '@playwright/test';
-import { DEFAULT_BLEED, curatedPalettes, defaultParams, generators, renderToSvg, safeZonesForCanvas } from '@patternwall/core';
+import { expect, test, type Page } from '@playwright/test';
+import { DEFAULT_BLEED, defaultParams, generators, initialConfig, renderToSvg, safeZonesForCanvas } from '@patternwall/core';
 import { previewSrc, settled } from './helpers';
+
+/**
+ * The pattern select, by role rather than by label.
+ *
+ * `getByLabel('Pattern')` matches two things: this control, whose accessible
+ * name is "TapPattern" because the gesture chip sits inside its label, and the
+ * editor's own tab panel, which is named "Pattern" by its tab. Both are
+ * legitimately called that, so the locator has to say which kind of thing it
+ * wants rather than either of them being renamed.
+ */
+function patternSelect(page: Page) {
+  return page.getByRole('combobox', { name: /Pattern/ });
+}
 
 test.describe('editor', () => {
   test('every pattern opens and renders', async ({ page }) => {
@@ -16,7 +29,7 @@ test.describe('editor', () => {
   });
 
   test('changing a parameter changes the render', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
     const before = await previewSrc(page);
 
@@ -37,7 +50,7 @@ test.describe('editor', () => {
   });
 
   test('the seed field and shuffle both change the render', async ({ page }) => {
-    await page.goto('/p/phyllotaxis');
+    await page.goto('/p/contours');
     await settled(page);
     const before = await previewSrc(page);
 
@@ -59,7 +72,7 @@ test.describe('editor', () => {
   // other. Both of these have to interleave the two changes: doing either one
   // alone passes against the bug, which is why the suite missed it.
   test('a change to one control does not discard a pending change to another', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
 
     // Starts a 260ms debounce; the slider lands well inside it.
@@ -74,7 +87,7 @@ test.describe('editor', () => {
   });
 
   test('shuffling the seed is not undone by the one being typed', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
 
     await page.getByTestId('seed-input').fill('half-typed');
@@ -91,7 +104,7 @@ test.describe('editor', () => {
   // replaced the draft under the cursor. fill() sets the whole string in one
   // event and never sees it.
   test('a six-digit hex can be typed one character at a time', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await page.getByRole('tab', { name: 'Palette' }).click();
     await page.getByRole('tab', { name: 'Colours' }).click();
     const field = page.getByLabel('Background hex value');
@@ -115,7 +128,7 @@ test.describe('editor', () => {
    * the overlay drifts for any reason, not only this one.
    */
   test('the safe-zone overlay lands where the generator quiets', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
     await page.getByRole('switch', { name: 'Show the iOS safe zone outlines' }).click();
 
@@ -138,12 +151,12 @@ test.describe('editor', () => {
   });
 
   test('the share URL round-trips to an identical render', async ({ page, context }) => {
-    await page.goto('/p/ridgelines');
+    await page.goto('/p/chevron-blocks');
     await settled(page);
 
-    await page.getByRole('slider', { name: 'Line count' }).focus();
+    await page.getByRole('slider', { name: 'Block size' }).focus();
     for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowRight');
-    await page.getByRole('slider', { name: 'Amplitude', exact: true }).focus();
+    await page.getByRole('slider', { name: 'Relief', exact: true }).focus();
     for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowLeft');
     await page.getByTestId('seed-input').fill('share-me');
     await settled(page);
@@ -161,7 +174,7 @@ test.describe('editor', () => {
   });
 
   test('a malformed share URL recovers to defaults with a visible note', async ({ page }) => {
-    await page.goto('/p/flow-dots?s=&q=nonsense_values&c=~zzzz');
+    await page.goto('/p/chevron-blocks?s=&q=nonsense_values&c=~zzzz');
     await settled(page);
     await expect(page.getByRole('status').or(page.getByRole('alert')).first()).toBeVisible();
     const src = await previewSrc(page);
@@ -175,16 +188,22 @@ test.describe('editor', () => {
   });
 
   test('the browser render matches Node for the exact editor configuration', async ({ page }) => {
-    await page.goto('/p/flow-dots');
+    await page.goto('/p/chevron-blocks');
     await page.waitForFunction(() => typeof window.patternwall?.render === 'function');
-    const g = generators.find((x) => x.id === 'flow-dots')!;
-    const palette = curatedPalettes.find((p) => p.id === 'obsidian')!;
+    const g = generators.find((x) => x.id === 'chevron-blocks')!;
+    // The editor's own opening configuration, not a hardcoded one. The second
+    // half of this test compares against what the preview is actually showing,
+    // so naming a seed and a palette here only works while they happen to be
+    // the ones the editor starts on — which they were for the pattern this
+    // test used to run against, and are not for any other.
+    const start = initialConfig(g.id);
+    const palette = start.palette;
     const params = defaultParams(g) as Record<string, number | string | boolean>;
     const fromBrowser = await page.evaluate(
       (i) => window.patternwall!.render(i),
-      { generatorId: 'flow-dots', seed: 'flowdots-001', width: 460, height: 997, bleed: 0.08, paletteId: 'obsidian', params },
+      { generatorId: g.id, seed: start.seed, width: 460, height: 997, bleed: 0.08, palette, params },
     );
-    const fromNode = renderToSvg({ generator: g, width: 460, height: 997, palette, params, seed: 'flowdots-001', bleed: 0.08 });
+    const fromNode = renderToSvg({ generator: g, width: 460, height: 997, palette, params, seed: start.seed, bleed: 0.08 });
     expect(fromBrowser).toBe(fromNode);
 
     // …and that is exactly what the preview element is showing.
@@ -195,7 +214,7 @@ test.describe('editor', () => {
   });
 
   test('preview modes, safe zones and collecting all work', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
 
     await page.getByRole('button', { name: 'Home Screen' }).click();
@@ -212,7 +231,7 @@ test.describe('editor', () => {
 
     await page.getByTestId('collect').click();
     await expect(page.getByTestId('collect')).toHaveText('Collected');
-    await page.getByRole('link', { name: /saved/ }).click();
+    await page.getByRole('link', { name: /^\d+ saved$/ }).click();
     await expect(page).toHaveURL(/\/collected/);
     await expect(page.getByRole('listitem')).toHaveCount(1);
     await page.getByRole('button', { name: /Remove the saved/ }).click();
@@ -220,7 +239,7 @@ test.describe('editor', () => {
   });
 
   test('the palette panel applies a library palette and shows warnings', async ({ page }) => {
-    await page.goto('/p/flow-dots');
+    await page.goto('/p/chevron-blocks');
     await settled(page);
     const before = await previewSrc(page);
 
@@ -250,10 +269,10 @@ test.describe('editor', () => {
   test('related patterns link onward', async ({ page }) => {
     // Which pattern is related to which comes from the registry, not from
     // here. Naming one made this test a hostage to the tag list: adding a
-    // pattern that shares a tag with flow-dots pushed the expected one out of
+    // pattern that shares a tag with chevron-blocks pushed the expected one out of
     // the top three and failed a test about navigation for a reason that had
     // nothing to do with navigation.
-    const from = generators.find((g) => g.id === 'flow-dots')!;
+    const from = generators.find((g) => g.id === 'chevron-blocks')!;
     const target = generators
       .filter((g) => g.id !== from.id)
       .map((g) => ({ g, shared: g.tags.filter((t) => from.tags.includes(t)).length }))
@@ -268,12 +287,12 @@ test.describe('editor', () => {
 
   test('copy link puts a restorable URL on the clipboard', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.goto('/p/phyllotaxis');
+    await page.goto('/p/contours');
     await settled(page);
     await page.getByTestId('copy-link').click();
     await expect(page.getByTestId('copy-link')).toHaveText('Link copied');
     const copied = await page.evaluate(() => navigator.clipboard.readText());
-    expect(copied).toContain('/p/phyllotaxis?');
+    expect(copied).toContain('/p/contours/?');
     expect(copied).toContain('c=');
   });
 
@@ -281,26 +300,31 @@ test.describe('editor', () => {
     // Regression: selects fire onChange and onCommit in the same event, so a
     // commit that read React state instead of a synchronously-written ref
     // settled the value the control had just replaced. The preview and the URL
-    // sat one change behind, and picking "Triangles" drew the previous set.
-    await page.goto('/p/truchet');
-    const select = page.getByLabel('Tile set');
+    // sat one change behind.
+    //
+    // The select this was written against was truchet's tile set, and the tile
+    // sets are separate patterns now. The Pattern control is the select that
+    // replaced it and it is a harder case, not an easier one: choosing a
+    // pattern swaps the generator *and* its params in one go, so a stale read
+    // would render one pattern's parameters through another's code.
+    await page.goto('/p/truchet-arcs');
+    await settled(page);
+    const select = patternSelect(page);
+
     const marks = async () => {
       const src = await page.locator('img[src^="data:image/svg"]').first().getAttribute('src');
       const svg = Buffer.from((src ?? '').split(';base64,')[1] ?? '', 'base64').toString('utf8');
-      return { poly: (svg.match(/<polygon/g) ?? []).length, path: (svg.match(/<path/g) ?? []).length };
+      return { rect: (svg.match(/<(polygon|rect)/g) ?? []).length, path: (svg.match(/<path/g) ?? []).length };
     };
-    // Triangles are the only tile set drawn as polygons, so they are a clean
-    // fingerprint for "the render matches the control". Stepping through all
-    // three also pins their encoded order, which is what a share link stores.
-    await select.selectOption('diagonals');
-    await expect.poll(async () => (await marks()).poly).toBe(0);
-    await expect(page).toHaveURL(/q=[^&]*_1_/);
-    await select.selectOption('triangles');
-    await expect.poll(async () => (await marks()).path).toBe(0);
-    expect((await marks()).poly).toBeGreaterThan(0);
-    await expect(page).toHaveURL(/q=[^&]*_2_/);
-    await select.selectOption('arcs');
-    await expect.poll(async () => (await marks()).poly).toBe(0);
-    await expect(page).toHaveURL(/q=[^&]*_0_/);
+
+    await select.selectOption('chevron-blocks');
+    await expect(page).toHaveURL(/\/p\/chevron-blocks\//);
+    await expect(page.getByLabel('Block size')).toBeVisible();
+    await expect.poll(async () => (await marks()).rect).toBeGreaterThan(0);
+
+    await select.selectOption('truchet-arcs');
+    await expect(page).toHaveURL(/\/p\/truchet-arcs\//);
+    await expect(page.getByLabel('Grid density')).toBeVisible();
+    await expect.poll(async () => (await marks()).path).toBeGreaterThan(0);
   });
 });

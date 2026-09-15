@@ -21,16 +21,14 @@ import { decimalsOf, type Generator, type ParamSpec, type ParamValue } from './t
 export type NumberSpec = Extract<ParamSpec, { type: 'number' }>;
 export type SelectSpec = Extract<ParamSpec, { type: 'select' }>;
 
-/** Which of the three gestures a binding answers to. */
-export type PrimaryRole = 'tap' | 'x' | 'y';
+/** Which of the two scrub axes a binding answers to. */
+export type PrimaryRole = 'x' | 'y';
 
-/** A resolved primary: the role, the key it names, and the spec if it is a param. */
+/** A resolved primary: the axis, the key it names, and the spec it resolves to. */
 export interface PrimaryBinding {
   role: PrimaryRole;
-  /** The param key, or `'seed'`. */
   key: string;
-  /** The spec this key resolves to, or `null` when the binding is the seed. */
-  spec: ParamSpec | null;
+  spec: ParamSpec;
 }
 
 /**
@@ -103,54 +101,21 @@ export function wrapPastEnd(spec: NumberSpec, from: number, direction: number): 
 }
 
 /**
- * The next value in the cycle: what a tap does.
- *
- * Selects advance through their options and wrap. Booleans toggle. Numbers
- * take one step and wrap at the top, which is what makes a short integer range
- * usable as a mode. An image has no next value and is returned unchanged — a
- * picture is chosen from a file, not cycled to.
- *
- * A value that is not in the spec's options resolves off the default rather
- * than off nothing, so a stale share link still cycles to somewhere sensible.
- */
-export function cycleValue(spec: ParamSpec, current: ParamValue): ParamValue {
-  if (spec.type === 'select') {
-    const found = spec.options.findIndex((o) => o.value === current);
-    const at = found < 0 ? spec.options.findIndex((o) => o.value === spec.default) : found;
-    const next = spec.options[(Math.max(0, at) + 1) % spec.options.length];
-    return next ? next.value : spec.default;
-  }
-  if (spec.type === 'boolean') return current !== true;
-  if (spec.type === 'number') {
-    const n = typeof current === 'number' ? current : spec.default;
-    const stepped = quantise(spec, n + spec.step);
-    // At the top the clamp gives back the value we already had, which is how
-    // the wrap is detected without a separate comparison against max.
-    return stepped > quantise(spec, n) ? stepped : quantise(spec, spec.min);
-  }
-  return current;
-}
-
-/**
  * The controls a generator nominates, resolved against its own params.
  *
- * In gesture order — tap, then across, then down — because that is the order
- * the editor promotes them in and the order a person reads them. A generator
- * that has chosen nothing returns nothing, and every caller treats that as
- * "render this pattern the way it always rendered".
+ * In gesture order — across, then down — because that is the order the editor
+ * promotes them in and the order a person reads them. A generator that has
+ * chosen nothing returns nothing, and every caller treats that as "render this
+ * pattern the way it always rendered".
  */
 export function resolvePrimaries(g: Generator): PrimaryBinding[] {
   const primary = g.primary;
   if (!primary) return [];
-  const roles: PrimaryRole[] = ['tap', 'x', 'y'];
+  const roles: PrimaryRole[] = ['x', 'y'];
   const out: PrimaryBinding[] = [];
   for (const role of roles) {
     const key = primary[role];
     if (!key) continue;
-    if (key === 'seed') {
-      out.push({ role, key, spec: null });
-      continue;
-    }
     const spec = g.params.find((p) => p.key === key);
     if (spec) out.push({ role, key, spec });
   }
@@ -161,7 +126,7 @@ export function resolvePrimaries(g: Generator): PrimaryBinding[] {
 export function secondaryParams(g: Generator): ParamSpec[] {
   const primary = g.primary;
   if (!primary) return g.params;
-  const claimed = new Set([primary.tap, primary.x, primary.y]);
+  const claimed = new Set([primary.x, primary.y]);
   return g.params.filter((p) => !claimed.has(p.key));
 }
 

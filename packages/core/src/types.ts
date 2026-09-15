@@ -66,12 +66,18 @@ export interface RenderContext {
 }
 
 /**
- * The three controls a pattern is driven by, when they have been chosen.
+ * The two controls a pattern is driven by, when they have been chosen.
  *
- * A pattern declares thirteen parameters and a person wants three. These name
- * the three that carry the picture, so the editor can promote them and bind
- * them to the preview itself — tap to cycle, drag across to scrub, drag up and
- * down to scrub — and put the rest behind a disclosure.
+ * A pattern declares thirteen parameters and a person wants two. These name
+ * the pair that carry the picture, so the editor can promote them and bind
+ * them to the preview itself — drag across to scrub one, drag up and down to
+ * scrub the other — and put the rest behind a disclosure.
+ *
+ * There were three. Tap used to be a pattern's own as well, cycling whichever
+ * parameter it nominated, and it is the registry's now: a tap moves to the
+ * next pattern. That is the better use of the only gesture that does not carry
+ * a quantity, and it costs nothing here — the one generator that spent its tap
+ * on a mode switch was choosing between two things that are now two patterns.
  *
  * Keys, never indices. The share encoding is positional and `params` is
  * append-only for that reason; naming a param by key means this can be chosen,
@@ -86,8 +92,6 @@ export interface RenderContext {
  * is no guessing on a pattern's behalf.
  */
 export interface Primaries {
-  /** Cycled by a tap. A param key, or `'seed'` to reroll. */
-  tap: string;
   /** Scrubbed by a horizontal drag. Names a number param. */
   x: string;
   /** Scrubbed by a vertical drag. Names a number param. */

@@ -94,6 +94,25 @@ export const contours: Generator = {
     { key: 'supplementary', label: 'Supplementary lines', type: 'number', min: 0, max: 1, step: 0.01, default: 0.5, description: 'Draws a dashed line at half the contour interval wherever the map has room for it. Flat country is the one place a contour map says nothing \u2014 the lines are simply far apart \u2014 and the printed answer is an extra line between them, dashed so it cannot be mistaken for the real interval. It is the same rule as the thinning and dropping on steep ground, read from the other end: the interval follows the terrain. At zero the map keeps one interval everywhere.' },
   ],
 
+  /**
+   * Terrain scale across, detail down.
+   *
+   * Scale is how much ground the frame covers — a single hill or a whole
+   * range — and detail is how many octaves of noise are folded in, so one
+   * moves the camera and the other decides how rough the country is. Between
+   * them they reach every map this generator can draw.
+   *
+   * Contour lines was the obvious third and it loses to detail on the same
+   * argument the arcs' `weight` lost on: past a point it stops being the
+   * lever. Crowding sixty lines through a slope makes a solid mass, and what
+   * fixes that is the interval, which is what a printed sheet changes too.
+   *
+   * Detail has four steps across the whole travel, which is coarse for a
+   * scrub and is the honest range of the control — an octave is not a
+   * quantity you tune, it is a choice between five terrains.
+   */
+  primary: { x: 'scale', y: 'detail' },
+
   render(ctx: RenderContext): string {
     const { width: w, height: h, palette, params, rng } = ctx;
     const noise = createNoise2D(rng);

@@ -1,11 +1,21 @@
 import { Resvg } from '@resvg/resvg-js';
-import { curatedPalettes, defaultParams, generators, GRID_SIZE, packGrid, type Generator, type Palette } from '../src/index.js';
+import { curatedPalettes, defaultParams, generators, retired, GRID_SIZE, packGrid, type Generator, type Palette } from '../src/index.js';
 
 export const TEST_PALETTES: Palette[] = ['obsidian', 'paper', 'riso-pink', 'crt-green', 'fog', 'neon-rain']
   .map((id) => curatedPalettes.find((p) => p.id === id))
   .filter((p): p is Palette => Boolean(p));
 
-export const ALL_GENERATORS: Generator[] = generators;
+/**
+ * Everything written, not everything shipped.
+ *
+ * Four patterns are in `retired`: no page, no gallery card, no place in the
+ * tap cycle. Their code is still here and so are their tests, and this is the
+ * seam that keeps that true — every suite that sweeps "all generators" sweeps
+ * the retired ones too, so a change to a shared helper cannot quietly rot the
+ * ones nobody is looking at. Tests about what the *app* offers should read
+ * `generators` directly instead.
+ */
+export const ALL_GENERATORS: Generator[] = [...generators, ...retired];
 
 export function baseParams(g: Generator): Record<string, number | string | boolean> {
   return defaultParams(g);

@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DEFAULT_BLEED,
-  cycleValue,
   decodeConfig,
   effectiveSpec,
   defaultParams,
@@ -20,7 +19,7 @@ import {
 import { PreviewFrame, PREVIEW_MODES, type PreviewMode } from './PreviewFrame';
 import { PatternImage } from './PatternImage';
 import { ParamControls } from './ParamControls';
-import { PreviewSettings } from './PreviewSettings';
+import { PreviewSettings, type Sheet } from './PreviewSettings';
 import { PalettePanel } from './PalettePanel';
 import { ExportPanel } from './ExportPanel';
 import { Button, Notice, Switch, TabList, Tag, uiStyles as ui } from './ui';
@@ -48,7 +47,18 @@ function randomSeed(): string {
   return `${a}-${n}`;
 }
 
-export function Editor({ generatorId }: { generatorId: string }) {
+export function Editor({ generatorId: initialId }: { generatorId: string }) {
+  /**
+   * Which pattern is on screen, held here rather than read from the route.
+   *
+   * A tap on the preview moves to the next pattern, and doing that as a route
+   * change would remount the whole editor and re-render the picture from
+   * nothing on every tap — on the one interaction that has to feel immediate.
+   * So the generator is state, the address bar is rewritten to match, and a
+   * reload or a shared link still lands on the right static page. The prop is
+   * the starting point and nothing more.
+   */
+  const [generatorId, setGeneratorId] = useState(initialId);
   const generator = getGenerator(generatorId) ?? generators[0]!;
 
   const [seed, setSeed] = useState(() => initialConfig(generator.id).seed);
@@ -64,6 +74,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
   const [copied, setCopied] = useState(false);
   const [collectState, setCollectState] = useState<'idle' | 'saved' | 'already' | 'failed'>('idle');
   const [collectedCount, setCollectedCount] = useState(0);
+  const [collectedIds, setCollectedIds] = useState<string[]>([]);
 
   // Committed values are what gets rendered. Slider drags update `params`
   // instantly so the control never lags the finger, and settle into
@@ -93,6 +104,11 @@ export function Editor({ generatorId }: { generatorId: string }) {
   // would sit one change behind. This ref is written synchronously on every
   // change, so the commit always sees the newest params.
   const latestParams = useRef(params);
+  // The same trap as `latestParams`, for the same reason: a tap fires from a
+  // pointer handler that may run several times before React re-renders, and
+  // reading `generator` from the closure would walk the registry from where it
+  // was rather than from where it is.
+  const latestGenerator = useRef(generatorId);
 
   type Patch = Partial<{ params: Record<string, ParamValue>; palette: Palette; seed: string }>;
 
@@ -137,15 +153,34 @@ export function Editor({ generatorId }: { generatorId: string }) {
     [flush],
   );
 
+  /**
+   * Read the link, once.
+   *
+   * This used to depend on `generator.id`, which was safe while the id came
+   * from the route and could only change by navigating. It is state now, so a
+   * tap would re-run this and decode `window.location.search` — which still
+   * holds the previous pattern's `q` until the 220ms URL debounce catches up,
+   * and would be read against the new pattern's params anyway. It would undo
+   * the tap with values that never meant anything. Mount only.
+   */
   useEffect(() => {
-    const decoded = decodeConfig(generator.id, typeof window === 'undefined' ? '' : window.location.search);
+    const decoded = decodeConfig(initialId, typeof window === 'undefined' ? '' : window.location.search);
     setSeed(decoded.config.seed);
     latestParams.current = decoded.config.params;
     setParams(decoded.config.params);
     setPalette(decoded.config.palette);
     commitNow({ params: decoded.config.params, palette: decoded.config.palette, seed: decoded.config.seed });
     setNotes(decoded.notes);
-    setCollectedCount(loadCollected().filter((c) => c.generatorId === generator.id).length);
+  }, []);
+
+  // What is already kept, so the heart can say so. Refreshed per pattern
+  // because the count beside the panel's Collect button is per pattern, and
+  // re-read from storage rather than tracked, since another tab may have
+  // written to it.
+  useEffect(() => {
+    const items = loadCollected();
+    setCollectedCount(items.filter((c) => c.generatorId === generator.id).length);
+    setCollectedIds(items.map((c) => c.id));
   }, [generator.id]);
 
   useEffect(() => () => {
@@ -188,9 +223,62 @@ export function Editor({ generatorId }: { generatorId: string }) {
     [generator],
   );
   const [scrubbing, setScrubbing] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sheet, setSheet] = useState<Sheet>(null);
 
-  /** A fresh seed, from the sheet or from a tap bound to it. */
+  /**
+   * The next pattern in the registry, wrapping.
+   *
+   * Seed and palette come with you and the params cannot — a pattern's
+   * parameters are its own, so there is nothing to carry. Keeping the other
+   * two is what makes a tap read as one idea drawn four ways rather than four
+   * unrelated pictures, and it is the only reading under which tapping past
+   * the one you wanted and coming round again gets you back what you had.
+   *
+   * Everything is written through `commitNow` in one go, because a tap changes
+   * the generator and the params together and a render against the old params
+   * with the new generator would be a picture neither of them describes.
+   */
+  const goToPattern = useCallback(
+    (step: number) => {
+      const at = generators.findIndex((g) => g.id === latestGenerator.current);
+      const next = generators[(((at < 0 ? 0 : at) + step) % generators.length + generators.length) % generators.length]!;
+      if (next.id === latestGenerator.current) return;
+      const nextParams = defaultParams(next);
+      latestGenerator.current = next.id;
+      latestParams.current = nextParams;
+      setGeneratorId(next.id);
+      setParams(nextParams);
+      setNotes([]);
+      commitNow({ params: nextParams });
+    },
+    [commitNow],
+  );
+
+  /** The configuration on screen, as a collection item. */
+  const config = useMemo(
+    () => ({ generatorId: generator.id, seed: committed.seed, params: committed.params, palette: committed.palette }),
+    [generator.id, committed],
+  );
+  const collectedKey = collectionKey(config);
+  const collected = collectedIds.includes(collectedKey);
+
+  /**
+   * Keep this one. Shared by the heart on the preview and the Collect button
+   * in the panel, because two copies of a storage write is two places for the
+   * two to disagree about what is already saved.
+   */
+  const collect = useCallback(() => {
+    if (collectedIds.includes(collectedKey)) {
+      setCollectState('already');
+      return;
+    }
+    const result = saveCollected(config);
+    setCollectedCount(result.items.filter((c) => c.generatorId === generator.id).length);
+    setCollectedIds(result.items.map((c) => c.id));
+    setCollectState(result.ok ? 'saved' : 'failed');
+  }, [collectedIds, collectedKey, config, generator.id]);
+
+  /** A fresh seed, from the dice or from the sheet. */
   const newSeed = useCallback(() => {
     const next = randomSeed();
     setSeed(next);
@@ -222,17 +310,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
       return typeof v === 'number' ? v : 0;
     },
     onScrub: (key, value) => scrubParams(changeParam(key, value)),
-    onTap: () => {
-      const tap = bindings.find((b) => b.role === 'tap');
-      if (!tap) return;
-      if (tap.spec === null) {
-        // Bound to the seed rather than to a param: another one of these.
-        newSeed();
-        return;
-      }
-      const spec = tap.spec;
-      scrubParams(changeParam(spec.key, cycleValue(spec, latestParams.current[spec.key] ?? spec.default)));
-    },
+    onTap: () => goToPattern(1),
     onStart: () => setScrubbing(true),
     onEnd: () => setScrubbing(false),
   });
@@ -252,15 +330,33 @@ export function Editor({ generatorId }: { generatorId: string }) {
     [generator.id, committed],
   );
 
+  /**
+   * Where this document lives, less the pattern on the end.
+   *
+   * Captured once from the pathname the page was served at, so it carries
+   * whatever base path the deploy is under — a project site serves from
+   * `/<repo>/` and Next bakes that in at build time, which a hand-written path
+   * would miss. Read at mount rather than per render because it cannot change
+   * without a navigation, and a tap rewrites only the last segment.
+   */
+  const baseRef = useRef<string | null>(null);
+  if (baseRef.current === null && typeof window !== 'undefined') {
+    baseRef.current = window.location.pathname.replace(/p\/[^/]*\/?$/, '');
+  }
+
   // The URL is the document. Replace rather than push so the back button still
-  // means "the page I came from", not "the last slider I touched".
+  // means "the page I came from", not "the last slider I touched" — and not
+  // "the pattern before this one" either: a tap is a look around rather than a
+  // place you came from, and a back button that undid taps one at a time would
+  // make leaving the editor a matter of luck.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const id = window.setTimeout(() => {
-      window.history.replaceState(null, '', `${window.location.pathname}?${query}`);
+      const path = `${baseRef.current ?? ''}p/${generator.id}/`;
+      window.history.replaceState(null, '', `${path}?${query}`);
     }, 220);
     return () => window.clearTimeout(id);
-  }, [query]);
+  }, [query, generator.id]);
 
   useEffect(() => {
     if (!copied) return;
@@ -302,12 +398,12 @@ export function Editor({ generatorId }: { generatorId: string }) {
   );
 
   const onCopyLink = async () => {
-    const url = `${window.location.origin}${window.location.pathname}?${query}`;
+    const url = `${window.location.origin}${baseRef.current ?? ''}p/${generator.id}/?${query}`;
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
     } catch {
-      window.history.replaceState(null, '', `${window.location.pathname}?${query}`);
+      window.history.replaceState(null, '', `${baseRef.current ?? ''}p/${generator.id}/?${query}`);
       setNotes((n) => [...n, 'This browser blocked the clipboard. The address bar now holds the exact link — copy it from there.']);
     }
   };
@@ -367,11 +463,19 @@ export function Editor({ generatorId }: { generatorId: string }) {
                     <PreviewSettings
                       generator={generator}
                       params={params}
-                      open={settingsOpen}
-                      onToggle={() => setSettingsOpen((v) => !v)}
+                      palette={palette}
+                      open={sheet}
+                      onOpen={setSheet}
                       onChange={(key, value) => applyParams(changeParam(key, value), 110)}
                       onCommit={() => settle({ params: latestParams.current }, 0)}
                       onNewSeed={newSeed}
+                      collected={collected}
+                      onCollect={collect}
+                      collectedHref="/collected"
+                      onPalette={(p) => {
+                        setPalette(p);
+                        commitNow({ palette: p });
+                      }}
                     />
                   ),
                 }
@@ -421,18 +525,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
                 {copied ? 'Link copied' : 'Copy link'}
               </Button>
               <Button
-                onClick={() => {
-                  const config = { generatorId: generator.id, seed: committed.seed, params: committed.params, palette: committed.palette };
-                  const key = collectionKey(config);
-                  const existing = loadCollected();
-                  if (existing.some((c) => c.id === key)) {
-                    setCollectState('already');
-                    return;
-                  }
-                  const result = saveCollected(config);
-                  setCollectedCount(result.items.filter((c) => c.generatorId === generator.id).length);
-                  setCollectState(result.ok ? 'saved' : 'failed');
-                }}
+                onClick={collect}
                 success={collectState === 'saved'}
                 data-testid="collect"
               >
@@ -469,6 +562,7 @@ export function Editor({ generatorId }: { generatorId: string }) {
                 params={params}
                 onChange={(key, value) => applyParams(changeParam(key, value), 110)}
                 onCommit={() => settle({ params: latestParams.current }, 0)}
+                onPattern={(id) => goToPattern(generators.findIndex((g) => g.id === id) - generators.findIndex((g) => g.id === latestGenerator.current))}
               />
               <Button
                 size="small"

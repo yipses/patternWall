@@ -4,7 +4,7 @@ import { pngSize } from './helpers';
 
 test.describe('export', () => {
   test('downloads a PNG at the stated size, well under a megabyte', async ({ page }) => {
-    await page.goto('/p/flow-dots');
+    await page.goto('/p/chevron-blocks');
     await page.getByRole('tab', { name: 'Export' }).click();
 
     // iPhone 15/14 Pro Max, the size the brief calls out.
@@ -24,7 +24,7 @@ test.describe('export', () => {
     const downloadPromise = page.waitForEvent('download', { timeout: 90_000 });
     await page.getByTestId('download-png').click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toMatch(/^patternwall_flow-dots_.*\.png$/);
+    expect(download.suggestedFilename()).toMatch(/^patternwall_chevron-blocks_.*\.png$/);
 
     const path = await download.path();
     expect(path).toBeTruthy();
@@ -38,7 +38,7 @@ test.describe('export', () => {
   });
 
   test('turning the bleed off exports exactly the panel size', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await page.getByRole('tab', { name: 'Export' }).click();
     await page.getByLabel('Device').selectOption('ip15p');
     await page.getByRole('switch', { name: /bleed/i }).click();
@@ -51,7 +51,7 @@ test.describe('export', () => {
   });
 
   test('PNG-24 is bigger than PNG-8 for the same render', async ({ page }) => {
-    await page.goto('/p/phyllotaxis');
+    await page.goto('/p/contours');
     await page.getByRole('tab', { name: 'Export' }).click();
     await page.getByLabel('Device').selectOption('ip13mini');
 
@@ -80,9 +80,9 @@ test.describe('export', () => {
       await page.goto(`/p/${id}?s=${seed}`);
       await page.getByRole('button', { name: /^Collect/ }).click();
     };
-    await collect('truchet', 'batch-a');
-    await collect('truchet', 'batch-b');
-    await collect('phyllotaxis', 'batch-c');
+    await collect('truchet-arcs', 'batch-a');
+    await collect('truchet-arcs', 'batch-b');
+    await collect('contours', 'batch-c');
 
     await page.goto('/collected');
     await expect(page.getByTestId('export-collection')).toHaveText(/Export all 3 as a zip/);
@@ -107,14 +107,14 @@ test.describe('export', () => {
   });
 
   test('the editor no longer offers a thirty-seed batch', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await page.getByRole('tab', { name: 'Export' }).click();
     await expect(page.getByTestId('batch-export')).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Collected' }).last()).toBeVisible();
   });
 
   test('the Home Screen variant renders differently from the base export', async ({ page }) => {
-    await page.goto('/p/ridgelines');
+    await page.goto('/p/chevron-blocks');
     await page.getByRole('tab', { name: 'Export' }).click();
     await page.getByLabel('Device').selectOption('custom');
     await page.getByLabel('Width').fill('200');

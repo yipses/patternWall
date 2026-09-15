@@ -18,7 +18,7 @@ import { previewSrc, settled } from './helpers';
  */
 test.describe('render worker', () => {
   test('draws later renders off the main thread', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
     const before = await previewSrc(page);
 

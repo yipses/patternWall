@@ -57,9 +57,22 @@ async function tapPreview(page: Page): Promise<void> {
 const numberOf = async (page: Page, label: string): Promise<number> =>
   Number(await page.getByLabel(label).inputValue());
 
+/**
+ * The pattern select, by role rather than by label.
+ *
+ * `getByLabel('Pattern')` matches two things: this control, whose accessible
+ * name is "TapPattern" because the gesture chip sits inside its label, and the
+ * editor's own tab panel, which is named "Pattern" by its tab. Both are
+ * legitimately called that, so the locator has to say which kind of thing it
+ * wants rather than either of them being renamed.
+ */
+function patternSelect(page: Page) {
+  return page.getByRole('combobox', { name: /Pattern/ });
+}
+
 test.describe('gesture', () => {
   test('a drag across the preview scrubs the horizontal control', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
 
     const before = await numberOf(page, 'Grid density');
@@ -77,7 +90,7 @@ test.describe('gesture', () => {
   });
 
   test('a drag up the preview scrubs the vertical control, and increases it', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
 
     const densityBefore = await numberOf(page, 'Grid density');
@@ -93,7 +106,7 @@ test.describe('gesture', () => {
   });
 
   test('a fresh swipe past an end wraps, and a drag that reaches one does not', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
 
     const density = page.getByLabel('Grid density');
@@ -143,7 +156,7 @@ test.describe('gesture', () => {
   });
 
   test('edge to edge covers the whole range, on each axis', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
 
     const box = await page.locator('[class*="phone"]').first().boundingBox();
@@ -192,7 +205,7 @@ test.describe('gesture', () => {
   });
 
   test('a smooth swipe moves a control that starts on its minimum', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
 
     // Divisions defaults to 1, which is also its minimum, and that is the
@@ -217,7 +230,7 @@ test.describe('gesture', () => {
   });
 
   test('a moderate swipe up does not spend the whole control', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
 
     const divisions = page.getByLabel('Divisions');
@@ -239,7 +252,7 @@ test.describe('gesture', () => {
   });
 
   test('a swipe that sets off sideways is still a swipe up', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
 
     const densityBefore = await numberOf(page, 'Grid density');
@@ -275,30 +288,53 @@ test.describe('gesture', () => {
     expect(await numberOf(page, 'Grid density'), 'the swipe locked to the direction it set off in').toBe(densityBefore);
   });
 
-  test('a tap cycles the option, and wraps', async ({ page }) => {
-    await page.goto('/p/truchet');
+  test('a tap moves to the next pattern, and wraps', async ({ page }) => {
+    await page.goto('/p/truchet-arcs');
     await settled(page);
-    const tileSet = page.getByLabel('Tile set');
-    await expect(tileSet).toHaveValue('arcs');
+    const pattern = patternSelect(page);
+    await expect(pattern).toHaveValue('truchet-arcs');
 
-    // The URL fingerprint is the one the existing select test established: a
-    // select packs as its index, so slot 1 reading _1_ is diagonals.
+    // The registry order is the cycle, and the address bar follows it without
+    // a navigation: the editor swaps the generator in place, so the path is
+    // rewritten rather than loaded. A reload on that path has to land here.
+    const ids = ['truchet-diagonals', 'chevron-blocks', 'contours', 'truchet-arcs'];
+    for (const id of ids) {
+      await tapPreview(page);
+      await settled(page);
+      await expect(pattern, `a tap did not reach ${id}`).toHaveValue(id);
+      expect(page.url(), `the address bar did not follow to ${id}`).toContain(`/p/${id}/`);
+    }
+  });
+
+  test('a tap keeps the seed and the palette, and takes the params to their defaults', async ({ page }) => {
+    await page.goto('/p/truchet-arcs');
+    await settled(page);
+
+    const seed = page.getByTestId('seed-input');
+    await seed.fill('carried-across');
+    await seed.blur();
+    await settled(page);
+
+    const density = page.getByLabel('Grid density');
+    await density.fill('20');
+    await density.blur();
+    await settled(page);
+
     await tapPreview(page);
     await settled(page);
-    await expect(tileSet).toHaveValue('diagonals');
-    expect(page.url()).toMatch(/q=[^&]*_1_/);
 
-    await tapPreview(page);
-    await settled(page);
-    await expect(tileSet).toHaveValue('triangles');
-
-    await tapPreview(page);
-    await settled(page);
-    await expect(tileSet, 'the cycle did not wrap').toHaveValue('arcs');
+    // Seed and palette come with you; params cannot, because a pattern's
+    // parameters are its own. Tapping round the whole cycle therefore gets
+    // back what you had, which is the only reading under which overshooting
+    // the pattern you wanted is recoverable.
+    await expect(patternSelect(page)).toHaveValue('truchet-diagonals');
+    await expect(seed, 'the seed did not come across').toHaveValue('carried-across');
+    expect(page.url()).toContain('s=carried-across');
+    await expect(page.getByLabel('Grid density'), 'the new pattern kept the old one’s value').toHaveValue('8');
   });
 
   test('a press that barely moves is a tap, not a scrub', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
     const densityBefore = await numberOf(page, 'Grid density');
 
@@ -308,12 +344,12 @@ test.describe('gesture', () => {
     await dragBy(page, 4, 3);
     await settled(page);
 
-    await expect(page.getByLabel('Tile set'), 'a small movement was not taken as a tap').toHaveValue('diagonals');
+    await expect(patternSelect(page), 'a small movement was not taken as a tap').toHaveValue('truchet-diagonals');
     expect(await numberOf(page, 'Grid density'), 'a tap nudged a scrubbed control').toBe(densityBefore);
   });
 
   test('the picture tracks the finger, before it lifts', async ({ page }) => {
-    await page.goto('/p/truchet');
+    await page.goto('/p/truchet-arcs');
     await settled(page);
     const start = await previewSrc(page);
 
@@ -354,55 +390,124 @@ test.describe('gesture', () => {
     ).toBe('460');
   });
 
-  test('tapping to a tile set with a tighter range carries the value across', async ({ page }) => {
-    await page.goto('/p/truchet');
-    await settled(page);
+  // There is no longer a pattern in the app with no gesture bound: the core
+  // contract test requires every *registered* generator to name two, because a
+  // preview that does nothing under a thumb cannot be told apart from one that
+  // is broken — three faults in this repo presented as exactly that. The
+  // undeclared case is still covered, against a fabricated generator, in
+  // `controls.test.ts`.
 
-    const divisions = page.getByLabel('Divisions');
-    await divisions.fill('6');
-    await divisions.blur();
-    await settled(page);
-    await expect(divisions).toHaveAttribute('max', '12');
+  test.describe('the rail on the preview', () => {
+    /**
+     * Five round buttons down the right edge of the picture. They are there
+     * rather than in the panel because every one of them is judged by looking
+     * at the preview, and on a phone the panel is a scroll away from it.
+     */
+    test('the dice draws a new seed', async ({ page }) => {
+      await page.goto('/p/truchet-arcs');
+      await settled(page);
+      const seed = await page.getByTestId('seed-input').inputValue();
+      const before = await previewSrc(page);
 
-    // Diagonals draw 2n-1 chords a cell, so the count stops at six there. Half
-    // way along has to stay half way along, or tapping round the tile sets
-    // would lose where you were and hand back the ceiling whatever you had.
-    await tapPreview(page);
-    await settled(page);
-    await expect(page.getByLabel('Tile set')).toHaveValue('diagonals');
-    await expect(divisions, 'the slider still offers a range the render will not honour').toHaveAttribute('max', '6');
-    await expect(divisions).toHaveValue('3');
+      await page.getByTestId('preview-dice').click();
+      await settled(page);
 
-    await tapPreview(page);
-    await settled(page);
-    await expect(page.getByLabel('Tile set')).toHaveValue('triangles');
-    await expect(divisions).toHaveAttribute('max', '12');
-    await expect(divisions, 'the value did not come back where it started').toHaveValue('6');
-  });
+      expect(await page.getByTestId('seed-input').inputValue(), 'the seed field did not follow the dice').not.toBe(seed);
+      expect(await previewSrc(page), 'the dice changed the seed without changing the picture').not.toBe(before);
+    });
 
-  test('a pattern that has not chosen its three is left alone', async ({ page }) => {
-    await page.goto('/p/phyllotaxis');
-    await settled(page);
-    const before = await previewSrc(page);
-    const url = page.url();
+    test('the droplet opens the palette over the picture, and a palette applies', async ({ page }) => {
+      await page.goto('/p/truchet-arcs');
+      await settled(page);
+      const before = await previewSrc(page);
 
-    await dragBy(page, 220, 0);
-    await page.waitForTimeout(600);
+      const droplet = page.getByTestId('preview-palette');
+      await expect(droplet).toHaveAttribute('aria-expanded', 'false');
+      await droplet.click();
+      await expect(droplet).toHaveAttribute('aria-expanded', 'true');
 
-    expect(await previewSrc(page), 'dragging changed a pattern with no gesture bound').toBe(before);
-    expect(page.url(), 'dragging changed the share link of a pattern with no gesture bound').toBe(url);
-    await expect(page.getByRole('button', { name: /Advanced/ }), 'an undeclared pattern grew a disclosure').toHaveCount(0);
+      await page.getByRole('button', { name: 'Use the Riso Pink palette' }).first().click();
+      await settled(page);
+      expect(await previewSrc(page), 'choosing a palette in the overlay changed nothing').not.toBe(before);
+      expect(page.url(), 'the palette did not reach the share link').toContain('c=riso-pink');
+    });
+
+    test('only one sheet is up at a time', async ({ page }) => {
+      await page.goto('/p/truchet-arcs');
+      await settled(page);
+
+      await page.getByTestId('preview-settings').click();
+      await expect(page.getByLabel('Stroke weight')).toBeVisible();
+
+      // The gear and the droplet share a rail and a corner. Opening one has to
+      // close the other, or two sheets stack over the picture they are both
+      // supposed to be letting you see.
+      await page.getByTestId('preview-palette').click();
+      await expect(page.getByLabel('Stroke weight')).toHaveCount(0);
+      await expect(page.getByTestId('preview-settings')).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    test('the heart keeps what is on screen, and says so', async ({ page }) => {
+      await page.goto('/p/truchet-arcs');
+      await settled(page);
+
+      const heart = page.getByTestId('preview-heart');
+      await expect(heart, 'a fresh configuration was already saved').toHaveAttribute('aria-pressed', 'false');
+
+      await heart.click();
+      await expect(heart, 'the heart did not fill after saving').toHaveAttribute('aria-pressed', 'true');
+
+      // The same thing the panel's Collect button writes, which is the point of
+      // them sharing one action: two writers would be two places for the two to
+      // disagree about what is already kept. Pressing it now has nothing to do,
+      // and says so.
+      await page.getByTestId('collect').click();
+      await expect(page.getByTestId('collect')).toHaveText('Already collected');
+
+      // And it survives the trip, which is what "saved" has to mean.
+      await page.reload();
+      await settled(page);
+      await expect(page.getByTestId('preview-heart')).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    test('the heart does not follow the picture when the picture changes', async ({ page }) => {
+      await page.goto('/p/truchet-arcs');
+      await settled(page);
+      await page.getByTestId('preview-heart').click();
+      await expect(page.getByTestId('preview-heart')).toHaveAttribute('aria-pressed', 'true');
+
+      // A different seed is a different wallpaper, so the heart has to empty
+      // again. Keyed on the configuration rather than on "something was saved
+      // recently", which is the version that would lie.
+      await page.getByTestId('preview-dice').click();
+      await settled(page);
+      await expect(page.getByTestId('preview-heart'), 'the heart stayed full for a wallpaper nobody saved').toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
+
+    test('the book goes to the saved wallpapers', async ({ page }) => {
+      await page.goto('/p/truchet-arcs');
+      await settled(page);
+      await page.getByTestId('preview-heart').click();
+      await expect(page.getByTestId('preview-heart')).toHaveAttribute('aria-pressed', 'true');
+
+      await page.getByTestId('preview-book').click();
+      await expect(page).toHaveURL(/\/collected/);
+      await expect(page.locator('img[src^="data:image/svg"]').first()).toBeVisible();
+    });
   });
 
   test.describe('at phone width', () => {
     test.use({ viewport: { width: 390, height: 844 } });
 
-    test('the controls that are not the three are behind the gear', async ({ page }) => {
-      await page.goto('/p/truchet');
+    test('the controls that are not the two are behind the gear', async ({ page }) => {
+      await page.goto('/p/truchet-arcs');
       await settled(page);
 
-      // The three are promoted and visible with nothing to press.
-      await expect(page.getByLabel('Tile set')).toBeVisible();
+      // The pattern and its two axes are promoted, visible with nothing to press.
+      await expect(patternSelect(page)).toBeVisible();
       await expect(page.getByLabel('Grid density')).toBeVisible();
       await expect(page.getByLabel('Divisions')).toBeVisible();
 
@@ -422,18 +527,12 @@ test.describe('gesture', () => {
       // Name and slider only: no paragraph of explanation in a sheet this size.
       await expect(page.locator('text=Line width as a fraction')).toHaveCount(0);
 
-      // And a way to reroll without reaching for the seed field below.
-      const before = await previewSrc(page);
-      await page.getByRole('button', { name: 'New seed' }).click();
-      await settled(page);
-      expect(await previewSrc(page), 'the seed button changed nothing').not.toBe(before);
-
       await gear.click();
       await expect(page.getByLabel('Stroke weight')).toHaveCount(0);
     });
 
     test('a press outside the sheet dismisses it instead of cycling the pattern', async ({ page }) => {
-      await page.goto('/p/truchet');
+      await page.goto('/p/truchet-arcs');
       await settled(page);
 
       const gear = page.getByTestId('preview-settings');
@@ -461,11 +560,11 @@ test.describe('gesture', () => {
 
       await expect(gear, 'the press outside the sheet did not close it').toHaveAttribute('aria-expanded', 'false');
       await expect(page.getByLabel('Stroke weight')).toHaveCount(0);
-      await expect(page.getByLabel('Tile set'), 'dismissing the sheet also changed the pattern').toHaveValue('arcs');
+      await expect(patternSelect(page), 'dismissing the sheet also changed the pattern').toHaveValue('truchet-arcs');
     });
 
     test('the preview leaves room to scroll past it', async ({ page }) => {
-      await page.goto('/p/truchet');
+      await page.goto('/p/truchet-arcs');
       await settled(page);
 
       const box = await page.locator('[class*="phone"]').first().boundingBox();

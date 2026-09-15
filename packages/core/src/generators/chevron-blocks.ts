@@ -106,6 +106,22 @@ export const chevronBlocks: Generator = {
     { key: 'mortar', label: 'Mortar', type: 'number', min: 0, max: 1, step: 0.01, default: 0.35, description: 'A hairline of background between one face and the next. It is the difference between a stack of separate blocks and one faceted surface; at zero the faces meet directly.' },
   ],
 
+  /**
+   * Block size across, relief down.
+   *
+   * The two that decide what the picture *is* rather than how it is finished.
+   * Block size is the one a person reads first — it is the difference between
+   * a wall of bricks and a field of tesserae — and relief is what makes the
+   * stacks read as depth rather than as a flat mosaic, so together they cover
+   * the whole distance from a tiled floor to a city at dusk.
+   *
+   * Skyline was the other candidate for the vertical and it is the wrong kind
+   * of control for a gesture: it shapes where the detail sits in the frame,
+   * which is composition, and composition is not something you want moving
+   * under a thumb. It stays behind the gear where it can be set once.
+   */
+  primary: { x: 'blockSize', y: 'relief' },
+
   render(ctx: RenderContext): string {
     const { width: w, height: h, palette, params, rng } = ctx;
     const noise = createNoise2D(rng);

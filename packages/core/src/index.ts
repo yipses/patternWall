@@ -27,7 +27,6 @@ export {
 export { curatedPalettes, defaultPalette, getPalette, PALETTE_TAGS, type PaletteTag } from './palettes.js';
 export { createNoise2D, noise1D, type Noise2D } from './noise.js';
 export {
-  cycleValue,
   effectiveSpec,
   quantise,
   resolvePrimaries,
@@ -83,7 +82,7 @@ export {
   type Tag,
 } from './types.js';
 export { createRenderContext, DEFAULT_BLEED, renderToSvg, seedToInt, type RenderRequest } from './render.js';
-export { generators, getGenerator } from './generators/index.js';
+export { generators, retired, getGenerator } from './generators/index.js';
 export {
   decodeConfig,
   defaultSeed,
