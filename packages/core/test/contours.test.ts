@@ -5,6 +5,41 @@ import { ALL_GENERATORS, baseParams, TEST_PALETTES } from './helpers.js';
 
 const contours = ALL_GENERATORS.find((g) => g.id === 'contours')!;
 
+/**
+ * The defaults as they stood when the numbers below were measured.
+ *
+ * Three tests here are about what happens to lines on *given* ground — a heavy
+ * pen crowding, steep country dropping contours, flat country getting
+ * supplementary ones — and every one of them took its ground from
+ * `defaultParams`. That held until the defaults moved, and then all three
+ * broke at once without a line of the code changing.
+ *
+ * Worth reading which ones actually mattered, because the obvious answer was
+ * wrong. Pinning the terrain — scale, detail, grain, valley incision — moved
+ * the numbers *further* out. The movers were `indexEvery`, which went from
+ * every fifth line to every second and so made most of the map heavy index
+ * strokes, and `weight`, which went to its minimum: a thinner pen leaves more
+ * room, and "is there room for a supplementary line" is exactly what one of
+ * these tests asks. Sixty levels went from 8 supplementary lines to 25.
+ *
+ * So this is the whole set, not a guess at the relevant half. A test
+ * calibrated at an extreme has to pin whatever puts it there, or the next
+ * change to a default silently moves it somewhere its bounds mean nothing —
+ * which this file already records happening once, when the weight slider's
+ * maximum came down and a bound went on passing with the mechanism deleted.
+ */
+const CALIBRATED = {
+  levels: 14,
+  scale: 1.5,
+  detail: 3,
+  grain: 0.25,
+  incision: 0.2,
+  resolution: 90,
+  weight: 1,
+  indexEvery: 5,
+  supplementary: 0.5,
+};
+
 function render(over: Record<string, number | string | boolean>, size = 600): string {
   return renderToSvg({
     generator: contours,
@@ -357,11 +392,11 @@ describe('contours', () => {
     // Sea level off: the water is a filled path of the same shape as a tint
     // band, and this is a question about the bands.
     const fills = (over: Record<string, number>): string[] => {
-      const svg = render({ resolution: 90, seaLevel: 0, ...over }, 600);
+      const svg = render({ ...CALIBRATED, resolution: 90, seaLevel: 0, elevationTint: 0.65, ...over }, 600);
       return [...svg.matchAll(/<path d="[^"]+" fill="(#[0-9a-f]{6})" stroke="none"/g)].map((m) => m[1] as string);
     };
-    const plain = render({ resolution: 90, elevationTint: 0 }, 600).length;
-    const tinted = render({ resolution: 90 }, 600).length;
+    const plain = render({ ...CALIBRATED, resolution: 90, elevationTint: 0 }, 600).length;
+    const tinted = render({ ...CALIBRATED, resolution: 90, elevationTint: 0.65 }, 600).length;
 
     // Spread, not step count. The version of this that was cheap enough and
     // still useless had seven distinct shades and all of them within four
@@ -414,7 +449,7 @@ describe('contours', () => {
         width: W,
         height: H,
         palette: TEST_PALETTES[0]!,
-        params: { ...baseParams(contours), elevationTint: 0, seaLevel: 0, hachures: 0, ...over },
+        params: { ...baseParams(contours), ...CALIBRATED, elevationTint: 0, seaLevel: 0, hachures: 0, ...over },
         seed: 'survey',
         bleed: 0,
       });
@@ -463,10 +498,12 @@ describe('contours', () => {
     expect(heavy.mean, `sixty levels at weight 2 averages ${heavy.mean.toFixed(3)} ink`).toBeLessThan(0.14);
     expect(heavy.worst, `its worst window is ${(heavy.worst * 100).toFixed(0)}% ink`).toBeLessThan(0.4);
 
-    // And none of it touches a render that has room: at the default fourteen
-    // levels nothing is dropped and nothing is thinned.
+    // And none of it touches a render that has room: at fourteen levels and a
+    // weight of one, nothing is dropped and nothing is thinned. That was the
+    // default configuration when this was measured and is now just a map with
+    // room in it, which is what the claim was always about.
     const easy = ink({});
-    expect(easy.mean, `the default render averages ${easy.mean.toFixed(3)} ink`).toBeLessThan(0.06);
+    expect(easy.mean, `a map with room averages ${easy.mean.toFixed(3)} ink`).toBeLessThan(0.06);
   });
 
   /**
@@ -486,7 +523,7 @@ describe('contours', () => {
    */
   it('fills empty country with half-interval lines and crowded country with none', () => {
     const dashes = (over: Record<string, number>): number =>
-      groupsOf(render({ resolution: 60, ...over }, 600), 'supplementary')
+      groupsOf(render({ ...CALIBRATED, resolution: 60, ...over }, 600), 'supplementary')
         .join('')
         .split('M').length - 1;
 
