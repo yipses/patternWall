@@ -914,6 +914,46 @@ edges, so joining forces alternation, and alternation leaves only a phase. A
 mark that touched all four edges would break the forcing, which is what the
 other two tile sets are.
 
+**So it is a control — `diamondBreak` — and the whole of its design is that the
+cost is exact and stated.** A row leaves its phase by making one pair of
+neighbours agree, which is one seam with ink on one side and paper on the
+other, and the phase then carries on shifted because the next cell alternates
+from the flipped value like any other. One seam bought, one run that stops part
+way. The rate is per seam rather than per row, so a drag means the same run
+length in cells at three columns and at twenty-six, and the slider's top is a
+tenth of all seams — measured 10.08% over twelve seeds, against the 13-20% that
+`JOIN_NEIGHBOUR` at 0.7 left and that was reported as small islands. The useful
+part is the bottom third: at 0.3 it breaks 2.9% of seams, and at thirteen
+columns and six divisions the plaid is gone with a handful of visible stubs.
+
+Two things it needed to be worth having. It had to be **strictly additive** —
+720 configs across three tile sets, five densities, four division counts, two
+palettes and two seeds are byte-identical at the default, checked under `git
+stash` rather than asserted. And the fault placement has to move with the seed,
+where a `RenderContext` carries no seed and drawing one from the stream would
+shift every later draw and repaint every truchet render there is. What was
+already to hand is the raw `rng.int(0, 3)` every cell draws and the join then
+throws away: folding those into a running mix gives a seed-dependent salt for
+`hashSeed` and costs nothing from the stream. **Before adding a control that
+needs its own randomness, look for a draw the code already makes and
+discards.**
+
+Two instrument failures are worth carrying, because the second is the one this
+file keeps warning about. Reading rotations back out of the polygons put the
+grid origin at zero, and the rows are centred with a spare row so `originY` is
+negative — it read 19.3% of seams broken on a tiling that is joined by
+construction, and the 0.00% it reads once fixed is what says the instrument
+works. Then the metric: the obvious guard is that a joined diamond set is a
+*product* of a row set and a column set, so two diamonds should imply the two
+completing their rectangle — and that is only ~10% true even at zero, because
+the parity terms halve it twice. The exact invariant is one step further in.
+Joining makes `D(i, j) = (j + b_i) mod 2` for one bit per column, and a diamond
+needs `D(i, j)` to be 1, so **every diamond in a column sits on a row of one
+parity** — 152 of 152 groups, exactly, at every seed. That is "they all follow
+the same vertical line" written down, and it is what the regression test asks.
+A guard that is an identity beats one that is a tendency; look for it before
+settling for a threshold.
+
 Two smaller things fell out of measuring it. **Both ends of the `diamonds`
 slider are deterministic** — at 0 the phases must all disagree and at 1 they
 must all agree, so each end admits exactly four tilings and 200 seeds returned
@@ -1072,7 +1112,9 @@ Controls: density, tileSet, weight, colorSpread,
 arcCount (labelled Divisions; max 6 on diagonals, 12 elsewhere), arcSpacing
 (spread; quarter arcs only), diamonds (triangles only; how much of the tiling
 closes into rings rather than running on, steered through the phases the join
-leaves free). The three it is driven by — tap for tileSet,
+leaves free), diamondBreak (triangles only; how often a row or column changes
+phase part way across, at one broken seam per fault, which is the only way out
+of the plaid the join forces). The three it is driven by — tap for tileSet,
 horizontal for density, vertical for arcCount — are promoted into the panel;
 `weight` held the horizontal slot until its range turned out to be eaten by
 the division count, which the bug note above records; the rest live behind the gear on the preview, as name and slider with no

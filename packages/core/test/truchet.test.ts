@@ -315,7 +315,7 @@ describe('truchet triangles and their neighbours', () => {
  * band changes nothing about the score unless it also stops meeting its
  * neighbour.
  */
-function unpartneredEnds(density: number, arcCount: number, weight: number, diamonds?: number): number {
+function unpartneredEnds(density: number, arcCount: number, weight: number, diamonds?: number, diamondBreak = 0): number {
   const size = 600;
   const svg = renderToSvg({
     generator: truchet,
@@ -329,6 +329,7 @@ function unpartneredEnds(density: number, arcCount: number, weight: number, diam
       arcCount,
       weight,
       ...(diamonds === undefined ? {} : { diamonds }),
+      diamondBreak,
     },
     seed: 'truchet-geometry',
     bleed: 0,
@@ -475,15 +476,21 @@ describe('truchet triangle ribbons meet across a seam', () => {
  * of paper the outside can reach; a vertex whose surrounding paper cannot is
  * enclosed.
  */
-function closedVertices(density: number, arcCount: number, diamonds: number): { closed: number; checked: number } {
+function closedVertices(
+  density: number,
+  arcCount: number,
+  diamonds: number,
+  diamondBreak = 0,
+  seed = 'yarrow-129',
+): { closed: number; checked: number; at: [number, number][] } {
   const W = density * 48;
   const svg = renderToSvg({
     generator: truchet,
     width: W,
     height: W,
     palette,
-    params: { ...defaultParams(truchet), tileSet: 'triangles', density, arcCount, weight: 0.16, colorSpread: 0, diamonds },
-    seed: 'yarrow-129',
+    params: { ...defaultParams(truchet), tileSet: 'triangles', density, arcCount, weight: 0.16, colorSpread: 0, diamonds, diamondBreak },
+    seed,
     bleed: 0,
   });
   const { pixels, width: w } = rasterize(svg, W);
@@ -526,6 +533,7 @@ function closedVertices(density: number, arcCount: number, diamonds: number): { 
   const R = Math.max(3, Math.round(cell * 0.18));
   let closed = 0;
   let checked = 0;
+  const at: [number, number][] = [];
   for (let ry = 1; ry < rows; ry++) {
     for (let rx = 1; rx < density; rx++) {
       const vx = Math.round(rx * cell);
@@ -543,10 +551,13 @@ function closedVertices(density: number, arcCount: number, diamonds: number): { 
           if (outside[p]) sawOutside = true;
         }
       }
-      if (sawPaper && !sawOutside) closed += 1;
+      if (sawPaper && !sawOutside) {
+        closed += 1;
+        at.push([rx, ry]);
+      }
     }
   }
-  return { closed, checked };
+  return { closed, checked, at };
 }
 
 describe('truchet diamonds', () => {
@@ -1259,6 +1270,185 @@ describe('truchet colour resolution', () => {
       // colour scores 2.9 to 4.4 with up to 10. An earlier version of this
       // test asserted mean > 1.6 and so passed against the bug.
       expect({ tileSet, mean: mean > 2.5, most: most >= 4 }).toEqual({ tileSet, mean: true, most: true });
+    }
+  });
+});
+
+/**
+ * Every cell's rotation, read back out of the drawn picture.
+ *
+ * At one division a triangle is a single three-point polygon and its
+ * right-angle corner is listed first, so the two legs give which way the
+ * filled half faces: R is 1 when it touches the cell's right edge, D when it
+ * touches the bottom. Rotation does not depend on the division count, so
+ * reading it at one division measures the same tiling the divided render draws
+ * and costs a fraction of the polygons.
+ *
+ * The grid's rows are centred with a spare row, so `originY` is negative and
+ * rounding a corner's y against the cell alone lands half a cell out. Getting
+ * that wrong is not subtle once you check it: the first version of this read
+ * 19.3% of seams as broken on a tiling that is fully joined by construction,
+ * which is how it was caught.
+ */
+function rotationGrid(density: number, seed: string, diamondBreak: number): Map<string, [number, number]> {
+  const W = 900;
+  const svg = renderToSvg({
+    generator: truchet,
+    width: W,
+    height: W,
+    palette,
+    params: { ...defaultParams(truchet), tileSet: 'triangles', density, arcCount: 1, diamondBreak },
+    seed,
+    bleed: 0,
+  });
+  const cell = W / density;
+  const originY = (W - (Math.ceil(W / cell) + 1) * cell) / 2;
+  const grid = new Map<string, [number, number]>();
+  for (const m of svg.matchAll(/<polygon points="([^"]+)"/g)) {
+    const pts = (m[1] as string).split(' ').map((p) => p.split(',').map(Number) as [number, number]);
+    if (pts.length !== 3) continue;
+    const [c, p1, p2] = pts as [[number, number], [number, number], [number, number]];
+    const dx = p1[0] + p2[0] - 2 * c[0];
+    const dy = p1[1] + p2[1] - 2 * c[1];
+    const i = Math.round(c[0] / cell) - (dx > 0 ? 0 : 1);
+    const j = Math.round((c[1] - originY) / cell) - (dy > 0 ? 0 : 1);
+    grid.set(`${i},${j}`, [dx > 0 ? 0 : 1, dy > 0 ? 0 : 1]);
+  }
+  return grid;
+}
+
+/** The share of shared edges with ink on one side and paper on the other. */
+function brokenSeams(density: number, seed: string, diamondBreak: number): number {
+  const g = rotationGrid(density, seed, diamondBreak);
+  const bit = (i: number, j: number, k: 0 | 1): number | undefined => g.get(`${i},${j}`)?.[k];
+  let seams = 0;
+  let broken = 0;
+  const count = (a: number | undefined, b: number | undefined): void => {
+    if (a === undefined || b === undefined) return;
+    seams += 1;
+    if (a === b) broken += 1;
+  };
+  for (let i = 1; i < density; i++) for (let j = 1; j < density; j++) count(bit(i - 1, j, 0), bit(i, j, 0));
+  for (let i = 1; i < density; i++) for (let j = 1; j < density; j++) count(bit(i, j - 1, 1), bit(i, j, 1));
+  return seams === 0 ? 0 : broken / seams;
+}
+
+/**
+ * Of the columns and rows holding two diamonds or more, the share whose
+ * diamonds all sit on one parity.
+ *
+ * This is the complaint stated exactly. A vertex closes into a diamond only
+ * where D(i, j) is 1 and D(i, j + 1) is 0, and joining forces D to alternate
+ * down a column, so D(i, j) = (j + b_i) mod 2 for a single bit b_i that holds
+ * for the column's whole height. Every diamond in that column therefore lands
+ * on a row of one parity — every other row, all the way down, which is what
+ * "they all follow the same vertical line" is. The same argument along a row
+ * gives the column parity. It is an identity rather than a tendency: with
+ * every seam joined this is 1, exactly, at every density and seed.
+ */
+function diamondParity(density: number, seed: string, diamondBreak: number): { pure: number; groups: number } {
+  const g = rotationGrid(density, seed, diamondBreak);
+  const bit = (i: number, j: number, k: 0 | 1): number | undefined => g.get(`${i},${j}`)?.[k];
+  const byCol = new Map<number, number[]>();
+  const byRow = new Map<number, number[]>();
+  for (let i = 0; i + 1 < density; i++) {
+    for (let j = 0; j + 1 < density; j++) {
+      const ok =
+        bit(i, j, 0) === 1 &&
+        bit(i, j, 1) === 1 &&
+        bit(i + 1, j, 0) === 0 &&
+        bit(i + 1, j, 1) === 1 &&
+        bit(i, j + 1, 0) === 1 &&
+        bit(i, j + 1, 1) === 0 &&
+        bit(i + 1, j + 1, 0) === 0 &&
+        bit(i + 1, j + 1, 1) === 0;
+      if (!ok) continue;
+      (byCol.get(i) ?? (byCol.set(i, []), byCol.get(i) as number[])).push(j);
+      (byRow.get(j) ?? (byRow.set(j, []), byRow.get(j) as number[])).push(i);
+    }
+  }
+  let pure = 0;
+  let groups = 0;
+  for (const list of [...byCol.values(), ...byRow.values()]) {
+    if (list.length < 2) continue;
+    groups += 1;
+    if (list.every((v) => (v & 1) === ((list[0] as number) & 1))) pure += 1;
+  }
+  return { pure, groups };
+}
+
+describe('truchet diamond break', () => {
+  const SEEDS = ['yarrow-129', 'probe-3', 'probe-7', 'probe-11', 'probe-13', 'probe-17'];
+
+  /**
+   * The rule is available before the fix, which is what this file keeps asking
+   * for. Joining every edge forces the filled halves to alternate, and
+   * alternation leaves one free bit per row, one per column, and nothing per
+   * cell. So a column's diamonds are locked to every other row for the whole
+   * height of the picture and no seed changes that — it is the structure, not
+   * the randomness, and it was reported twice as the pattern looking too
+   * regular to be random. This control exists to break exactly that, and the
+   * thing to assert is that the lock is there at zero and gone above it.
+   *
+   * Measured over six seeds at twenty columns: 152 of 152 groups on one parity
+   * at zero, then 139, 128 and 100 groups of which 11, 11 and 15 are mixed as
+   * it rises. Watched failing with the fault rate pinned to zero, where the
+   * raised settings read 1 like the default.
+   */
+  it('locks a column of diamonds to alternate rows until it is raised', () => {
+    const at = (brk: number): number => {
+      const totals = SEEDS.map((seed) => diamondParity(20, seed, brk));
+      const pure = totals.reduce((a, t) => a + t.pure, 0);
+      const groups = totals.reduce((a, t) => a + t.groups, 0);
+      return groups === 0 ? 0 : pure / groups;
+    };
+    expect(at(0), 'a fully joined tiling let a diamond off its parity').toBe(1);
+    for (const brk of [0.3, 0.5, 1]) {
+      expect(at(brk), `at ${brk} the diamonds were still locked to alternate rows`).toBeLessThan(0.97);
+    }
+  });
+
+  /**
+   * And the cost is the one the control's description states, because there is
+   * no version of this that is free. A row can only leave its phase by making
+   * one pair of neighbours agree, which is one seam with ink on one side and
+   * paper on the other; the rate is per seam, so the setting *is* the fraction
+   * of seams broken. Measured over six seeds at twenty columns: 0.00% at zero,
+   * 2.9% at 0.3 and 10.4% at the top, against a ceiling of a tenth.
+   *
+   * The ceiling matters more than it looks. The dial this replaced left 13-20%
+   * of band ends facing nothing at 0.7 and was reported as small islands, so
+   * the whole of this slider has to stay under a setting that was already too
+   * broken to ship.
+   */
+  it('breaks the seams it says it does and no more', () => {
+    const mean = (brk: number): number => SEEDS.reduce((a, s) => a + brokenSeams(20, s, brk), 0) / SEEDS.length;
+    expect(mean(0), 'the default broke a seam').toBe(0);
+    for (const brk of [0.15, 0.3, 0.5, 1]) {
+      const pct = mean(brk);
+      expect(pct, `at ${brk} nothing was broken, so nothing was bought`).toBeGreaterThan(0);
+      expect(pct, `at ${brk} it broke ${(pct * 100).toFixed(1)}% of seams, past the tenth it promises`).toBeLessThan(
+        brk * 0.1 * 1.15,
+      );
+    }
+  });
+
+  /**
+   * And it stays out of the way at zero: `unpartneredEnds` is the geometry
+   * metric the rest of this file trusts, and the default has to read what the
+   * fully joined tiling always read.
+   */
+  it('leaves the default tiling fully joined', () => {
+    const pct = unpartneredEnds(13, 6, 0.16, 0.5, 0);
+    expect(pct, `the default left ${pct.toFixed(1)}% of band ends with nothing facing them`).toBe(0);
+  });
+
+  /** Triangles only, like the control it sits next to. */
+  it('leaves the other tile sets alone', () => {
+    for (const tileSet of ['arcs', 'diagonals']) {
+      const off = render({ tileSet, density: 13, arcCount: 6, diamondBreak: 0 });
+      const on = render({ tileSet, density: 13, arcCount: 6, diamondBreak: 1 });
+      expect(off, `${tileSet} moved when the diamond break control did`).toBe(on);
     }
   });
 });

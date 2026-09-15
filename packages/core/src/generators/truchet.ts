@@ -1,6 +1,7 @@
 import { accentAt, accentRamp } from '../palette.js';
 import { hexToOklch, mixOklch, oklchToHex } from '../color.js';
 import { createNoise2D } from '../noise.js';
+import { hashSeed } from '../rng.js';
 import { clamp } from '../geometry.js';
 import { el, num, svgRoot } from '../svg.js';
 import { pNum, pStr, type Generator, type RenderContext } from '../types.js';
@@ -146,6 +147,25 @@ const TRIANGLE_FILL_OPACITY = '0.9';
  */
 const JOIN_NEIGHBOUR = 1;
 
+/**
+ * The most seams `diamondBreak` may leave unmet, at the top of its travel.
+ *
+ * A fault is not free and there is no version of it that is. Joining forces
+ * the filled halves to alternate across every edge, so the only way to move a
+ * row or column off its phase is to make one pair of neighbours agree — which
+ * is exactly one seam with ink on one side and paper on the other. The rate is
+ * per seam, so the control means the same run length in cells at three columns
+ * and at twenty-six, and the fraction of seams it breaks is the setting.
+ *
+ * The ceiling comes from the dial this replaced. `JOIN_NEIGHBOUR` at 0.7 left
+ * 13-20% of band ends facing nothing and was reported as small islands; at
+ * 0.85 it left 7-13% and was still visibly fragmented at six divisions. The
+ * top of this slider sits at 0.10 so that the whole of its travel stays under
+ * the setting that was already too broken, and the useful part of it — one
+ * fault every ten to twenty cells — is in the bottom third.
+ */
+const MAX_BREAK = 0.1;
+
 const TRIANGLE_FULL_WEIGHT = 0.16;
 
 /**
@@ -242,6 +262,7 @@ export const truchet: Generator = {
     { key: 'arcCount', label: 'Divisions', type: 'number', min: 1, max: 12, step: 1, default: 1, description: 'How many parts each cell’s mark is divided into. Quarter arcs become concentric, added either side of the radius that joins the neighbouring cells, and how far they reach is Arc spread’s job rather than this one. A diagonal becomes a family of parallel chords across the cell. A triangle is sliced into bands parallel to its hypotenuse with every other one filled, so the solid mass becomes ribbons. All three divide on a spacing that puts each part’s edges where a cell of the same size puts its own, so raising this adds detail inside a mark that keeps its size, and the stroke follows the gap it leaves rather than being clamped by it.' },
     { key: 'arcSpacing', label: 'Arc spread', type: 'number', min: 0.15, max: 1, step: 0.05, default: 1, description: 'How much of the cell the rings reach across. The gap between them is worked out from that and the division count, so every arc you ask for fits, and the stroke is sized from that gap rather than clamped by it. Quarter arcs only: a family of diagonals has no say in how far it spreads, because the spacing that makes it meet its neighbours is the spacing that fills the cell.' },
     { key: 'diamonds', label: 'Diamonds', type: 'number', min: 0, max: 1, step: 0.05, default: 0.5, description: 'How much of the tiling closes into diamonds rather than running on as zigzags. Triangles only, and every tile stays joined at every setting — this is not the trade it looks like. A triangle meets its neighbour when the filled halves alternate across each edge, which fixes the alternation but leaves the first cell of each row and column free to set that row or column’s phase. A diamond closes only where two adjacent rows share a phase and two adjacent columns do too, so steering the phases decides how many there are without touching a single edge. At zero no two neighbours agree and the marks run unbroken from one side of the picture to the other; at one they all agree and the grid fills with concentric diamonds; the middle mixes long runs with clusters of them.' },
+    { key: 'diamondBreak', label: 'Diamond break', type: 'number', min: 0, max: 1, step: 0.05, default: 0, description: 'How often a row or column is allowed to change phase part way across, breaking the diamonds out of the rows and columns they otherwise run in. Triangles only. Joining every edge forces the filled halves to alternate, which leaves one free bit per row and one per column and nothing per cell \u2014 so a diamond column, once it can form, forms all the way down the picture, and no seed changes that. Turning this up mismatches the occasional seam on purpose, and the phase carries on shifted from there, so a run stops part way instead of spanning the image. The cost is exactly what it buys: the setting is the fraction of seams left with a ribbon facing blank paper, and the top of the slider is a tenth of them. At zero nothing is broken and the render is the one it always was.' },
   ],
 
   /**
@@ -305,6 +326,7 @@ export const truchet: Generator = {
     // their phase. That is the whole of what decides the diamond count, and it
     // is independent of the join — see the rotation block below.
     const diamondBias = clamp(pNum(params, 'diamonds', 0.5), 0, 1);
+    const breakRate = clamp(pNum(params, 'diamondBreak', 0), 0, 1) * MAX_BREAK;
 
     const cell = w / cols;
     const rows = Math.ceil(h / cell) + 1;
@@ -375,6 +397,7 @@ export const truchet: Generator = {
     // The rotation each cell settled on, so a cell can see what its left and
     // upper neighbours chose. Row-major order below means both are already in.
     const chosen = new Int8Array(cols * Math.max(1, rows) + cols + 1).fill(-1);
+    let salt = 0x811c9dc5;
 
 
     const drawTile = (x: number, y: number, size: number, rx = -1, ry = -1): void => {
@@ -404,6 +427,16 @@ export const truchet: Generator = {
       const band = bandAt(x + size / 2, cy);
       let rot = rng.int(0, 3);
       if (kindOf === 'triangles' && rx >= 0) {
+        // Where the faults go has to move with the seed, and a RenderContext
+        // carries no seed — only the stream. Drawing from it here would shift
+        // every later draw and repaint every truchet render that exists, which
+        // is the one thing a control defaulting to off must not do. What is
+        // already to hand is the raw `rng.int(0, 3)` above, which every cell
+        // draws and the join then throws away: folding those into a running
+        // mix gives a value that differs between seeds from the first cell on
+        // and costs nothing from the stream. It is read only below, so at a
+        // break of zero the render is byte-identical to one without it.
+        salt = Math.imul(salt ^ rot, 0x01000193) >>> 0;
         // A triangle covers half its cell, so it presents ink to only two of
         // the four edges. Whether a ribbon runs on into the neighbour or stops
         // dead is decided by which halves face each other, and with a free
@@ -461,8 +494,33 @@ export const truchet: Generator = {
                 ? 0
                 : 1
             : dBase;
-        const r = left >= 0 && rng.bool(JOIN_NEIGHBOUR) ? 1 - (left === 1 || left === 2 ? 1 : 0) : rPhase;
-        const d = up >= 0 && rng.bool(JOIN_NEIGHBOUR) ? 1 - (up === 2 || up === 3 ? 1 : 0) : dPhase;
+        const rJoin = left >= 0 && rng.bool(JOIN_NEIGHBOUR) ? 1 - (left === 1 || left === 2 ? 1 : 0) : rPhase;
+        const dJoin = up >= 0 && rng.bool(JOIN_NEIGHBOUR) ? 1 - (up === 2 || up === 3 ? 1 : 0) : dPhase;
+        // A fault, and what it buys.
+        //
+        // Alternation leaves one free bit per row and one per column and none
+        // per cell, so every fully joined tiling is a product of a row set and
+        // a column set: whether a column boundary can carry diamonds at all is
+        // one bit holding for its entire height. That is why the verticals run
+        // edge to edge, and no seed will ever break them — it is the structure
+        // rather than the randomness, and it was reported twice as the pattern
+        // looking too regular to be random.
+        //
+        // Flipping a cell's bit against its neighbour mismatches that one seam
+        // and carries the new phase on for the rest of the row, because the
+        // next cell alternates from the flipped value like any other. So a
+        // fault costs one seam and buys a phase that stops part way across the
+        // picture instead of spanning it. The flip is applied after the join
+        // rather than in place of it, which keeps the `rng.bool` draws in the
+        // same order and the zero setting byte-identical.
+        const r =
+          left >= 0 && breakRate > 0 && hashSeed(`fault:${salt}:${rx}:${ry}:r`) / 0x100000000 < breakRate
+            ? 1 - rJoin
+            : rJoin;
+        const d =
+          up >= 0 && breakRate > 0 && hashSeed(`fault:${salt}:${rx}:${ry}:d`) / 0x100000000 < breakRate
+            ? 1 - dJoin
+            : dJoin;
         rot = r === 0 && d === 0 ? 0 : r === 1 && d === 0 ? 1 : r === 1 && d === 1 ? 2 : 3;
         chosen[ry * cols + rx] = rot;
       }
