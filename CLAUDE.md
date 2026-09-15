@@ -10,6 +10,11 @@ repo up. The README explains *what the architecture is*; this file records
 
 All five must pass before anything is pushed. They are cheap; run them.
 
+They are necessary and they are not sufficient. Green gates say the code builds
+and the assertions hold; they say nothing about whether the picture changed the
+way somebody asked for. For anything that alters a render, the gates are step
+zero and the procedure under **Verifying a visual change** is the rest.
+
 ```bash
 npm run typecheck   # tsc --noEmit, strict, both workspaces
 npm run lint        # eslint, --max-warnings=0
@@ -55,6 +60,61 @@ Passing tests is not evidence that a visual change did what was asked. Four
 consecutive fixes to the truchet arcs shipped green and wrong, because each was
 checked by rendering the new version and looking at it alone.
 
+### The procedure
+
+Everything below this heading was already written down as principles, and a day
+was still lost skipping them, because a list of principles is not a procedure.
+So: **do these in order, and do not call a visual fix done until step 8.** Step
+7 is the one that gets skipped, and it is the one that costs.
+
+1. **Get the reporter's exact config — ask for the share URL.** It carries every
+   parameter, the ones behind the gear included. Three diagnoses in one day were
+   made against a config reconstructed from a screenshot; none of them was
+   theirs, and one URL ended it. Guessing at `weight` and `colorSpread` is not a
+   cheaper version of asking.
+
+2. **Reproduce the fault before theorising.** Render their config and look for
+   what they described. If it is not there, you do not have their config, their
+   renderer, or their fault — establish which. A clean render of the *right*
+   thing is a stop signal. Going off to find something that merely looks similar
+   is how a whole turn went into fixing triangles for a report about diagonals.
+
+3. **Validate the instrument before you trust it.** Five metrics were built in
+   one day and five were confounded: one-sided seam samples reward a render for
+   being empty, normalising them rewards thickness, a chord detector sampled
+   rotations that were never drawn, a canvas model could not reproduce the bug it
+   modelled, and a variety proxy returned 1 for every input. Before believing a
+   number, run it against a known-broken case and a known-good one and check it
+   separates them. If it cannot see the fault you can see, it is not measuring
+   the fault.
+
+4. **Check the tree and rebuild.** Scripts read `dist`; vitest reads `src`. A
+   crashed helper once left a constant modified in the working tree, so a
+   "before" comparison ran against neither the old nor the new value. `git
+   status` and `git diff` against HEAD before measuring, and rebuild first.
+
+5. **Render before and after, at the corners of the parameter space.** Not the
+   middle, and not only the config you happen to be holding. Low and high
+   density against low and high divisions, light palette and dark.
+
+6. **Ask what the number is being compared against.** A metric that matches a
+   baseline proves nothing if the baseline was never itself checked against a
+   render. Every division count read "15.2%, the same as the odd counts" and was
+   called fixed; the odd counts were broken too, and nobody had looked.
+
+7. **Look at the final built version, at the reported config.** Not the metric —
+   the picture. This is the step that was skipped most and cost the most.
+
+8. **Watch the regression test fail.** Reintroduce the fault, confirm the test
+   catches it, restore. A test that has never failed is a description.
+
+If a fix makes the reported fault better without ending it, that is evidence of
+a second cause, not of tuning left to do. Three separate causes sat under one
+"swipe doesn't register" report, and the gaps in truchet's lines were two faults
+in two tile sets that looked identical from outside.
+
+### Why each of those exists
+
 **Render before and after, and compare them.** One image cannot tell you whether
 anything changed. The A/B takes seconds; `npm run samples <dir>` or a short
 script against `packages/core/dist` plus resvg will do it. Look at the PNGs.
@@ -89,6 +149,13 @@ mechanism does not match the thing being asked for. Twice here a knob was added
 to manufacture an effect — path ends — that the tiling already produced
 structurally, and each version of it broke something else: empty cells, then
 unconnected edges.
+
+**resvg and headless Chromium both composite exactly, and a real browser may
+not.** Two shapes that share an edge come out seamless in both of the renderers
+available here; in Safari the same document drew every line dashed, because two
+antialiased edges at 50% coverage composite to 75% and the paper shows through.
+So a fault that reproduces in neither is not thereby disproved — ask which
+browser, and on which device. It took a day to ask, and the answer was one word.
 
 ---
 
