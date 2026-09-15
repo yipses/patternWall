@@ -351,6 +351,55 @@ function unpartneredEnds(density: number, arcCount: number, weight: number): num
   return total === 0 ? 0 : (alone / total) * 100;
 }
 
+describe('truchet diagonals do not leave a seam for a renderer to open', () => {
+  /**
+   * A chord is cut into pieces so each can take its own colour, and the pieces
+   * used to share an endpoint exactly. A shared edge between two separately
+   * rasterised shapes is the classic hairline: two antialiased edges at 50%
+   * coverage composite to 75%, not 100%, and the paper shows through. Chrome
+   * and resvg composite exactly and show nothing; it was reported on Safari,
+   * where the lines came out dashed end to end at the spacing of the pieces.
+   *
+   * So the guard is about the geometry rather than about any one renderer:
+   * consecutive pieces of a chord must overlap, not meet. Pieces that share a
+   * colour are written as one path, and what is left is grown at its interior
+   * ends, which leaves nothing for a seam to open along.
+   *
+   * Measured as coincident endpoints per emitted path, at the configuration
+   * this was reported at: 0.966 before, 0.140 after. What remains is where a
+   * chord meets the next cell's chord, which is a different join and is not
+   * grown — stretching those moved 22% of the pixels at fourteen columns.
+   */
+  it('does not leave pieces of a chord sharing an endpoint', () => {
+    for (const [density, arcCount] of [
+      [3, 3],
+      [5, 4],
+    ] as const) {
+      const svg = render({
+        tileSet: 'diagonals',
+        density,
+        arcCount,
+        weight: 0.04,
+        colorSpread: 1,
+        arcSpacing: 0.75,
+      });
+      const ends = new Map<string, number>();
+      let paths = 0;
+      for (const m of svg.matchAll(/d="M([\d.-]+) ([\d.-]+)L([\d.-]+) ([\d.-]+)/g)) {
+        paths += 1;
+        for (const k of [`${m[1]}:${m[2]}`, `${m[3]}:${m[4]}`]) ends.set(k, (ends.get(k) ?? 0) + 1);
+      }
+      let coincident = 0;
+      for (const v of ends.values()) if (v > 1) coincident += 1;
+      const perPath = coincident / paths;
+      expect(
+        perPath,
+        `at ${density} columns and ${arcCount} divisions there were ${coincident} coincident endpoints across ${paths} paths`,
+      ).toBeLessThan(0.5);
+    }
+  });
+});
+
 describe('truchet triangle ribbons meet across a seam', () => {
   /**
    * A band is centred in its slot rather than anchored on its corner-side

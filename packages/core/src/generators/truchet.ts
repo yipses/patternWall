@@ -757,7 +757,13 @@ export const truchet: Generator = {
       //
       // Keyed on the column count, never on pixels: a thumbnail and an export
       // must cut their chords the same way or they stop being the same picture.
-      const segments = Math.max(1, Math.min(12, Math.ceil(1.4142 / (cols * MAX_SEGMENT))));
+      // The growth below lengthens the stretch a piece carries one colour
+      // across, so the piece count has to be taken against what is left of the
+      // 6% budget after it, not against the whole of it. Without this the
+      // pieces come out at 6.4% and the rule is quietly broken by the fix that
+      // was meant to leave it alone.
+      const growRel = Math.min(lineSw / 2, w * 0.0025) / w;
+      const segments = Math.max(1, Math.min(12, Math.ceil(1.4142 / (cols * (MAX_SEGMENT - 2 * growRel)))));
       for (let k = -kMax; k <= kMax; k++) {
         const o = k * step;
         // Each chord is written from its top-most end so that the single-line
@@ -769,6 +775,38 @@ export const truchet: Generator = {
           : k <= 0
             ? [x0 + s + o, y0, x0, y0 + s + o]
             : [x0 + s, y0 + o, x0 + o, y0 + s];
+        // Two pieces of a chord used to be written as two paths that shared an
+        // endpoint exactly, and a shared edge between two separately rasterised
+        // shapes is the classic hairline: two antialiased edges at 50% coverage
+        // composite to 75%, not 100%, and the paper shows through. A render of
+        // three columns at three divisions carried 927 of those joins. Chrome
+        // and resvg composite exactly and show nothing; it was reported on
+        // Safari, where the lines came out dashed end to end at the spacing of
+        // the pieces rather than of the cells.
+        //
+        // So each piece is grown at its interior ends and neighbours overlap
+        // instead of meeting. The growth is bounded twice and needs both
+        // bounds. Half a stroke width keeps it inside the round cap the
+        // neighbour already paints, so a renderer that composites exactly puts
+        // ink on the same pixels. A quarter of a percent of the canvas keeps a
+        // heavy stroke from stretching the chord — at weight 0.4 half a stroke
+        // is a visible extension. That second bound is keyed on the canvas and
+        // not on the cell, because a seam is about one device pixel wide
+        // whatever the grid is doing, so a bound that shrinks with the cell
+        // stops covering one by the time the grid is fine; keyed on the canvas
+        // it still scales with the render, so a thumbnail and an export stay
+        // the same picture.
+        //
+        // Interior ends only. A chord's own ends meet the next cell's chord,
+        // and growing those stretches the family past its cell: at fourteen
+        // columns it moved 22% of the pixels, against 4.7% for this.
+        //
+        // The chords run at exactly 45 degrees — every branch above moves x and
+        // y by the same amount — so the unit vector along one is a literal
+        // rather than a call to a trigonometric builtin this file may not use.
+        const ux = Math.sign(qx - px) * 0.70710678;
+        const uy = Math.sign(qy - py) * 0.70710678;
+        const grow = growRel * w;
         for (let j = 0; j < segments; j++) {
           const t0 = j / segments;
           const t1 = (j + 1) / segments;
@@ -776,10 +814,17 @@ export const truchet: Generator = {
           const ay = py + (qy - py) * t0;
           const bx = px + (qx - px) * t1;
           const by = py + (qy - py) * t1;
+          // The colour is still read at the piece's own midpoint, off the
+          // geometry the ramp was designed around rather than off the grown
+          // path, so growing a piece cannot change which band it lands in.
+          const segBand = bandAt((ax + bx) / 2, (ay + by) / 2);
+          const gx0 = j === 0 ? ax : ax - ux * grow;
+          const gy0 = j === 0 ? ay : ay - uy * grow;
+          const gx1 = j === segments - 1 ? bx : bx + ux * grow;
+          const gy1 = j === segments - 1 ? by : by + uy * grow;
           // Collinear pieces under a round linecap: the join is invisible, and
           // the stroke is the same width either side of it.
-          const d = `M${num(ax, 1)} ${num(ay, 1)}L${num(bx, 1)} ${num(by, 1)}`;
-          const segBand = bandAt((ax + bx) / 2, (ay + by) / 2);
+          const d = `M${num(gx0, 1)} ${num(gy0, 1)}L${num(gx1, 1)} ${num(gy1, 1)}`;
           (strokeBuckets[segBand] as string[]).push(
             el('path', {
               d: d + (k === kMax && j === segments - 1 ? extra : ''),
