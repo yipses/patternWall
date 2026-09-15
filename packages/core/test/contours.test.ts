@@ -15,7 +15,8 @@ const contours = ALL_GENERATORS.find((g) => g.id === 'contours')!;
  * broke at once without a line of the code changing.
  *
  * Worth reading which ones actually mattered, because the obvious answer was
- * wrong. Pinning the terrain — scale, detail, grain, valley incision — moved
+ * wrong. Pinning the terrain — scale and detail; grain and valley incision
+ * were pinned here too until they were removed — moved
  * the numbers *further* out. The movers were `indexEvery`, which went from
  * every fifth line to every second and so made most of the map heavy index
  * strokes, and `weight`, which went to its minimum: a thinner pen leaves more
@@ -32,8 +33,6 @@ const CALIBRATED = {
   levels: 14,
   scale: 1.5,
   detail: 3,
-  grain: 0.25,
-  incision: 0.2,
   resolution: 90,
   weight: 1,
   indexEvery: 5,
@@ -146,7 +145,7 @@ describe('contours', () => {
    */
   it.each([
     ['ordinary country', { resolution: 60, levels: 18 }],
-    ['rough country, where saddles occur', { resolution: 200, levels: 60, detail: 5, scale: 4, grain: 0.25, incision: 0.2 }],
+    ['rough country, where saddles occur', { resolution: 200, levels: 60, detail: 5, scale: 4 }],
   ])('leaves no contour stopping in the middle of the map: %s', (_label, over) => {
     const SIZE = 600;
     // Supplementary lines are contours as well — traced from the same
@@ -629,9 +628,10 @@ describe('contours roughness', () => {
    * page, and a fine wobble on every line. Only the first was ever here, and
    * structurally so — the field is sampled onto a grid, so nothing finer than
    * a cell survives to be drawn, and `detail`'s finest octave at its ceiling
-   * is about 3% of the width where the texture wanted is nearer 0.5%. Grain
-   * and valley incision cannot supply it either: both warp the field at the
-   * landform scale before it is sampled.
+   * is about 3% of the width where the texture wanted is nearer 0.5%. The two
+   * field warps that used to live here could not supply it either, which is
+   * most of why they are gone: both worked at the landform scale, before the
+   * field was ever sampled.
    *
    * So the assertion is that the lines gain length at a scale well below the
    * landforms while the landforms themselves do not move.

@@ -202,7 +202,11 @@ removing the `rowVariation` param was not, and every truchet link made before it
 now reads its values one slot out. Four more went the same way in one go —
 `gap`, `subdivide`, `quietTop`, `openEnds` — knowingly, because nothing outside
 this repo had links worth keeping yet. Contours' `relief` then went the same way
-for the same reason, shifting the seven params after it. That window is closing:
+for the same reason, shifting the seven params after it, and then `grain` and
+`incision` together — slots 7 and 8 of fourteen, shifting the six after them —
+on the explicit word that nothing had been shared yet. Cutting the two in one
+go rather than one at a time is the only part of that worth copying: two
+removals are two shifts, and a link survives neither. That window is closing:
 the moment someone bookmarks a configuration, this stops being a free operation.
 If links ever need to survive, the encoding needs a version or named keys — it
 has neither today.
@@ -212,7 +216,8 @@ also disarm a test.** Lowering a maximum does not shift any slot, so links keep
 decoding — but `coerceParams` clamps, so every stored value above the new
 ceiling silently becomes the ceiling, and any default above it has to move with
 it. Contours' `grain` and `incision` defaults both sat above their new maxima
-and were pinned down to them.
+and were pinned down to them. (Both are gone now — see the entry on the sign
+error below — but the lesson about the test is the same either way.)
 
 The part worth remembering is what it did to a test. The crowding test asserts
 that a heavy pen thins rather than blots, and it was calibrated at `weight` 3,
@@ -1007,6 +1012,7 @@ printed survey sheet has country sweeping across the page and a fine wobble
 riding on every line. Contours only ever had the first, and it was reported as
 "the fine details of jagged edges — it doesn't seem like any of the controls we
 have do this", with grain and valley incision named as the near misses.
+(Both have since been removed; the entry below on the sign error says why.)
 
 They are near misses for a reason that is structural rather than a matter of
 range. Both warp the *field*, at the landform scale, before it is ever sampled.
@@ -1057,6 +1063,58 @@ to the crenulation, pointing wherever it happened to face, and floated beside
 the line because they were still being computed from the traced points while
 the drawn ones had moved. Both halves: tick from the line that is drawn, and
 take the neighbours far enough along it to average the wobble out.
+
+**A second field mixed in to crease the valleys put its crests in them.**
+Contours' `incision` was meant to cut the drainage lines a real slope carries:
+plain fBm domes, ridged noise creases, so blending the two was supposed to make
+the contours kink into the upstream V that gives a printed sheet away. It did
+the opposite, and the reason is one sign. `ridged` is `1 - |gradient|` squared,
+so it peaks where plain noise crosses zero — and measured against the domed
+field it is not uncorrelated with it but *anti*-correlated, -0.535, with its
+sharpest 2% sitting at the domed field's 24.6th percentile. Its crests land in
+fBm's valley floors. Mixing it in therefore raised a sharp bump in the bottom
+of every valley, and the contours nested tightly round the new summit: at the
+slider's top the map went from 86 subpaths averaging 236px of extent to 121
+averaging 178px, with the share under 60px doubling from 15% to 31%. It was
+reported as "it seems to suck in my contours and that's it", which is exactly
+what that is.
+
+The sign is not the interesting part; `1 - noise.ridged(...)` was one character
+and was rendered and looked at, and it stops the pinching without producing the
+V either — at eight levels most creases fall between contours and are never
+drawn. So the control was cut rather than fixed. The reusable form is the
+question that would have caught it before a line was written: **when you mix a
+second field in to modify the first, measure where the second one's features
+land in the first.** "Ridged noise creases" is true and says nothing about
+*which* heights get creased, and that was the whole of the bug.
+
+Two things about how it hid. Three quarters of the slider was dead — max 0.2,
+and nothing visible below 0.1 — so the fault only appeared at the very top of a
+control most people would never push. And the first A/B of it compared 0.35,
+0.7 and 1.0 and produced three byte-identical PNGs, because `coerceParams`
+clamps them all to the 0.2 ceiling. **A render script does not go through the
+editor, so nothing stops you measuring a value the slider cannot reach**; when
+an A/B shows no difference at all, check the values actually arrived before
+concluding anything about the code.
+
+`grain` went with it, and for a duller reason: it warps the same field at the
+same landform scale, so it changes which hills you get rather than how the map
+reads, which is what `roughness` was built to do and does. Removing both is
+strictly additive by construction — each defaulted to 0 — and 32 configs across
+two seeds, two palettes and the corners of scale, level count and roughness are
+byte-identical, checked under `git stash` rather than asserted.
+
+**A test about unpaired ends cannot see a wrong pairing.** Found while
+re-verifying the tests above, and left standing: contours' marching-squares
+saddle case picks between two ways of joining four crossings, and forcing the
+choice (`const high = true`) fails no test. The one that looks like it should
+catch it asserts no contour stops in the middle of the map — but *both* branches
+link all four slots into two pairs, so no end is ever left alone whichever is
+chosen. The test's own comment claims it closed this, and what it closed was a
+different collapse, emitting one segment instead of two. It predates the
+`grain`/`incision` removal and was confirmed against the prior commit, so it is
+not fallout from that. The guard it wants is about which hills join, not about
+whether ends are paired.
 
 **Promoting a gesture to the registry moves three bugs with it.** Tap used to
 cycle whichever parameter a generator nominated; it moves to the next pattern

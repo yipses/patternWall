@@ -10,7 +10,9 @@ A contour map is a landscape answering one question over and over: where exactly
 
 The heights come from fractal noise — several octaves of a smooth random field, each one half the amplitude and twice the frequency of the last. **Terrain scale** sets how far you are standing back: low values give two or three broad massifs across the width, high values a crowded archipelago. **Detail** is the octave count, and it changes the character rather than the size: at one octave the land is all smooth domes, and each octave after that roughens the coastline without moving the mountains. The two are worth separating because "bigger hills" and "rougher hills" are different requests and a single knob answering both would satisfy neither.
 
-Left there, though, the result is not a landscape. Fractal noise is isotropic — nothing in it prefers a direction — so every landform comes out a rounded blob and the map reads as splodges. Real country is nothing but direction: ridges that run for miles, valleys that branch, the whole surface organised by the water coming off it. **Grain** supplies that by looking the field up at a point the field itself has moved, so the land is dragged through itself and acquires a flow. **Valley incision** supplies the other half. Plain noise domes where water cuts, so the second field mixed in here is ridged noise — folded at its zero crossing so it creases instead of curving — and the contours start kinking upstream in the V that gives a printed sheet away as terrain rather than decoration. Both are easy to overdo, and both sliders stop where overdoing them begins: past about a fifth the incision leaves off cutting valleys and starts shattering the map into small closed rings, and a warp much beyond a quarter drags the land through itself until the ridges stop running and start folding. Both ship at zero, which is the plainest and quietest version of this map — smooth domes, no drainage, nothing competing with the lines themselves. Raise either and the country starts having an opinion about which way the water runs.
+Left there, the result is a landscape without drainage. Fractal noise is isotropic — nothing in it prefers a direction — so the landforms come out as rounded blobs, where real country is organised by the water running off it: ridges that carry for miles, valleys that branch. This map does not attempt that, and the reason is worth stating rather than hiding. Both of the obvious fixes work on the *field*, at the scale of the hills — dragging the sample point through a second noise field, or creasing the heights with ridged noise — and both change which hills you get rather than how the map reads.
+
+The texture that does survive is at the other end of the scale entirely. **Roughness** displaces the traced line itself, after the landforms are settled, so every hill stays exactly where it was and each contour picks up the fine crenulation a surveyed line has. It takes no room it does not have: the displacement is capped by the gap to the next line, so a steep face stays legible and open country gets the most of it. At zero the lines are as smooth as the grid can draw them, which is the plainest version of this map.
 
 The lines are found by marching squares. The field is sampled onto a grid, and every cell of that grid is compared against each height that passes through it: a cell with two corners above the line and two below has the line crossing two of its edges, and where it crosses is worked out by interpolating between the corner heights. That gives a heap of disconnected two-point fragments, which are then chained back into the curves they belong to — each crossing sits on one grid edge, and an edge is shared by exactly two cells, so the fragments join without any guessing about which end meets which — and drawn as a smooth curve through the crossings rather than as a run of straight hops between them.
 
@@ -51,8 +53,10 @@ const COLOR_STEPS = 32;
  * one cell survives to be drawn, and `detail` adds octaves whose finest is
  * `1 / (scale * 2^(detail-1))` of the width — at the ceiling of five octaves
  * that is about 3% of the width, where the texture wanted is nearer 0.5%.
- * Grain and valley incision cannot supply it either: both warp the *field*,
- * at the landform scale, before it is ever sampled.
+ * The two controls that used to sit here could not supply it either — a
+ * domain warp and a ridged-noise mix, both working on the *field*, at the
+ * landform scale, before it was ever sampled. They are gone; this replaced
+ * them.
  *
  * Getting it from the grid means both ceilings at once — measured, detail 8
  * with resolution 360 does produce it, at 410ms and 1.2MB against 69ms and
@@ -116,8 +120,6 @@ const ROUGH_REACH = 0.02;
 /** …and never more than this much of the room the line has. */
 const ROUGH_OF_GAP = 0.28;
 
-const WARP_REACH = 0.65;
-
 /**
  * Width buckets for the crowding thinner. A stroke width belongs to an
  * element, so a contour can only be drawn at one width; quantising to a few
@@ -143,10 +145,6 @@ const ROOM_WANTED = 3;
 const SUPP_AT_MOST = 34;
 const SUPP_AT_LEAST = 9;
 
-/** Offsets so the two warp fields are different slices of the same noise. */
-const WARP_X = 11.3;
-const WARP_Y = -7.1;
-
 export const contours: Generator = {
   id: 'contours',
   name: 'Contours',
@@ -159,7 +157,7 @@ export const contours: Generator = {
    * Measurements in the comments below that say "at the defaults" or "the
    * default terrain" were taken against the previous set — levels 14, scale
    * 1.5, detail 3, resolution 90, weight 1, index every 5, colour spread 0.75,
-   * grain 0.25, incision 0.2, sea level 0.32, elevation tint 0.65,
+   * grain 0.25 and incision 0.2 (both since removed), sea level 0.32, elevation tint 0.65,
    * supplementary 0.5. They are still the right measurements for the claims
    * they support; they are simply no longer a description of what a fresh
    * render looks like.
@@ -178,8 +176,6 @@ export const contours: Generator = {
     { key: 'weight', label: 'Line weight', type: 'number', min: 0.3, max: 2, step: 0.05, default: 0.3, description: 'Line width, scaled to the canvas so it looks the same at any export size.' },
     { key: 'indexEvery', label: 'Index contours', type: 'number', min: 0, max: 10, step: 1, default: 2, description: 'Draw every nth line heavier, the way a printed map does, so the eye can count elevation instead of only reading shape. Zero draws every line the same.' },
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.35, description: 'How much of the accent ramp the elevation walks through. At zero every line is the middle of the palette; at one the lowest contour and the highest sit at opposite ends of it.' },
-    { key: 'grain', label: 'Grain', type: 'number', min: 0, max: 0.25, step: 0.01, default: 0, description: 'Gives the country a direction. At zero every hill is a rounded blob, because plain noise has no orientation and the contours come out as splodges; raising it drags the field through itself so ridges run, valleys branch and the whole map acquires the flow of somewhere real.' },
-    { key: 'incision', label: 'Valley incision', type: 'number', min: 0, max: 0.2, step: 0.01, default: 0, description: 'Cuts the valleys rather than rounding them. Blends in ridged noise, which creases where plain noise would dome, so contours kink sharply along the lines water would take \u2014 the V pointing upstream that gives a printed sheet away as terrain and not decoration.' },
     { key: 'seaLevel', label: 'Sea level', type: 'number', min: 0, max: 0.75, step: 0.01, default: 0, description: 'Floods the land below a chosen height. The coastline is a contour like any other \u2014 the level snaps to the nearest one, because a shoreline that ran between two contours would be the only line on the map not answering the same question as the rest. At zero there is no water, which is a different and drier kind of country.' },
     { key: 'elevationTint', label: 'Elevation tint', type: 'number', min: 0, max: 1, step: 0.01, default: 0, description: 'Paints each band between two contours in its own shade, the way a printed atlas washes lowland green and high ground brown. The lines give you slope through their spacing; the tint gives you height at a glance, without having to count them. Kept well short of full strength on purpose \u2014 a map in saturated bands stops being a map and becomes a poster.' },
     { key: 'hachures', label: 'Depression ticks', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'A ring of contour is the same line whether it encircles a summit or a hollow, and nothing about the line says which \u2014 on a printed sheet the difference is carried by short ticks drawn on the downhill side, pointing into the basin. Here they are added to every closed contour whose interior is lower than the line itself, so craters, sinks and dry lake beds stop reading as hills. Above the sea only: a basin already under water has a shoreline to explain it.' },
@@ -216,8 +212,6 @@ export const contours: Generator = {
     const indexEvery = Math.max(0, Math.round(pNum(params, 'indexEvery', 5)));
     const colorSpread = clamp(pNum(params, 'colorSpread', 0.75), 0, 1);
     const weight = pNum(params, 'weight', 1);
-    const grain = clamp(pNum(params, 'grain', 0.45), 0, 1);
-    const incision = clamp(pNum(params, 'incision', 0.22), 0, 1);
     // Snapped to a contour: the shoreline is then a line the map already draws,
     // and the fill beneath it ends exactly where that line runs.
     const elevationTint = clamp(pNum(params, 'elevationTint', 0.65), 0, 1);
@@ -263,32 +257,10 @@ export const contours: Generator = {
       const v = j / rows;
       for (let i = 0; i <= cols; i++) {
         const u = i / cols;
-        let sx = u * scale;
-        let sy = v * scale * aspect;
+        const sx = u * scale;
+        const sy = v * scale * aspect;
 
-        // Domain warp: look the field up at a point the field itself has
-        // moved. Plain fractal noise is isotropic, so every landform comes out
-        // a rounded blob and the contours read as splodges rather than as
-        // country — nothing in it prefers a direction, and real landscapes are
-        // nothing but direction: ridges that run, valleys that branch, drainage
-        // organising the lot. Dragging the sample point through a second field
-        // supplies that grain for the cost of two more lookups. Two octaves is
-        // enough; the warp wants to be smooth, and detail in it only jitters
-        // the result.
-        if (grain > 0) {
-          const reach = grain * WARP_REACH;
-          sx += noise.fbm(sx + WARP_X, sy + WARP_Y, 2) * reach;
-          sy += noise.fbm(sx - WARP_X, sy - WARP_Y, 2) * reach;
-        }
-
-        // Plain noise domes; ridged noise creases. Real slopes are cut by the
-        // water coming off them, so the contours kink upstream in a V instead
-        // of curving smoothly, and that crease is most of what makes a printed
-        // sheet read as terrain. `ridged` already returns 0..1, so the two mix
-        // directly.
-        const domed = noise.fbm(sx, sy, detail) * 0.5 + 0.5;
-        field[j * (cols + 1) + i] =
-          incision > 0 ? domed * (1 - incision) + noise.ridged(sx, sy, detail) * incision : domed;
+        field[j * (cols + 1) + i] = noise.fbm(sx, sy, detail) * 0.5 + 0.5;
       }
     }
 
