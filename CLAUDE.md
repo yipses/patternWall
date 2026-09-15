@@ -1223,6 +1223,19 @@ Commit in logical increments, one concern per commit. Write commit bodies that
 explain *why*, including what was ruled out; several in this history are the
 only record of a subtle diagnosis.
 
+**Report back in three headings, in this order: What's new, What's fixed,
+What's unresolved.** Nothing before them but one line on whether it shipped.
+Bullets, not paragraphs — the reasoning, the measurements, the A/B and what was
+ruled out belong in the commit body, which is where they are useful later and
+where nobody has to wade through them to find out what happened. This was asked
+for after a run of replies that were accurate and too long to parse.
+
+The third heading is not optional and "nothing" is rarely the honest answer.
+Anything deliberately not done, any rough edge left standing, anything deferred,
+suspected or checked-but-unverified goes there — including the things the work
+revealed rather than caused. An empty third heading usually means it has not
+been looked for.
+
 Be accurate about uncertainty in user-facing copy. `/setup` documents an Apple
 Shortcuts recipe and marks each label as either confirmed against Apple's
 documentation or community-sourced, because `support.apple.com` is unreachable
