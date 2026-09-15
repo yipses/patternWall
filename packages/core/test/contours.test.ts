@@ -549,3 +549,172 @@ describe('contours', () => {
   });
 
 });
+
+/**
+ * The polyline each contour was drawn from.
+ *
+ * `smoothPath` interpolates every point it is given, so the endpoint of each
+ * cubic is one of the traced points — reading them back gives the line itself
+ * rather than an approximation of it.
+ */
+function drawnLines(svg: string): [number, number][][] {
+  const out: [number, number][][] = [];
+  for (const group of groupsOf(svg, 'contour')) {
+    for (const m of group.matchAll(/ d="M([-\d.]+) ([-\d.]+)((?:C[-\d.]+ [-\d.]+ [-\d.]+ [-\d.]+ [-\d.]+ [-\d.]+)+)(Z?)"/g)) {
+      const pts: [number, number][] = [[Number(m[1]), Number(m[2])]];
+      for (const c of (m[3] as string).matchAll(/C[-\d.]+ [-\d.]+ [-\d.]+ [-\d.]+ ([-\d.]+) ([-\d.]+)/g)) {
+        pts.push([Number(c[1]), Number(c[2])]);
+      }
+      if ((m[4] as string) === 'Z') pts.push(pts[0] as [number, number]);
+      if (pts.length > 3) out.push(pts);
+    }
+  }
+  return out;
+}
+
+/**
+ * Extra length a line carries over the same line read coarsely.
+ *
+ * The obvious measure — total turning per short step — is confounded, and was
+ * tried first: a contour sweeping round a hill turns just as much as a
+ * crenulated one, so it reported 54.9° at the old maximum detail for lines
+ * that are visibly smooth when you crop the render and look. This compares a
+ * line against a coarse walk of *itself*, so the large-scale shape divides out
+ * and what is left is the wobble riding on it.
+ */
+function fineness(lines: [number, number][][], coarse: number): number {
+  let fine = 0;
+  let sparse = 0;
+  for (const pts of lines) {
+    let acc = 0;
+    let anchor = pts[0] as [number, number];
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i] as [number, number];
+      const q = pts[i - 1] as [number, number];
+      const d = Math.hypot(p[0] - q[0], p[1] - q[1]);
+      fine += d;
+      acc += d;
+      if (acc >= coarse) {
+        sparse += Math.hypot(p[0] - anchor[0], p[1] - anchor[1]);
+        anchor = p;
+        acc = 0;
+      }
+    }
+  }
+  return sparse > 0 ? fine / sparse : 1;
+}
+
+/** Do two segments cross? */
+function crosses(
+  a: [number, number],
+  b: [number, number],
+  c: [number, number],
+  d: [number, number],
+): boolean {
+  const side = (p: [number, number], q: [number, number], r: [number, number]): number =>
+    Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+  const d1 = side(a, b, c);
+  const d2 = side(a, b, d);
+  const d3 = side(c, d, a);
+  const d4 = side(c, d, b);
+  return d1 !== d2 && d3 !== d4 && d1 !== 0 && d2 !== 0 && d3 !== 0 && d4 !== 0;
+}
+
+describe('contours roughness', () => {
+  /**
+   * The thing this exists for, and the reason it could not come from the
+   * existing controls.
+   *
+   * A survey sheet carries texture at two scales: country sweeping across the
+   * page, and a fine wobble on every line. Only the first was ever here, and
+   * structurally so — the field is sampled onto a grid, so nothing finer than
+   * a cell survives to be drawn, and `detail`'s finest octave at its ceiling
+   * is about 3% of the width where the texture wanted is nearer 0.5%. Grain
+   * and valley incision cannot supply it either: both warp the field at the
+   * landform scale before it is sampled.
+   *
+   * So the assertion is that the lines gain length at a scale well below the
+   * landforms while the landforms themselves do not move.
+   */
+  it('adds length at a fine scale without moving the landforms', () => {
+    const plain = render({ roughness: 0 }, 600);
+    const rough = render({ roughness: 1 }, 600);
+
+    // The excess over a straight walk is what crenulation is, so compare the
+    // excesses rather than the ratios: a smooth line is already a few percent
+    // longer than the chords across it, and that few percent is the large-scale
+    // curve rather than anything this control did. Measured, plain runs 1.032
+    // and roughness 1 runs 1.129 — an excess of 0.032 against 0.129, four times
+    // over. The bound is taken from those two numbers rather than from what
+    // sounded reasonable, which is how the first version of this came to demand
+    // 15% of a mechanism that delivers 9.4%.
+    const fineP = fineness(drawnLines(plain), 24);
+    const fineR = fineness(drawnLines(rough), 24);
+    expect(
+      fineR - 1,
+      `roughness 1 reads ${fineR.toFixed(3)} against ${fineP.toFixed(3)} plain`,
+    ).toBeGreaterThan((fineP - 1) * 2.5);
+
+    // …and the same hills, in the same places. A ring count that moved would
+    // mean the terrain had been rewritten, which is exactly what getting this
+    // from the grid does — detail 8 at resolution 360 produces the texture and
+    // 54 paths where the same map has 38.
+    expect(drawnLines(rough).length, 'roughening changed how many contours there are').toBe(drawnLines(plain).length);
+  });
+
+  /**
+   * A contour may never cross another one. It is the one rule a contour map
+   * cannot break — two heights in the same place — and displacing lines is
+   * exactly the operation that would break it.
+   *
+   * What keeps it true is the cap: the displacement is a fraction of the gap
+   * the line has to live in, so two neighbours are moved by nearly the same
+   * amount and crowded ground takes none of it.
+   *
+   * At sixty levels, which is where the lines crowd. The first version of this
+   * ran at fourteen and passed with the gap term deleted from the cap, because
+   * the other half of the cap — a flat fraction of the short edge — is the one
+   * that binds on open ground. A guard has to be run where the thing it guards
+   * against can actually happen, or it is a description.
+   */
+  it('never pushes one contour through another, on ground with no room', () => {
+    const lines = drawnLines(render({ roughness: 1, levels: 60 }, 600));
+    let hits = 0;
+    for (let a = 0; a < lines.length; a++) {
+      for (let b = a + 1; b < lines.length; b++) {
+        const A = lines[a] as [number, number][];
+        const B = lines[b] as [number, number][];
+        for (let i = 1; i < A.length; i += 2) {
+          for (let j = 1; j < B.length; j += 2) {
+            if (crosses(A[i - 1] as [number, number], A[i] as [number, number], B[j - 1] as [number, number], B[j] as [number, number])) hits += 1;
+          }
+        }
+      }
+    }
+    expect(hits, `${hits} contour crossings`).toBe(0);
+  });
+
+  /**
+   * The same map at a thumbnail and at an export.
+   *
+   * Everything this does is in fractions of the canvas — the resample step,
+   * the amplitude, and the coordinates the displacement field is read at — so
+   * a 108px gallery card and a 1399px download resample to the same number of
+   * points and are pushed about by the same field. Keying any of the three on
+   * pixels would give the preview a different map from the thing you download,
+   * which is the one promise this app makes about its renders.
+   */
+  it('roughens the same way at any canvas size', () => {
+    const small = drawnLines(render({ roughness: 1 }, 220));
+    const large = drawnLines(render({ roughness: 1 }, 1100));
+    expect(large.length, 'a different number of contours at a different size').toBe(small.length);
+    expect(large.map((l) => l.length), 'the lines resampled to different point counts').toEqual(
+      small.map((l) => l.length),
+    );
+  });
+
+  /** Off is off: the default render is the one it always was. */
+  it('leaves a render without it exactly as it was', () => {
+    expect(render({ roughness: 0 }, 600)).toBe(render({}, 600));
+  });
+});

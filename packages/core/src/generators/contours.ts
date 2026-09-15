@@ -41,6 +41,47 @@ const COLOR_STEPS = 32;
  * scale. Large enough that ridges genuinely run rather than merely lean;
  * small enough that the land does not fold back through itself.
  */
+/**
+ * Fine crenulation, added to the traced line rather than to the grid.
+ *
+ * A printed survey sheet has texture at two scales at once: landforms that
+ * sweep across the sheet, and a fine wobble riding on every line. This
+ * generator only ever had the first, and the reason is structural rather than
+ * a matter of tuning. The field is sampled onto a grid, so nothing finer than
+ * one cell survives to be drawn, and `detail` adds octaves whose finest is
+ * `1 / (scale * 2^(detail-1))` of the width — at the ceiling of five octaves
+ * that is about 3% of the width, where the texture wanted is nearer 0.5%.
+ * Grain and valley incision cannot supply it either: both warp the *field*,
+ * at the landform scale, before it is ever sampled.
+ *
+ * Getting it from the grid means both ceilings at once — measured, detail 8
+ * with resolution 360 does produce it, at 410ms and 1.2MB against 69ms and
+ * 202kB, and it rewrites the terrain into something much busier while it is
+ * at it. Displacing the traced line instead costs 99ms and 448kB and leaves
+ * the landforms exactly as they were, which is the thing actually being asked
+ * for.
+ *
+ * It is not a cheat. Moving a contour point along its own normal by d is what
+ * adding `d * |grad h|` to the height at that point does; this is the same
+ * perturbation, evaluated only where it can be seen, which is why it needs no
+ * finer grid. Two things keep it honest. The displacement comes from a field
+ * in normalised canvas coordinates, so two neighbouring contours are moved by
+ * nearly the same amount and cannot be made to cross; and it is capped at a
+ * fraction of the gap the line has to live in, so where the map is crowded
+ * there is no room for it and none is taken.
+ *
+ * Ridged rather than plain noise, chosen by looking: plain fbm gives a smooth
+ * wobble that reads as a shaky hand, and the fold at the zero crossing gives
+ * the sharper kinks a contour traced off real ground actually has.
+ */
+const ROUGH_FREQ = 26;
+/** Resample step before displacing, as a fraction of the short edge. */
+const ROUGH_STEP = 0.004;
+/** The most a line may be moved, as a fraction of the short edge. */
+const ROUGH_REACH = 0.006;
+/** …and never more than this much of the room the line has. */
+const ROUGH_OF_GAP = 0.28;
+
 const WARP_REACH = 0.65;
 
 /**
@@ -109,6 +150,7 @@ export const contours: Generator = {
     { key: 'elevationTint', label: 'Elevation tint', type: 'number', min: 0, max: 1, step: 0.01, default: 0, description: 'Paints each band between two contours in its own shade, the way a printed atlas washes lowland green and high ground brown. The lines give you slope through their spacing; the tint gives you height at a glance, without having to count them. Kept well short of full strength on purpose \u2014 a map in saturated bands stops being a map and becomes a poster.' },
     { key: 'hachures', label: 'Depression ticks', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'A ring of contour is the same line whether it encircles a summit or a hollow, and nothing about the line says which \u2014 on a printed sheet the difference is carried by short ticks drawn on the downhill side, pointing into the basin. Here they are added to every closed contour whose interior is lower than the line itself, so craters, sinks and dry lake beds stop reading as hills. Above the sea only: a basin already under water has a shoreline to explain it.' },
     { key: 'supplementary', label: 'Supplementary lines', type: 'number', min: 0, max: 1, step: 0.01, default: 0.4, description: 'Draws a dashed line at half the contour interval wherever the map has room for it. Flat country is the one place a contour map says nothing \u2014 the lines are simply far apart \u2014 and the printed answer is an extra line between them, dashed so it cannot be mistaken for the real interval. It is the same rule as the thinning and dropping on steep ground, read from the other end: the interval follows the terrain. At zero the map keeps one interval everywhere.' },
+    { key: 'roughness', label: 'Roughness', type: 'number', min: 0, max: 1, step: 0.05, default: 0, description: 'Fine crenulation along every line, at a scale below the landforms. A survey sheet has texture at two scales — country that sweeps across the page and a wobble riding on each line — and the second cannot come from the sampling grid, which forgets anything smaller than one cell. This displaces the traced line instead, so the hills stay exactly where they were and only the lines acquire a texture. It takes no room it does not have: where contours crowd together the displacement is capped by the gap between them, so a steep face stays legible and flat country gets the most of it.' },
   ],
 
   /**
@@ -176,6 +218,7 @@ export const contours: Generator = {
     const cols = Math.max(8, Math.round(pNum(params, 'resolution', 90)));
     const rows = Math.max(8, Math.round((cols * h) / Math.max(1, w)));
 
+    const roughness = clamp(pNum(params, 'roughness', 0), 0, 1);
     const minDim = Math.min(w, h);
     const aspect = h / Math.max(1, w);
 
@@ -471,9 +514,21 @@ export const contours: Generator = {
 
       // Unit inward normal at k, from a central difference so it follows the
       // curve rather than one segment of it.
+      // Neighbours far enough along the ring to skip the crenulation.
+      // Adjacent points give the tangent of the wobble rather than of the
+      // contour once `roughness` is up, and a tick square to the wobble points
+      // wherever that happens to face. Half a tick length of arc is enough to
+      // average it out and changes nothing on a line that has none.
+      let ringLen = 0;
+      for (let k = 0; k < n; k++) {
+        const [x1, y1] = pts[k] as [number, number];
+        const [x2, y2] = pts[(k + 1) % n] as [number, number];
+        ringLen += Math.hypot(x2 - x1, y2 - y1);
+      }
+      const span = Math.max(1, Math.round((tickLen * 0.5) / Math.max(1e-6, ringLen / n)));
       const inward = (k: number): [number, number] => {
-        const [px, py] = pts[(k - 1 + n) % n] as [number, number];
-        const [qx, qy] = pts[(k + 1) % n] as [number, number];
+        const [px, py] = pts[(k - span + n * span) % n] as [number, number];
+        const [qx, qy] = pts[(k + span) % n] as [number, number];
         const tx = qx - px;
         const ty = qy - py;
         const len = Math.hypot(tx, ty) || 1e-9;
@@ -535,12 +590,7 @@ export const contours: Generator = {
       // shape and the radius over two of a round one, so twice it is the room
       // available in the worst direction; the tick takes most of that or its
       // nominal length, whichever is less.
-      let perim = 0;
-      for (let k = 0; k < n; k++) {
-        const [x1, y1] = pts[k] as [number, number];
-        const [x2, y2] = pts[(k + 1) % n] as [number, number];
-        perim += Math.hypot(x2 - x1, y2 - y1);
-      }
+      const perim = ringLen;
       const room = perim > 0 ? (Math.abs(area2) / perim) * 1.7 : tickLen;
       const reach = Math.min(tickLen, room);
 
@@ -609,14 +659,77 @@ export const contours: Generator = {
       const tail = chain[chain.length - 1] as number;
       const ring = chain.length >= 3 && (sa[tail] === start || sb[tail] === start);
       const pts: [number, number][] = chain.map((n) => [sx[n] as number, sy[n] as number]);
+      // The gap is a fact about the terrain, so it is read from the line as
+      // traced; the ticks and the path are both taken from the roughened one,
+      // or the ticks would sit beside the line rather than on it.
+      lastGap = gapOf(pts);
+      const drawn = roughen(pts, lastGap, ring);
       // Ticks go on rings above the water, and only on rings with room for
       // them: a hollow four crossings across is a rounding artefact of the
       // grid, and ticking it just speckles the map.
       if (ring && hachures > 0 && L % sub === 0 && L / sub > seaIndex && chain.length >= 10) {
-        hachurePaths[L] += hachuresFor(pts, L / steps);
+        hachurePaths[L] += hachuresFor(drawn, L / steps);
       }
-      lastGap = gapOf(pts);
-      return smoothPath(pts, 1, 1, ring);
+      return smoothPath(drawn, 1, 1, ring);
+    };
+
+    /**
+     * Resample a traced contour and push each point along its own normal.
+     *
+     * The resample is what makes room for the texture: the traced points sit
+     * one grid cell apart, so without it the finest wobble available is the
+     * cell, which is the constraint this exists to get around. `amp` is capped
+     * twice over — by a fraction of the short edge, so the texture is the same
+     * size at any canvas, and by a fraction of the gap this line has to live
+     * in, so crowded ground takes none of it and two contours cannot be pushed
+     * through each other.
+     *
+     * Both the step and the frequency are in normalised coordinates, so a
+     * 108px thumbnail and a 1399px export resample to the same point count and
+     * sample the same field. Keying either on pixels would give the preview a
+     * different map from the download.
+     */
+    const roughen = (pts: [number, number][], gap: number, ring: boolean): [number, number][] => {
+      if (roughness <= 0 || pts.length < 4) return pts;
+      const amp = Math.min(gap * ROUGH_OF_GAP, minDim * ROUGH_REACH) * roughness;
+      if (amp <= 0) return pts;
+
+      const step = minDim * ROUGH_STEP;
+      const n = pts.length;
+      const dense: [number, number][] = [];
+      const last = ring ? n : n - 1;
+      for (let i = 0; i < last; i++) {
+        const a = pts[i] as [number, number];
+        const b = pts[(i + 1) % n] as [number, number];
+        const cuts = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
+        for (let j = 0; j < cuts; j++) dense.push([a[0] + ((b[0] - a[0]) * j) / cuts, a[1] + ((b[1] - a[1]) * j) / cuts]);
+      }
+      if (!ring) dense.push(pts[n - 1] as [number, number]);
+
+      const m = dense.length;
+      const fx = scale * ROUGH_FREQ;
+      const fy = scale * aspect * ROUGH_FREQ;
+      const out: [number, number][] = [];
+      for (let i = 0; i < m; i++) {
+        const p = dense[i] as [number, number];
+        // An open curve keeps its ends where the trace put them: they sit on
+        // the canvas edge, and moving them leaves a gap against the frame.
+        const edge = !ring && (i === 0 || i === m - 1);
+        if (edge) {
+          out.push(p);
+          continue;
+        }
+        const a = dense[(i - 1 + m) % m] as [number, number];
+        const b = dense[(i + 1) % m] as [number, number];
+        let nx = b[1] - a[1];
+        let ny = -(b[0] - a[0]);
+        const len = Math.hypot(nx, ny) || 1;
+        nx /= len;
+        ny /= len;
+        const d = (noise.ridged((p[0] / w) * fx, (p[1] / h) * fy, 2) * 2 - 1) * amp;
+        out.push([p[0] + nx * d, p[1] + ny * d]);
+      }
+      return out;
     };
 
     /**

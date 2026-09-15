@@ -1002,6 +1002,62 @@ was true when written. Prose near a change is part of the change: when you
 revert, revert what explains it too, and when you read a comment as evidence,
 check it against the code.
 
+**Two scales of texture, and only one of them can come from the grid.** A
+printed survey sheet has country sweeping across the page and a fine wobble
+riding on every line. Contours only ever had the first, and it was reported as
+"the fine details of jagged edges — it doesn't seem like any of the controls we
+have do this", with grain and valley incision named as the near misses.
+
+They are near misses for a reason that is structural rather than a matter of
+range. Both warp the *field*, at the landform scale, before it is ever sampled.
+And the field is sampled onto a grid, so nothing finer than one cell survives
+to be drawn — while `detail`'s finest octave sits at `1 / (scale * 2^(detail-1))`
+of the width, about 3% at its ceiling of five, where the texture wanted is
+nearer 0.5%. Two ceilings, and the field's binds first.
+
+The grid can be made to do it and the price is the whole map. Measured on one
+terrain at 900px: baseline 69ms and 202kB; detail 8 at resolution 360 gives the
+crenulation for 410ms and 1183kB, and rewrites the country into something much
+busier while it is there — 54 contours where the same map had 38. Displacing
+the traced line instead costs 99ms and 448kB and leaves every landform exactly
+where it was, which is what was actually asked for.
+
+It is not a cheat, and the reason matters for the next thing like it. Moving a
+contour point along its own normal by d is what adding `d * |grad h|` to the
+height at that point does — the same perturbation, evaluated only where it can
+be seen, which is why it needs no finer grid. **When the thing you want is
+visible only on a curve, ask whether it has to exist everywhere.**
+
+Three things it needed, each found by breaking it:
+
+**The confounded instrument, again, and this file is now five for five on
+this.** The obvious measure of jaggedness is total turning per short step, and
+it reads 54.9° at the old maximum detail — for lines that are plainly smooth
+when you crop the render at 2.6x and look. A contour sweeping round a hill
+turns exactly as much as a crenulated one. What separates them is comparing a
+line against a *coarse walk of itself*, so the large-scale shape divides out:
+plain runs 1.032 and roughness 1 runs 1.129, an excess of 0.032 against 0.129.
+The first bound written off that was 15% and the mechanism delivers 9.4%, which
+is the same mistake in miniature — take the threshold from the two measurements,
+not from the one you like.
+
+**A guard has to run where the thing it guards against can happen.** Contours
+must never cross; that is the one rule a contour map cannot break. The cap is
+two terms, a flat fraction of the short edge and a fraction of the gap the line
+has to live in, and the crossing test was written at fourteen levels — where
+the flat term binds and **deleting the gap term entirely changes nothing the
+test can see.** At sixty levels, where the lines crowd, the same deletion puts
+two crossings on the map and the test catches it. A test at the setting you
+happen to be holding is a description.
+
+**A mark that rides on a line has to be told which line.** Depression ticks
+take their direction from the points either side, which on a roughened line is
+the tangent of the wobble rather than of the contour — so ticks came out square
+to the crenulation, pointing wherever it happened to face, and floated beside
+the line because they were still being computed from the traced points while
+the drawn ones had moved. Both halves: tick from the line that is drawn, and
+take the neighbours far enough along it to average the wobble out.
+
 **Promoting a gesture to the registry moves three bugs with it.** Tap used to
 cycle whichever parameter a generator nominated; it moves to the next pattern
 now. The gesture is the same event and the mechanism underneath it is entirely
