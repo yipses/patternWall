@@ -74,11 +74,45 @@ const COLOR_STEPS = 32;
  * wobble that reads as a shaky hand, and the fold at the zero crossing gives
  * the sharper kinks a contour traced off real ground actually has.
  */
-const ROUGH_FREQ = 26;
-/** Resample step before displacing, as a fraction of the short edge. */
-const ROUGH_STEP = 0.004;
-/** The most a line may be moved, as a fraction of the short edge. */
-const ROUGH_REACH = 0.006;
+const ROUGH_FREQ = 12;
+/**
+ * How many wobbles across the canvas. Lower is a slower, longer wave.
+ *
+ * Twelve, chosen by looking against a reference. Twenty-six — and multiplied
+ * by terrain scale, which it was, so fifty-two or sixty-five in practice — is
+ * invisible at any amplitude the gap allows: cropped at 2.2x it renders as a
+ * smooth line. Eight is the other failure and the less obvious one, because
+ * the wave gets so slow it stops reading as texture and becomes the shape of
+ * the line itself.
+ *
+ * More octaves do not help. At three and four the render is indistinguishable
+ * from two, because each further octave is half the amplitude at twice the
+ * frequency and lands under the resample step below. Finer detail riding on
+ * the wobble would mean a finer step, and that is document size.
+ */
+/**
+ * Resample step before displacing, as a fraction of the short edge.
+ *
+ * Raised from 0.004 when the wave got longer, because the two are related: a
+ * step is only worth taking if it can carry a change, and at twelve wobbles
+ * across the canvas 0.004 was spending twenty-one points on each one. 0.007
+ * halves the document — 314kB to 173kB on a 900px render — and the crop at
+ * 2.2x is indistinguishable. 0.010 is visibly not: the small kinks go and what
+ * is left reads as gentle undulation.
+ */
+const ROUGH_STEP = 0.007;
+/**
+ * The most a line may be moved, as a fraction of the short edge.
+ *
+ * 0.006 first, which is 3.2px on a phone preview, and the top of the slider
+ * was a wobble nobody could see — reported as "the amplitude feels too low".
+ * This is the *flat* half of the cap; on crowded ground the gap term takes
+ * over, which is what keeps two contours from being pushed through each other,
+ * and raising this made that guard matter more rather than less: deleting the
+ * gap term now puts five crossings on a sixty-level map where it used to put
+ * two.
+ */
+const ROUGH_REACH = 0.02;
 /** …and never more than this much of the room the line has. */
 const ROUGH_OF_GAP = 0.28;
 
@@ -707,8 +741,16 @@ export const contours: Generator = {
       if (!ring) dense.push(pts[n - 1] as [number, number]);
 
       const m = dense.length;
-      const fx = scale * ROUGH_FREQ;
-      const fy = scale * aspect * ROUGH_FREQ;
+      // Not multiplied by `scale`. It was, and that made the texture's size a
+      // fact about a different control: terrain scale is how far back you are
+      // standing, so coupling to it meant the crenulation got finer every time
+      // the country got smaller, and no setting of this slider could bring it
+      // back. Reported as "the period feels too high — nothing I can do can fix
+      // it", from a render at scale 2.5, where the wobble ran 25% finer than
+      // the tuning it was chosen at. The texture is a fixed fraction of the
+      // canvas now, so it reads the same wherever the terrain slider is.
+      const fx = ROUGH_FREQ;
+      const fy = aspect * ROUGH_FREQ;
       const out: [number, number][] = [];
       for (let i = 0; i < m; i++) {
         const p = dense[i] as [number, number];
