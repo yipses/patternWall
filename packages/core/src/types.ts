@@ -83,11 +83,11 @@ export interface RenderContext {
  * append-only for that reason; naming a param by key means this can be chosen,
  * changed and reordered freely without any of that mattering. It is also why
  * this is a field on the generator rather than a flag on each spec: which
- * three controls carry a pattern is a fact about the pattern as a whole, in
+ * controls carry a pattern is a fact about the pattern as a whole, in
  * the same way that string art's picture needing to see its detail setting is
  * a fact about string art rather than about `ParamSpec`.
  *
- * Optional, and absent means absent: a generator that has not had its three
+ * Optional, and absent means absent: a generator that has not had its two
  * chosen renders every control in a flat list exactly as it always did. There
  * is no guessing on a pattern's behalf.
  */
@@ -130,7 +130,7 @@ export interface Generator {
   description: string;
   /** Pure: same inputs, same string, every time. */
   render(ctx: RenderContext): string;
-  /** The three controls this pattern is driven by, if they have been chosen. */
+  /** The two scrubbed controls this pattern is driven by, if they have been chosen. */
   primary?: Primaries;
   /** Ranges that depend on another parameter's value, keyed by the one limited. */
   limits?: Record<string, ParamLimit>;
@@ -187,7 +187,13 @@ export function coerceParams(g: Generator, input: Record<string, unknown> | unde
       const s = String(raw);
       if (s === '' || isPackedGrid(s)) out[spec.key] = s;
     } else {
-      out[spec.key] = raw === true || raw === 'true' || raw === 1 || raw === '1';
+      // Every other branch leaves the declared default alone when it cannot
+      // read the value; this one used to coerce instead, so anything it did
+      // not recognise became `false` -- the opposite of a default of `true`,
+      // which is what both boolean params in the registry declare. Recognise
+      // both sets and fall back on anything else, like the rest of them.
+      if (raw === true || raw === 'true' || raw === 1 || raw === '1') out[spec.key] = true;
+      else if (raw === false || raw === 'false' || raw === 0 || raw === '0') out[spec.key] = false;
     }
   }
   // A second pass, and it has to be second: a ceiling that depends on another

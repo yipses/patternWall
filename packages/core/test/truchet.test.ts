@@ -7,7 +7,13 @@ const diagonals = getGenerator('truchet-diagonals')!;
 
 /** The pattern a set of overrides is talking about. */
 function generatorFor(overrides: Record<string, number | string | boolean>): typeof arcs {
-  return overrides.tileSet === 'diagonals' ? diagonals : arcs;
+  const t = overrides.tileSet;
+  if (t === undefined || t === 'arcs') return arcs;
+  if (t === 'diagonals') return diagonals;
+  // A typo used to render arcs and pass, which is the wrong way for a test
+  // helper to fail: `tileset: 'diagonals'` or `tileSet: 'diagonal'` would
+  // silently test the pattern it was not about.
+  throw new Error(`unknown tileSet ${JSON.stringify(t)}`);
 }
 const palette = curatedPalettes[0]!;
 
@@ -738,5 +744,37 @@ describe('truchet colour resolution', () => {
       const id = generator.id;
       expect({ id, mean: mean > 2.5, most: most >= 4 }).toEqual({ id, mean: true, most: true });
     }
+  });
+});
+
+/**
+ * Arc spread is the last secondary control on the arcs with no behavioural
+ * coverage, and this file records two separate days lost to a truchet control
+ * that turned out to do nothing -- `weight` dead on the triangles, then
+ * `weight` eaten by the division count. A slider nobody measures is how both
+ * of those lasted.
+ *
+ * The trap is that it is *legitimately* inert at the shipped default of one
+ * division: one ring has nothing to spread against. So the guard has to be
+ * taken where the control has something to do, and a "min differs from max at
+ * the defaults" test would be red against correct code. Measured, three
+ * distinct renders across 0.15/0.5/1 at every count from three up, and one at
+ * a count of one.
+ */
+describe('truchet arc spread', () => {
+  it('changes the render wherever there is more than one ring', () => {
+    for (const arcCount of [3, 6, 12]) {
+      const seen = new Set(
+        [0.15, 0.5, 1].map((arcSpacing) => render({ arcCount, arcSpacing, density: 8 }, 400, 'spread')),
+      );
+      expect(seen.size, `arcCount ${arcCount}`).toBe(3);
+    }
+  });
+
+  it('is inert at one division, which is the default and is not a fault', () => {
+    const seen = new Set(
+      [0.15, 0.5, 1].map((arcSpacing) => render({ arcCount: 1, arcSpacing, density: 8 }, 400, 'spread')),
+    );
+    expect(seen.size).toBe(1);
   });
 });

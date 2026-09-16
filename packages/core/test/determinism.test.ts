@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { renderToSvg } from '../src/index.js';
+import { renderToSvg, type Generator } from '../src/index.js';
 import { ALL_GENERATORS, baseParams, rasterize, TEST_PALETTES } from './helpers.js';
 
 const W = 320;
@@ -67,8 +67,28 @@ describe('determinism', () => {
     expect(s2).toBe(s1);
   });
 
-  it('unknown and malformed params fall back to declared defaults', async () => {
-    const g = ALL_GENERATORS[0]!;
+  /**
+   * A malformed value for a param the generator actually declares.
+   *
+   * This test used to pass `quietTop: Number.NaN`, which truchet-arcs -- the
+   * generator it runs against -- does not declare, so `coerceParams` dropped
+   * it as an unknown key and the NaN never reached the number branch at all.
+   * Both keys were unknown keys, and deleting the `Number.isFinite` guard from
+   * `coerceParams` left the suite green. Derive the keys from the generator so
+   * this cannot drift again.
+   */
+  const malformed = (g: Generator): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    for (const spec of g.params) {
+      if (spec.type === 'number') out[spec.key] = Number.NaN;
+      else out[spec.key] = { not: 'a value' };
+    }
+    return out;
+  };
+
+  it.each(ALL_GENERATORS.map((g) => [g.id, g] as const))(
+    '%s: unknown and malformed params fall back to declared defaults',
+    async (_id, g) => {
     const palette = TEST_PALETTES[0]!;
     const clean = renderToSvg({ generator: g, width: W, height: H, palette, params: baseParams(g), seed: 's', bleed: 0 });
     const dirty = renderToSvg({
@@ -76,12 +96,13 @@ describe('determinism', () => {
       width: W,
       height: H,
       palette,
-      params: { ...baseParams(g), notARealKey: 42, quietTop: Number.NaN },
+      params: { ...baseParams(g), notARealKey: 42, ...malformed(g) },
       seed: 's',
       bleed: 0,
     });
     expect(dirty).toBe(clean);
-  });
+  },
+  );
 });
 
 /**

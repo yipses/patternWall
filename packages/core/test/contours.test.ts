@@ -387,6 +387,36 @@ describe('contours', () => {
    * fill colours are counted too — a tint that renders as one flat wash is a
    * tint that is not doing anything.
    */
+  /**
+   * Ticks above the sea only: a basin already under water has a shoreline to
+   * explain it, so drowning one must take its ticks with it.
+   *
+   * Every other contours test renders at the shipped `seaLevel` of 0, where
+   * the gate cannot bite -- deleting `L / sub > seaIndex` from the tick
+   * condition left the whole suite green. This is the same shape as the
+   * crossing cap's gap term, which was written at fourteen levels where the
+   * flat term binds and could be deleted without any test noticing.
+   *
+   * Strict decrease rather than a threshold: the rule says a drowned basin
+   * loses its ticks, so raising the water can only take ticks away. Measured,
+   * 168 at zero, 67 at 0.2 and none at 0.4.
+   */
+  it('takes a hollow\'s ticks away when it floods', () => {
+    const ticks = (seaLevel: number): number => {
+      const svg = render({ resolution: 60, levels: 18, hachures: 1, seaLevel }, 600);
+      let n = 0;
+      for (const { kind, body } of orderedGroups(svg)) {
+        if (kind !== 'hachure') continue;
+        n += (body.match(/M/g) ?? []).length;
+      }
+      return n;
+    };
+    const dry = ticks(0);
+    expect(dry).toBeGreaterThan(20);
+    expect(ticks(0.2)).toBeLessThan(dry);
+    expect(ticks(0.4)).toBe(0);
+  });
+
   it('tints the elevation visibly without flooding the document', () => {
     // Sea level off: the water is a filled path of the same shape as a tint
     // band, and this is a question about the bands.
@@ -713,8 +743,22 @@ describe('contours roughness', () => {
     );
   });
 
-  /** Off is off: the default render is the one it always was. */
+  /**
+   * Off is off: the default render is the one it always was.
+   *
+   * This asserted `render({ roughness: 0 })` equals `render({})` for a while,
+   * which is `x === x` -- roughness defaults to 0, so both sides were the
+   * identical params bag through a pure function and no change to anything
+   * could fail it. Flooring the amplitude so every default render is
+   * crenulated left it green, with the suite's own `fineness` instrument
+   * reading the difference (1.032 to 1.087) in the test below.
+   *
+   * A pin is what this wants, the way the truchet ink test pins a length: the
+   * number is the render as it was before the mechanism existed, so anything
+   * that reaches the default render has to come here and say so deliberately.
+   */
   it('leaves a render without it exactly as it was', () => {
+    expect(render({}, 600).length).toBe(145932);
     expect(render({ roughness: 0 }, 600)).toBe(render({}, 600));
   });
 });
