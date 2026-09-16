@@ -219,7 +219,7 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
 
     const cols = Math.max(2, Math.round(pNum(params, 'density', 8)));
     const weight = pNum(params, 'weight', 0.16);
-    const colorSpread = pNum(params, 'colorSpread', 0.6);
+    const colorSpread = pNum(params, 'colorSpread', 0.25);
     const colorAxis = pStr(params, 'colorAxis', 'vertical');
 // The colour ramp is always resolved to its full depth.
     //
