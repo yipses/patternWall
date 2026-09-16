@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { SiteChrome } from '../components/SiteChrome';
 import { useEffect } from 'react';
 
 /**
@@ -29,6 +30,7 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
   }, [error]);
 
   return (
+    <SiteChrome>
     <div style={{ maxWidth: 620, margin: '0 auto', padding: '80px 20px' }}>
       <h1 style={{ fontSize: 38, marginBottom: 14 }}>That did not draw.</h1>
       <p style={{ color: 'var(--text-dim)', marginBottom: 18 }}>
@@ -52,5 +54,6 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
         </Link>
       </div>
     </div>
+    </SiteChrome>
   );
 }

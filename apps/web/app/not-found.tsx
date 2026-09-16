@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SiteChrome } from '../components/SiteChrome';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -8,6 +9,7 @@ export const metadata: Metadata = {
 
 export default function NotFound() {
   return (
+    <SiteChrome>
     <div style={{ maxWidth: 620, margin: '0 auto', padding: '80px 20px' }}>
       <h1 style={{ fontSize: 38, marginBottom: 14 }}>There is no pattern here.</h1>
       <p style={{ color: 'var(--text-dim)', marginBottom: 24 }}>
@@ -18,5 +20,6 @@ export default function NotFound() {
         Back to the gallery
       </Link>
     </div>
+    </SiteChrome>
   );
 }
