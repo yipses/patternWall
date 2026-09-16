@@ -1,7 +1,6 @@
 export { createRng, hashSeed, type Rng } from './rng.js';
 export {
   contrastRatio,
-  flatten,
   hexToOklch,
   isHex,
   mixOklab,
@@ -9,14 +8,11 @@ export {
   oklchToHex,
   rampBetween,
   relativeLuminance,
-  withChroma,
-  withLightness,
   type Oklch,
 } from './color.js';
 export {
   accent,
   accentAt,
-  accentOklch,
   accentRamp,
   checkPalette,
   normalizePalette,
@@ -25,7 +21,7 @@ export {
   type WarningLevel,
 } from './palette.js';
 export { curatedPalettes, defaultPalette, getPalette, PALETTE_TAGS, type PaletteTag } from './palettes.js';
-export { createNoise2D, noise1D, type Noise2D } from './noise.js';
+export { createNoise2D, type Noise2D } from './noise.js';
 export {
   effectiveSpec,
   quantise,
@@ -43,7 +39,6 @@ export {
 export { packGrid, unpackGrid, isPackedGrid, gridSizeOf, gridChars, GRID_SIZE, GRID_SIZES, GRID_LEVELS } from './imagegrid.js';
 export {
   clamp,
-  distanceToRect,
   quietFactor,
   safeZonesFor,
   safeZonesForCanvas,

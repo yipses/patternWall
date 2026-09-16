@@ -26,7 +26,7 @@ This one connects **corners** rather than edge midpoints. Paths meet at the cell
 
 The extent of the family is not a free choice either, which is why there is no spread control here. Truncating it to the chords nearest the diagonal leaves a cell crossing its right edge near one corner and its left edge near the other, so two neighbours turned the same way miss each other entirely. The spacing that makes the family join is the spacing that fills the cell.
 
-Colour comes from a field drifting across the canvas, and each chord is cut into pieces small enough that no piece carries one colour across more than a fraction of the image. Sampling once per chord sounds sufficient and is not: a colour boundary could then only fall in the gap between chords, and since every chord runs at 45° the field’s contours snapped onto a lattice of parallel lines and came out as straight-edged facets. Grid **density** decides the rest — below about six columns you read individual tiles, above about twenty a woven texture.
+Colour comes from a field drifting across the canvas, and each chord is stroked with a gradient sampled along its own length rather than painted one flat colour. Sampling once per chord sounds sufficient and is not: a colour boundary could then only fall in the gap between chords, and since every chord runs at 45° the field’s contours snapped onto a lattice of parallel lines and came out as straight-edged facets. Grid **density** decides the rest — below about six columns you read individual tiles, above about twenty a woven texture.
 `.trim();
 
 type TileKind = 'arcs' | 'diagonals';
@@ -215,7 +215,6 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
     // the same wash. It was also the setting that made the arcs' flat-unit
     // fault visible, which is a fair sign that the slider was carrying the
     // weight of a bug rather than an idea.
-    const colorBlend = 1;
     const arcCount = Math.max(1, Math.round(pNum(params, 'arcCount', 1)));
     const arcSpacing = pNum(params, 'arcSpacing', 1);
 
@@ -260,11 +259,13 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
     // along the ramp until the transitions stop being visible as edges. The
     // ramp is sampled in OKLab, so a mid-point between two accents is the
     // colour the eye expects rather than the one the hex arithmetic gives.
-    const flatBands = Math.max(1, Math.min(4, palette.accents.length));
-    const bands = Math.max(flatBands, Math.round(flatBands + (48 - flatBands) * clamp(colorBlend, 0, 1)));
+    // The ramp is always at full resolution. `colorBlend` was a control, and
+    // what stood here computed a band count from it -- with the control gone
+    // and the local pinned to 1 the arithmetic reduced to this constant, while
+    // still reading as something a parameter moved.
+    const bands = 48;
     const bandColors = accentRamp(palette, bands);
     const strokeBuckets: string[][] = Array.from({ length: bands }, () => []);
-    const fillBuckets: string[][] = Array.from({ length: bands }, () => []);
 
     // Colour comes from a field sampled in normalised canvas coordinates, not
     // in pixels. A pixel-keyed frequency would give a 108px thumbnail a much
@@ -294,8 +295,11 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
       if (s <= 0.5) return;
 
       // One stroke width for the whole tile. The lower bound keeps the lightest
-      // weight visible at small cell sizes; the upper one is only reachable by
-      // a fan thinning rule further down asking for more room than it has.
+      // weight visible at small cell sizes. The upper one cannot be reached at
+      // the declared range -- `weight` stops at 0.5 -- and the reason written
+      // here for years was wrong twice over, since both thinning rules below
+      // take a `Math.min` against this and so can only reduce it. It stays as
+      // a guard against the range moving, which this file records happening.
       const sw = clamp(weight * s, s * 0.012, s * 0.62);
 
       // Strictly additive: unchanged at and below the default, opening toward a
@@ -309,10 +313,9 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
               1,
             );
 
-      const kind = KIND;
       const rot = rng.int(0, 3);
 
-      if (kind === 'arcs') {
+      if (KIND === 'arcs') {
         // Sweep flag 0, not 1. With sweep 1 the renderer picks the other of the
         // two circles that fit these endpoints — the one centred on the cell
         // centre — so every arc bulged away from its corner. The marks still
@@ -414,9 +417,6 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
         // The stroke gives way to the gap rather than the other way round, so a
         // heavy weight thins to keep the rings readable instead of merging
         // them. A single arc has no neighbour to crowd and keeps its weight.
-        // A fraction of the pitch rather than a width clamped to it — see
-        // FULL_PITCH_WEIGHT. One ring has no neighbour and so no pitch, and
-        // keeps the cell-relative width it always drew.
         // Cell-relative, limited by the room between rings, with the limit
         // itself scaling above the default so the top of the slider lives.
         const fanSw = step > 0 ? Math.min(sw, step * pitchShare) : sw;
@@ -527,8 +527,15 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
       const perp = step * 0.70710678;
       const lineSw = lines > 1 ? Math.min(sw, perp * pitchShare) : sw;
 
-      // Each chord is cut into pieces that take their own colour, rather than
-      // carrying one colour end to end.
+      // Each chord is stroked with a gradient sampled along its own length,
+      // rather than carrying one colour end to end.
+      //
+      // It was cut into separately-stroked pieces first, which is what the
+      // derivation below is about and why the sample count is still derived
+      // the same way -- the gradient replaced the pieces, not the rule that
+      // sets how finely the colour has to be read. Cutting also left every
+      // join as two strokes sharing an exact edge, which is a seam a renderer
+      // may open; the gradient has no joins at all.
       //
       // Sampling once per chord fixed the cell-sized blocks and left a subtler
       // version of the same fault. A colour boundary can then only fall in the
@@ -540,7 +547,7 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
       // changes for the chord's whole 1.41s length. Facets are what that
       // anisotropy looks like.
       //
-      // The piece count is derived rather than fixed, because the fault scales
+      // The sample count is derived rather than fixed, because the fault scales
       // with cell size: a chord spans 1.41/cols of the canvas and the colour
       // field cycles COLOR_FIELD times across it, so the pieces needed fall off
       // as the grid gets finer. At 26 columns a chord is already short enough
@@ -548,10 +555,10 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
       // that render is 35,000 marks before anything is cut.
       //
       // Keyed on the column count, never on pixels: a thumbnail and an export
-      // must cut their chords the same way or they stop being the same picture.
-      // How finely the colour is read along a chord. It is not a count of
-      // marks any more — see below — but the same 6% rule sets it: no stretch
-      // of one colour may cross more than that fraction of the canvas.
+      // must read their chords the same way or they stop being the same
+      // picture. This is a count of gradient stops rather than of marks, and
+      // the same 6% rule sets it: no stretch of one colour may cross more than
+      // that fraction of the canvas.
       const samples = Math.max(1, Math.min(12, Math.ceil(1.4142 / (cols * MAX_SEGMENT))));
       for (let k = -kMax; k <= kMax; k++) {
         const o = k * step;
@@ -651,10 +658,8 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
       el('rect', { x: 0, y: 0, width: w, height: h, fill: 'url(#tr-bg)' });
 
     for (let b = 0; b < bands; b++) {
-      const fills = fillBuckets[b] as string[];
       const strokes = strokeBuckets[b] as string[];
       const color = bandColors[b] as string;
-      if (fills.length > 0) body += el('g', { fill: color, stroke: 'none' }, fills.join(''));
       if (strokes.length > 0) {
         body += el('g', { fill: 'none', stroke: color, 'stroke-linecap': 'round' }, strokes.join(''));
       }

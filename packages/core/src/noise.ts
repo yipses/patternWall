@@ -131,7 +131,3 @@ export function createNoise2D(rng: Rng): Noise2D {
   return { value, gradient, fbm, ridged };
 }
 
-/** One-dimensional smooth noise, sampled from a 2D field along a fixed row. */
-export function noise1D(n: Noise2D, x: number, row = 0.5): number {
-  return n.gradient(x, row);
-}

@@ -7,7 +7,7 @@
  * colours from a photograph can be dropped into a generator written for four.
  */
 
-import { contrastRatio, hexToOklch, mixOklab, oklchToHex, relativeLuminance, type Oklch } from './color.js';
+import { contrastRatio, hexToOklch, mixOklab, oklchToHex, relativeLuminance } from './color.js';
 
 export interface Palette {
   id: string;
@@ -32,10 +32,6 @@ export function accent(p: Palette, i: number): string {
   return list[idx] as string;
 }
 
-/** Accent `i` in OKLCH, wrapping. */
-export function accentOklch(p: Palette, i: number): Oklch {
-  return hexToOklch(accent(p, i));
-}
 
 /**
  * A continuous accent ramp: `t` in 0..1 walks the whole accent list in OKLCH.
@@ -181,7 +177,6 @@ export function checkPalette(p: Palette): PaletteWarning[] {
   return out;
 }
 
-/** A palette is valid enough to render if it has the three required fields. */
 /**
  * Colours arriving from outside, made into colours this system can carry all
  * the way through.

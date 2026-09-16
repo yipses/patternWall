@@ -236,27 +236,5 @@ export function rampBetween(a: string, b: string, steps: number): string[] {
   return out;
 }
 
-/** Convenience: nudge a colour's lightness while holding hue and chroma. */
-export function withLightness(hex: string, l: number): string {
-  const c = hexToOklch(hex);
-  return oklchToHex({ ...c, l: clamp01(l) });
-}
 
-/** Convenience: scale a colour's chroma. */
-export function withChroma(hex: string, c: number): string {
-  const o = hexToOklch(hex);
-  return oklchToHex({ ...o, c: Math.max(0, c) });
-}
 
-/** Alpha-composite `fg` over `bg` (both hex) and return an opaque hex. */
-export function flatten(fg: string, bg: string): string {
-  const f = parseHex(fg);
-  const b = parseHex(bg);
-  const a = f.a;
-  return rgbToHex({
-    r: f.r * a + b.r * (1 - a),
-    g: f.g * a + b.g * (1 - a),
-    b: f.b * a + b.b * (1 - a),
-    a: 1,
-  });
-}

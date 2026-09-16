@@ -79,12 +79,6 @@ export function safeZonesForCanvas(width: number, height: number, bleed: number)
   return { clock: shift(z.clock), widgets: shift(z.widgets), controls: shift(z.controls), iconGrid: shift(z.iconGrid) };
 }
 
-/** Distance from a point to a rectangle; 0 when inside. */
-export function distanceToRect(px: number, py: number, r: Rect): number {
-  const dx = Math.max(r.x - px, 0, px - (r.x + r.w));
-  const dy = Math.max(r.y - py, 0, py - (r.y + r.h));
-  return Math.hypot(dx, dy);
-}
 
 /**
  * How strongly a generator should hold back at a given height.
