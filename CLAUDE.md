@@ -23,6 +23,15 @@ npm run build       # core, then a static Next.js export into apps/web/out
 npm run test:e2e    # builds, serves the export, runs Playwright against it
 ```
 
+Two more, neither a gate. `npm run check:stamp` asserts the built export
+carries one build stamp rather than two that usually agree; it needs no browser
+and the Pages workflow runs it after `npm run build`, because it is about the
+artifact that gets published and the workflow deliberately does not run e2e.
+`npm run shots` drives a running site and saves screenshots — it needs a server
+up (`npm run dev`, port 3100) and it now fails on a 404 rather than
+photographing the "no pattern here" page, which it did for ten of its thirteen
+shots for a while after four generators were retired.
+
 `npm run dev` serves on **port 3100**. Node 18.18+, 19.8+ or 20+ (Next 15's
 `engines`). Chromium for Playwright lives at `/opt/pw-browsers/chromium` —
 never run `playwright install`; override with `PW_CHROMIUM` if needed.
@@ -32,6 +41,15 @@ A test that cannot fail is worse than no test. When you add a regression test,
 repo a test was written that passed against the broken code; one was deleted
 for it. Note also that `npm run test:e2e` serves the *built* export, so
 reverting a source file without rebuilding proves nothing.
+
+**A test written as "the property is on" against a default that is already off
+is `x === x`.** The roughness guard asserted `render({ roughness: 0 })` equals
+`render({})`, presented as the strictly-additive check this section asks for.
+Roughness defaults to 0, so both sides were the identical params bag through a
+pure function and nothing could fail it — flooring the amplitude so every
+default render is crenulated left it green, while the suite's own instrument
+read the difference. It pins a byte length now. Before writing an assertion
+about a control being off, check that the two sides differ in something.
 
 **Watching it fail is necessary and not sufficient.** A test written as "the
 property my change produces" fails against the old code by construction: that
@@ -1104,6 +1122,49 @@ strictly additive by construction — each defaulted to 0 — and 32 configs acr
 two seeds, two palettes and the corners of scale, level count and roughness are
 byte-identical, checked under `git stash` rather than asserted.
 
+**The arcs still carry the seam the chords were fixed for.** Truchet's chords
+were cut into separately-stroked pieces for colour, every join was two strokes
+sharing an exact edge, and that was measured and removed by switching to a
+gradient — 0.961 coincident endpoints per path before, 0.081 after. The arcs
+are cut the same way and were never fixed: `arcPoint(corner, rho, stops[c+1])`
+is called once to end piece c and again to start piece c+1, same function, same
+arguments, so identical floats through `num(…,1)`. The fix went to one mark and
+not the other, and the regression test is scoped by name to the one that got it
+— `describe('truchet diagonals do not leave a seam for a renderer to open')`.
+
+Neither renderer here can see it: resvg and headless Chromium both composite
+exactly, and the original report of this class was Safari drawing every line
+dashed. So the suite is structurally blind and so is `npm run samples`.
+
+It is **open**, and the reason it is open rather than fixed is the instrument.
+Two independent counts of coincident endpoints disagreed about the legitimate
+baseline — the join where an arc meets its neighbour across a cell edge, which
+is correct and must not be counted — by a factor of two at nineteen columns.
+Before fixing this, build a count that separates a cut seam from a tiling join
+and validate it against a render with no cutting at all, which is what any
+column count past about nineteen already gives you.
+
+**Four instruments in a row could not see a wrong marching-squares saddle, and
+the fifth question is whether the rule is even right.** The saddle case picks
+between two ways of joining four crossings. Forcing it (`const high = true`)
+and *inverting* it both leave the whole suite green — the inverted rule is
+exactly the fault the source comment warns about, contours joining across a
+saddle that should divide. Then: subpath and closed-ring counts move by about
+1%, which is a threshold picked by eye rather than a guard; inter-level
+crossings read 0 for correct output and 0 for both injections; and a ring-count
+comparison against a flood fill of the same field failed its own validation,
+returning identical numbers for both rules.
+
+The part to pick up carefully. Worked by hand against `f(x,y) = x*y`, a saddle
+whose answer is known — the region above a positive iso is two separate
+hyperbola branches, so the highs divide, and the cell centre is below iso —
+**the shipped rule answers the opposite way on both signs.** One hand-worked
+cell is not a finding, and four attempts to confirm it at a scale that matters
+all produced confounded instruments, so it is written down as a question rather
+than a bug. Resolve it by rendering a field with one isolated saddle far from
+the frame and looking at whether the lines divide or join, not by another
+global count: every global count so far has been dominated by something else.
+
 **A test about unpaired ends cannot see a wrong pairing.** Found while
 re-verifying the tests above, and left standing: contours' marching-squares
 saddle case picks between two ways of joining four crossings, and forcing the
@@ -1210,7 +1271,8 @@ result. Each was arrived at by breaking it first.
   shows as an edge, and per whole arc is still a flat unit up to 18.5% of the
   canvas wide, which steps in colour where two arcs meet. Arcs are cut on the
   same 6% rule the chords follow, from a table of literals rather than
-  trigonometry. The ramp is always at full resolution; `colorBlend` was a
+  trigonometry. The chords themselves are no longer cut -- see the entry below
+  on the seam this leaves on the arcs, which is open. The ramp is always at full resolution; `colorBlend` was a
   control and is not one any more.
 - **Ends are structural.** They come from neighbours facing different corners,
   not from a probability knob. Three attempts to manufacture them each broke
@@ -1232,7 +1294,14 @@ result. Each was arrived at by breaking it first.
   neighbour; with it gone every cell is the same size and the lattice holds
   everywhere.
 
-- **A chord is cut into pieces for colour, and the count is derived.** Sampling
+- **A chord is stroked with a gradient, and the stop count is derived.** This
+  entry said "cut into pieces" for a long time after the pieces were replaced,
+  which is the reverted-design trap this file warns about, reached from the
+  other side: the code moved and the record did not. The derivation below is
+  still why the count is derived the way it is -- the gradient replaced the
+  pieces, not the rule that sets how finely the colour has to be read -- and it
+  also removed every cut seam, two strokes sharing an exact edge, which is the
+  thing the arcs still have. Sampling
   once per chord fixed the cell-sized blocks and left a subtler version of the
   same fault: a colour boundary can then only fall in the gap *between* chords,
   and every chord runs at 45°, so the field's contours snap onto a lattice of
@@ -1435,8 +1504,13 @@ the client falls back to rendering inline whenever one cannot be had and a
 silently broken worker is indistinguishable from a working one by looking at
 the pictures.
 
-One unresolved intermittent: `quality.spec.ts`'s "nothing is written to the
-console" test has twice failed with React error #418, a text hydration
-mismatch, and has not been reproducible since. The note on that test records
-what was ruled out. Both sightings were during unrelated work, so do not assume
-your change caused it — check the note before spending an afternoon on it.
+That intermittent is closed, and the way it stayed open is worth the line.
+`quality.spec.ts`'s "nothing is written to the console" test twice failed with
+React error #418, a text hydration mismatch. The cause was found — Next
+evaluates `next.config.mjs` more than once per build, so a bare `new Date()`
+gave the prerendered HTML an earlier instant than the client bundle, and the
+footer renders it to the minute, so the two agreed except when the loads
+straddled a minute boundary — and the fix and its measurement went in sixty
+lines below the note in the same file. Nobody updated the note, or this one, so
+both went on describing an open investigation for weeks. `scripts/check-build-stamp.mjs`
+is that assertion without a browser, and the Pages workflow runs it.
