@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { previewSrc, settled } from './helpers';
 
 /**
- * The three controls a pattern is driven by, driven from the picture.
+ * The two controls a pattern is scrubbed by, driven from the picture.
  *
  * Everything here goes through `page.mouse`, and that is not a compromise: the
  * surface listens for pointer events, which a mouse raises exactly as a finger
@@ -540,7 +540,7 @@ test.describe('gesture', () => {
       await expect(page.getByLabel('Stroke weight')).toBeVisible();
 
       // Over the picture, clear of the sheet, and squarely on the gesture
-      // surface — which would have taken this as a tap and cycled the tile set
+      // surface — which would have taken this as a tap and moved to the next pattern
       // under a menu asking about something else.
       //
       // Measured against the sheet rather than assumed. This used to press a

@@ -39,7 +39,6 @@ export function CollectionExport({ items }: { items: CollectedItem[] }) {
     setNote(null);
     setError(null);
     cancelRef.current = false;
-    let skipped = 0;
     try {
       const zip = new JSZip();
       // Filenames are numbered in collection order so the album has a stable,
@@ -47,11 +46,6 @@ export function CollectionExport({ items }: { items: CollectedItem[] }) {
       const width = String(total).length;
       for (const [i, item] of exportable.entries()) {
         if (cancelRef.current) break;
-        const g = getGenerator(item.generatorId);
-        if (!g) {
-          skipped += 1;
-          continue;
-        }
         const palette = s.homeVariant ? boostForHomeScreen(item.palette) : item.palette;
         const svg = renderSpec({
           generatorId: item.generatorId,
@@ -76,10 +70,14 @@ export function CollectionExport({ items }: { items: CollectedItem[] }) {
       const out = await zip.generateAsync({ type: 'blob', compression: 'STORE' }, (meta) => {
         setProgress(0.9 + (meta.percent / 100) * 0.1);
       });
-      downloadBlob(out, `${safeFilename(['patternwall', 'collection', `${total - skipped}`])}.zip`);
+      downloadBlob(out, `${safeFilename(['patternwall', 'collection', `${total}`])}.zip`);
+      // No "N skipped" clause: `exportable` has already dropped every item
+      // whose generator is missing from this build, so the loop cannot meet
+      // one. The count and the sentence were kept for a while after that
+      // filter arrived, which made the copy unreachable rather than merely
+      // unused.
       setNote(
-        `${total - skipped} wallpaper${total - skipped === 1 ? '' : 's'} zipped — ${formatBytes(out.size)}.` +
-          (skipped > 0 ? ` ${skipped} skipped: the pattern is no longer in this build.` : '') +
+        `${total} wallpaper${total === 1 ? '' : 's'} zipped — ${formatBytes(out.size)}.` +
           ' Import them into a Photos album called PatternWall and see Automate.',
       );
     } catch (err) {

@@ -10,7 +10,7 @@ import styles from './PreviewSettings.module.css';
 /**
  * The rest of the controls, on the picture.
  *
- * Three of a pattern's parameters are driven by the picture itself and live at
+ * Two of a pattern's parameters are driven by the picture itself and live at
  * the top of the panel with their gesture written beside them. These are the
  * others, and on a phone the panel they used to sit in is a scroll away from
  * the thing it changes — so they come to the preview instead, behind a gear in
@@ -165,7 +165,7 @@ export function PreviewSettings({
 
       {open ? (
         /* The rest of the preview is the gesture surface, so with the sheet
-           open a press beside it cycled the tile set — which is the picture
+           open a press beside it moved to the next pattern — which is the picture
            changing under a menu that is asking about something else. This
            takes the press instead and closes. It sits above the surface and
            below the sheet, so the sheet's own controls are untouched, and it

@@ -73,7 +73,7 @@ export function PreviewFrame({
   channel?: string;
   /**
    * Makes the picture itself the control. Present only for a pattern that has
-   * chosen its three; absent, the preview is exactly what it always was.
+   * chosen its two; absent, the preview is exactly what it always was.
    */
   gesture?: { handlers: ScrubHandlers; readout: ScrubReadout | null };
   /** Controls drawn over the picture, above the gesture surface. */

@@ -129,7 +129,11 @@ test.describe('export', () => {
     await page.getByTestId('measure-size').click();
     await expect(sizeCell).not.toHaveText('measuring…', { timeout: 30_000 });
     const boosted = await sizeCell.textContent();
-    expect(boosted).toBeTruthy();
     expect(base).toBeTruthy();
+    expect(boosted).toBeTruthy();
+    // The name of this test is the assertion it did not make: it measured both
+    // sizes and then only checked each was non-empty, so gutting
+    // `boostForHomeScreen` to return the palette unchanged left it green.
+    expect(boosted).not.toBe(base);
   });
 });

@@ -45,7 +45,7 @@ const nextConfig = {
   images: { unoptimized: true },
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),
   // Pages serves 404.html for unknown paths; without this, deep links that Next
-  // exported as `/p/flow-dots.html` would only resolve with the extension.
+  // exported as `/p/contours.html` would only resolve with the extension.
   trailingSlash: true,
   // Lint runs as its own root script so it can cover the whole workspace with
   // --max-warnings=0; running it again here would only duplicate the work.

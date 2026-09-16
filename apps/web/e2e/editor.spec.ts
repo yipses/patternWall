@@ -327,4 +327,29 @@ test.describe('editor', () => {
     await expect(page.getByLabel('Grid density')).toBeVisible();
     await expect.poll(async () => (await marks()).path).toBeGreaterThan(0);
   });
+  /**
+   * Reset puts the opening picture back.
+   *
+   * Written while chasing a suspected fault in `PatternImage`'s skip-the-
+   * worker guard, which is keyed on the last picture drawn rather than on the
+   * one the component mounted with. That fault did not reproduce -- see the
+   * note on `renderedKey` -- so this test has never failed and is a
+   * description rather than a guard for it. It stays because "reset puts the
+   * picture back" is worth asserting on its own, and nothing else asserted it.
+   */
+  test('resetting to defaults redraws the preview', async ({ page }) => {
+    await page.goto('/p/truchet-arcs');
+    await settled(page);
+    const opening = await previewSrc(page);
+
+    const density = page.getByLabel('Grid density');
+    await density.fill('14');
+    await density.dispatchEvent('change');
+    await settled(page);
+    expect(await previewSrc(page)).not.toBe(opening);
+
+    await page.getByRole('button', { name: 'Reset to defaults' }).click();
+    await settled(page);
+    expect(await previewSrc(page)).toBe(opening);
+  });
 });

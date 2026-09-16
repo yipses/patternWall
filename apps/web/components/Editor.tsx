@@ -198,9 +198,9 @@ export function Editor({ generatorId: initialId }: { generatorId: string }) {
   );
 
   /**
-   * Driving the three from the picture.
+   * Driving the two from the picture.
    *
-   * Absent for a pattern that has not chosen its three, in which case the
+   * Absent for a pattern that has not chosen its two, in which case the
    * preview is inert and every control is where it always was.
    */
   const bindings = useMemo(

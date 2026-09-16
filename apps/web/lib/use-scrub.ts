@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import { quantise, scrubTo, wrapPastEnd, type NumberSpec, type ParamSpec, type PrimaryBinding } from '@patternwall/core';
 
 /**
- * Driving a pattern's three controls from the picture itself.
+ * Driving a pattern's two scrubbed controls from the picture itself.
  *
  * Pointer events only, which is the whole reason this is one code path rather
  * than two: a mouse, a finger and a pen all arrive here identically, so the
@@ -155,7 +155,7 @@ export function useScrub(options: {
   read: (key: string) => number;
   /** A scrubbed value. Called only when the quantised value actually changed. */
   onScrub: (key: string, value: number) => void;
-  /** A tap. The caller decides whether that cycles a param or rerolls the seed. */
+  /** A tap. The caller decides what a tap means; today it moves to the next pattern. */
   onTap: () => void;
   /**
    * A drag claimed an axis. Deliberately not "a finger landed": a tap would
@@ -329,9 +329,9 @@ export function useScrub(options: {
       const d = drag.current;
       if (!d || d.pointerId !== e.pointerId) return;
       // A tap has to have stayed put as well as never claimed an axis: a
-      // deliberate diagonal that never resolved is not a tap, and cycling the
-      // tile set because somebody swiped at forty-five degrees would be worse
-      // than doing nothing.
+      // deliberate diagonal that never resolved is not a tap, and jumping to
+      // another pattern because somebody swiped at forty-five degrees would be
+      // worse than doing nothing.
       const wasTap = !d.started && d.moved < AXIS_LOCK_PX && Date.now() - d.startedAt < TAP_MS;
       finish();
       if (wasTap) onTap();

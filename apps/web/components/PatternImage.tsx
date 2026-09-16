@@ -84,10 +84,30 @@ export function PatternImage({
   }, []);
 
   const [result, setResult] = useState(initial);
-  const firstKey = useRef(key);
+  /**
+   * The key of the picture currently on screen, not the key this component
+   * mounted with.
+   *
+   * The mount render has to be the inline one the prerendered HTML hydrates
+   * against, which is what the early return below is for. Keying that on the
+   * *mount* key rather than on the last one drawn also skips the redraw
+   * whenever a spec comes back to the one the page opened on -- and `key` is
+   * content-based, so returning to the opening configuration reproduces it
+   * exactly.
+   *
+   * Stated as a bug that is honest; demonstrated as one it is not. Reset to
+   * defaults, a palette round trip and a seed round trip were all driven
+   * against the mount-key version and all three redrew correctly, because
+   * nothing after the first render ever reproduces the mount key -- the
+   * editor's opening spec is not a state any later interaction returns to. So
+   * this is hardening rather than a fix, and it is worth having only because
+   * tracking what was last drawn says what the guard means and costs the same.
+   */
+  const renderedKey = useRef(key);
 
   useEffect(() => {
-    if (key === firstKey.current) return;
+    if (key === renderedKey.current) return;
+    renderedKey.current = key;
     let live = true;
     renderDataUrlAsync(spec, channel === undefined ? undefined : { channel })
       .then((url) => {
