@@ -3,7 +3,7 @@ import { hexToOklch, mixOklch, oklchToHex } from '../color.js';
 import { createNoise2D } from '../noise.js';
 import { clamp } from '../geometry.js';
 import { el, num, svgRoot } from '../svg.js';
-import { pNum, type Generator, type ParamSpec, type RenderContext } from '../types.js';
+import { pNum, pStr, type Generator, type ParamSpec, type RenderContext } from '../types.js';
 
 const arcsDescription = `
 A Truchet tile is a square with an asymmetric mark on it — Sébastien Truchet’s original was a square split into two triangles — and a Truchet tiling is what you get when you fill a grid with copies of that square in random rotations. The remarkable thing is how little you have to specify. One tile, four rotations and a coin flip per cell produce paths that wander across the whole grid, close into loops, and look considered in a way that no part of the rule accounts for.
@@ -166,13 +166,26 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
   params: [
     { key: 'density', label: 'Grid density', type: 'number', min: 3, max: 26, step: 1, default: 8, description: 'Columns across the canvas. Rows follow from the aspect ratio so cells stay square.' },
     { key: 'weight', label: 'Stroke weight', type: 'number', min: 0.02, max: 0.5, step: 0.01, default: 0.16, description: 'How much of its own share of the cell each mark fills. An undivided tile has the whole cell to itself and this is a line width; divide it and the share is the gap between one mark and the next, so the same setting keeps the same look instead of the marks thickening until they merge. Past the default they do merge, which is what reads as solid.' },
-    { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.6, description: 'How much of the colour comes from the drifting field rather than from height. At zero the palette runs top to bottom; at one it pools into regions that wander across the image.' },
+    { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.25, description: 'How much of the colour comes from the drifting field rather than from the direction below. At zero the palette runs cleanly along that axis; at one the direction does nothing and the colour pools into regions that wander across the image. It shipped at 0.6 for a while and the field dominated \u2014 a blob of one accent sitting in the middle of another, which is what a wandering field looks like once it is most of the mix.' },
     { key: 'arcCount', label: 'Divisions', type: 'number', min: 1, max: flavour.divisionMax, step: 1, default: 1, description: flavour.divisionNote },
     ...(KIND === 'arcs'
       ? ([
           { key: 'arcSpacing', label: 'Arc spread', type: 'number', min: 0.15, max: 1, step: 0.05, default: 1, description: 'How much of the cell the rings reach across. The gap between them is worked out from that and the division count, so every arc you ask for fits, and the stroke is sized from that gap rather than clamped by it.' },
         ] as ParamSpec[])
       : []),
+    {
+      key: 'colorAxis',
+      label: 'Colour direction',
+      type: 'select',
+      options: [
+        { value: 'vertical', label: 'Vertical' },
+        { value: 'horizontal', label: 'Horizontal' },
+        { value: 'diagonal', label: 'Diagonal' },
+      ],
+      default: 'vertical',
+      description:
+        'Which way the palette runs where it is not coming from the drifting field. Vertical is the wallpaper default and the one the composition is tuned for \u2014 the quiet end goes under the clock. The diagonal runs corner to corner on the screen rather than in the pattern\u2019s own coordinates, so it reads at forty-five degrees whatever the canvas is shaped like. At a colour spread of one the field supplies everything and this does nothing, which is a fair sign you have turned the spread too far up.',
+    },
   ],
 
   /**
@@ -207,6 +220,7 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
     const cols = Math.max(2, Math.round(pNum(params, 'density', 8)));
     const weight = pNum(params, 'weight', 0.16);
     const colorSpread = pNum(params, 'colorSpread', 0.6);
+    const colorAxis = pStr(params, 'colorAxis', 'vertical');
 // The colour ramp is always resolved to its full depth.
     //
     // This was a control, and it had one job worth doing at its bottom end —
@@ -282,7 +296,18 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
       const u = px / Math.max(1, w);
       const v = py / Math.max(1, h);
       const n = noise.value(u * COLOR_FIELD + 3, v * COLOR_FIELD * aspect - 9) * 0.5 + 0.5;
-      const t = clamp(n * colorSpread + v * (1 - colorSpread) * 0.9, 0, 1);
+      // The axis the palette runs along where the field is not supplying it.
+      // The diagonal is `(px + py) / (w + h)` rewritten in normalised terms, so
+      // its iso-lines sit at forty-five degrees on the *screen* rather than in
+      // the pattern's own coordinates -- on a 9:19.5 canvas `(u + v) / 2` is
+      // dominated by `v` and barely leans.
+      const ramp =
+        colorAxis === 'horizontal'
+          ? u
+          : colorAxis === 'diagonal'
+            ? (u + v * aspect) / (1 + aspect)
+            : v;
+      const t = clamp(n * colorSpread + ramp * (1 - colorSpread) * 0.9, 0, 1);
       return Math.min(bands - 1, Math.floor(t * bands));
     };
 

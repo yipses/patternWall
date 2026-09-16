@@ -304,7 +304,15 @@ describe('truchet arc colour', () => {
    */
   it('leaves a fine grid emitting exactly what it always emitted', () => {
     // Pinned from before the arcs were cut, measured under `git stash`.
-    expect(render({ density: 20, arcCount: 6 }).length).toBe(334616);
+    //
+    // `colorSpread` is named rather than inherited. The pin is about *cutting*
+    // -- past nineteen columns no arc is cut -- and a byte length is only a
+    // proxy for that, so anything else that changes a byte trips it for the
+    // wrong reason. Lowering the shipped default from 0.6 to 0.25 did exactly
+    // that: different bands, different colours, 335088 bytes, and nothing at
+    // all to do with whether an arc was cut. Holding the value it was
+    // calibrated at keeps the proxy honest.
+    expect(render({ density: 20, arcCount: 6, colorSpread: 0.6 }).length).toBe(334616);
   });
 });
 
@@ -776,5 +784,84 @@ describe('truchet arc spread', () => {
       [0.15, 0.5, 1].map((arcSpacing) => render({ arcCount: 1, arcSpacing, density: 8 }, 400, 'spread')),
     );
     expect(seen.size).toBe(1);
+  });
+});
+
+/**
+ * Which way the palette runs where the field is not supplying it.
+ *
+ * The rule this asserts was available before the code was: a ramp along an
+ * axis varies colour *along that axis* and not across it. Written as "the
+ * three settings differ" it would pass against almost any implementation,
+ * including one that leaned the wrong way — the useful question is whether
+ * horizontal actually goes sideways.
+ *
+ * Measured at `colorSpread` 0, where the field contributes nothing and the
+ * ramp is the only thing colouring the marks. At the shipped 0.25 the field
+ * blurs the axis, which is the point of it, and would make this a threshold
+ * rather than a comparison.
+ */
+describe('truchet colour direction', () => {
+  /** Mean colour of each row and of each column, as spreads. */
+  const spreads = (svg: string): { down: number; across: number } => {
+    const { pixels, width, height } = rasterize(svg, 220);
+    const rows = new Float64Array(height);
+    const cols = new Float64Array(width);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        // red minus blue: the accent ramps here run warm to cool, so this
+        // separates them where plain luminance does not.
+        const v = (pixels[i] as number) - (pixels[i + 2] as number);
+        rows[y] = (rows[y] as number) + v / width;
+        cols[x] = (cols[x] as number) + v / height;
+      }
+    }
+    const spread = (a: Float64Array): number => {
+      let mean = 0;
+      for (const v of a) mean += v / a.length;
+      let s = 0;
+      for (const v of a) s += (v - mean) ** 2 / a.length;
+      return Math.sqrt(s);
+    };
+    return { down: spread(rows), across: spread(cols) };
+  };
+
+  const render = (colorAxis: string): string =>
+    renderToSvg({
+      generator: diagonals,
+      width: 300,
+      height: 650,
+      palette,
+      params: { ...defaultParams(diagonals), colorSpread: 0, colorAxis, density: 10, arcCount: 3 },
+      seed: 'axis-1',
+      bleed: 0,
+    });
+
+  it('runs the palette down the canvas when it is vertical', () => {
+    const { down, across } = spreads(render('vertical'));
+    expect(down).toBeGreaterThan(across * 3);
+  });
+
+  it('runs it across the canvas when it is horizontal', () => {
+    const { down, across } = spreads(render('horizontal'));
+    expect(across).toBeGreaterThan(down * 3);
+  });
+
+  it('leans both ways when it is diagonal', () => {
+    const { down, across } = spreads(render('diagonal'));
+    // Neither axis may dominate, which catches a "diagonal" that came out as
+    // one of the other two.
+    //
+    // It does *not* pin which diagonal. `(u + v) / 2` -- corner to corner of
+    // the canvas rather than forty-five degrees on the screen -- passes this
+    // comfortably: measured, it reads 0.998 across/down where the shipped ramp
+    // reads 0.433, because this metric is total colour change along each axis
+    // and not the angle of the bands. The two were told apart by rendering
+    // them and looking, where the corner-to-corner version is a steep,
+    // near-vertical lean on a 9:19.5 canvas. Recorded because the first
+    // version of this comment claimed the bound caught it, and it does not.
+    expect(across).toBeGreaterThan(down * 0.3);
+    expect(down).toBeGreaterThan(across * 0.3);
   });
 });
