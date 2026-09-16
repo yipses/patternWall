@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { uiStyles as ui } from './ui';
 import { PalettePanel } from './PalettePanel';
 import { Control } from './ParamControls';
+import { BuildStamp } from './BuildStamp';
 import styles from './PreviewSettings.module.css';
 
 /**
@@ -42,6 +43,7 @@ export function PreviewSettings({
   collected,
   onCollect,
   collectedHref,
+  showStamp = false,
 }: {
   generator: Generator;
   params: Record<string, ParamValue>;
@@ -57,6 +59,15 @@ export function PreviewSettings({
   onCollect: () => void;
   /** Where the kept ones live. A real link, so it opens in a tab like one. */
   collectedHref: string;
+  /**
+   * Print the build stamp at the bottom of the settings sheet.
+   *
+   * For `/m`, which has no footer to carry it. A green deploy is not proof the
+   * served page changed, so every route has to be able to answer that itself —
+   * and on a route that is a wallpaper filling the screen, behind the gear is
+   * the only place that can go.
+   */
+  showStamp?: boolean;
 }) {
   const rest = secondaryParams(generator);
   const toggle = (sheet: Exclude<Sheet, null>) => () => onOpen(open === sheet ? null : sheet);
@@ -200,6 +211,7 @@ export function PreviewSettings({
               );
             })}
           </div>
+          {showStamp ? <p className={styles.stamp}><BuildStamp /></p> : null}
         </div>
       ) : null}
 

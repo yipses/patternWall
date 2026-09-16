@@ -62,6 +62,7 @@ export function PreviewFrame({
   channel,
   gesture,
   settings,
+  fill = null,
 }: {
   spec: RenderSpec;
   mode: PreviewMode;
@@ -78,6 +79,16 @@ export function PreviewFrame({
   gesture?: { handlers: ScrubHandlers; readout: ScrubReadout | null };
   /** Controls drawn over the picture, above the gesture surface. */
   settings?: ReactNode;
+  /**
+   * Drop the mockup — no rounded corners, no bezel, no width cap — and shape
+   * the frame to this canvas instead of a 9:19.5 box. For `/m`, where the
+   * device is the phone and does not need one drawn around it.
+   *
+   * The frame takes the aspect rather than stretching and letting the image
+   * letterbox inside it: the rail is positioned against the frame, so a frame
+   * wider than the picture parks the buttons out in the black.
+   */
+  fill?: { w: number; h: number } | null;
 }) {
   const { time, date } = useClock(mode === 'lock');
 
@@ -93,9 +104,15 @@ export function PreviewFrame({
     height: `${(v.h / 2000) * 100}%`,
   };
 
+  const wrapCls = fill ? `${styles.wrap} ${styles.wrapFill}` : styles.wrap;
+  const phoneCls = [styles.phone, gesture ? styles.phoneGrab : '', fill ? styles.phoneFill : '']
+    .filter(Boolean)
+    .join(' ');
+  const phoneStyle = fill ? { aspectRatio: `${fill.w} / ${fill.h}` } : undefined;
+
   return (
-    <div className={styles.wrap}>
-      <div className={gesture ? `${styles.phone} ${styles.phoneGrab}` : styles.phone}>
+    <div className={wrapCls}>
+      <div className={phoneCls} style={phoneStyle}>
         <PatternImage
           spec={spec}
           alt={alt}

@@ -364,3 +364,48 @@
     height: min(62svh, 460px);
   }
 }
+
+/*
+ * `/m`, where the device is the phone.
+ *
+ * Everything the mockup draws to say "this is a phone" — the bezel, the
+ * rounded corners, the 380px cap, the 9:19.5 box — is the thing a real phone
+ * already is. Dropping it is what makes the render fill the screen instead of
+ * sitting in a picture of a handset.
+ *
+ * The frame takes the canvas aspect and the largest size that fits, so the
+ * black is *around* the frame rather than inside it. That matters for more
+ * than tidiness: the settings rail is positioned against this box, so a box
+ * wider than the picture puts the buttons out in the letterbox.
+ */
+.wrapFill {
+  max-width: none;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  justify-content: center;
+}
+
+.phoneFill {
+  /* The picture runs under the notch and the home indicator, because a
+     wallpaper does. The controls must not: these are read by the settings
+     rail, which adds them to its own offsets. Zero everywhere that has no
+     safe area, and zero without `viewport-fit=cover`, which `/m` sets. */
+  --pw-inset-right: env(safe-area-inset-right, 0px);
+  --pw-inset-bottom: env(safe-area-inset-bottom, 0px);
+  width: auto;
+  height: auto;
+  max-width: 100dvw;
+  max-height: 100dvh;
+  /* Both, so whichever runs out first decides. `aspect-ratio` is set inline
+     from the device's own screen. */
+  height: 100dvh;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.phoneFill img {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}

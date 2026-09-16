@@ -262,3 +262,35 @@
     font-size: 15.5px;
   }
 }
+
+/*
+ * `/m` — the preview as the whole page.
+ *
+ * `dvh` rather than `vh`: on iOS Safari `100vh` is the viewport with the
+ * address bar *hidden*, so a full-height box is taller than what you can see
+ * and the bottom of the picture sits under the toolbar. `dvh` tracks the bar.
+ *
+ * The stage is sized by aspect rather than stretched, so the render keeps the
+ * device's shape and black fills whatever is left. On a phone that is nothing;
+ * on a desktop it is most of the window, which is the point — this is a phone
+ * view and it should look like one wherever it is opened.
+ */
+.bare {
+  display: grid;
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #000;
+  /* The gesture surface sets `touch-action: none`, so a swipe here is a
+     control rather than a scroll. There is nothing to scroll to anyway. */
+  overflow: hidden;
+}
+
+.bareStage {
+  height: 100dvh;
+  width: 100dvw;
+  display: grid;
+  place-items: center;
+}
+

@@ -47,7 +47,56 @@ function randomSeed(): string {
   return `${a}-${n}`;
 }
 
-export function Editor({ generatorId: initialId }: { generatorId: string }) {
+/** A phone-shaped canvas, for a device that is not one. */
+const FALLBACK_SCREEN = { w: 390, h: 845, dpr: 2 };
+
+/**
+ * The canvas `/m` draws, taken from the device's own screen where there is one.
+ *
+ * `screen` rather than the viewport on purpose: the viewport is whatever
+ * Safari has left after its address bar, and that slides around as you scroll,
+ * which would re-render the pattern at a new aspect every time it moved. The
+ * screen is the thing a wallpaper actually has to fit, it is what "detect the
+ * phone resolution" means, and it does not move.
+ *
+ * A desktop has a screen too, and it is landscape, so taking it literally
+ * turns this page into a very wide wallpaper — which is the one thing `/m` is
+ * not. Anything that is not portrait, or is wider than a phone gets, falls
+ * back to a phone shape and lets the black show around it.
+ *
+ * Null until the effect runs. The static export prerenders this page, so the
+ * first client render has to match the HTML that was baked in -- reading the
+ * screen during render would be a text hydration mismatch, the same class of
+ * bug as the build stamp.
+ */
+function useDeviceScreen(enabled: boolean): { w: number; h: number; dpr: number } | null {
+  const [box, setBox] = useState<{ w: number; h: number; dpr: number } | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    const read = (): void => {
+      const sw = Math.max(1, Math.round(window.screen?.width ?? window.innerWidth));
+      const sh = Math.max(1, Math.round(window.screen?.height ?? window.innerHeight));
+      // Portrait, and no wider than a large phone. A tablet in portrait is
+      // deliberately excluded: 4:3 of this pattern is not what anybody opened
+      // `/m` to see.
+      const isPhone = sh > sw && sw <= 600;
+      const next = isPhone
+        ? { w: sw, h: sh, dpr: Math.min(3, Math.max(1, window.devicePixelRatio || 1)) }
+        : FALLBACK_SCREEN;
+      setBox((prev) => (prev && prev.w === next.w && prev.h === next.h && prev.dpr === next.dpr ? prev : next));
+    };
+    read();
+    window.addEventListener('orientationchange', read);
+    window.addEventListener('resize', read);
+    return () => {
+      window.removeEventListener('orientationchange', read);
+      window.removeEventListener('resize', read);
+    };
+  }, [enabled]);
+  return box;
+}
+
+export function Editor({ generatorId: initialId, bare = false }: { generatorId: string; bare?: boolean }) {
   /**
    * Which pattern is on screen, held here rather than read from the route.
    *
@@ -67,7 +116,10 @@ export function Editor({ generatorId: initialId }: { generatorId: string }) {
   const [notes, setNotes] = useState<string[]>([]);
   const [renderError, setRenderError] = useState<string | null>(null);
 
-  const [mode, setMode] = useState<PreviewMode>('lock');
+  // Lock and Home draw a mock clock, date and dock. On `/m` the phone is
+  // already drawing its own, so the only honest mode is the one with nothing
+  // on top -- and the mode switcher lives in the panel, which `/m` has not got.
+  const [mode, setMode] = useState<PreviewMode>(bare ? 'flat' : 'lock');
   const [showZones, setShowZones] = useState(false);
   const [panel, setPanel] = useState<PanelKey>('pattern');
 
@@ -108,6 +160,7 @@ export function Editor({ generatorId: initialId }: { generatorId: string }) {
   // pointer handler that may run several times before React re-renders, and
   // reading `generator` from the closure would walk the registry from where it
   // was rather than from where it is.
+  const screenBox = useDeviceScreen(bare);
   const latestGenerator = useRef(generatorId);
 
   type Patch = Partial<{ params: Record<string, ParamValue>; palette: Palette; seed: string }>;
@@ -164,7 +217,18 @@ export function Editor({ generatorId: initialId }: { generatorId: string }) {
    * the tap with values that never meant anything. Mount only.
    */
   useEffect(() => {
-    const decoded = decodeConfig(initialId, typeof window === 'undefined' ? '' : window.location.search);
+    const search = typeof window === 'undefined' ? '' : window.location.search;
+    // `/m` has no id in its path. Read it here rather than during render for
+    // the same reason the params are read here: the export prerenders this
+    // page against `initialId`, and disagreeing with that during the first
+    // render is a text hydration mismatch.
+    const asked = bare ? new URLSearchParams(search).get('g') : null;
+    const id = asked && getGenerator(asked) ? asked : initialId;
+    if (id !== initialId) {
+      setGeneratorId(id);
+      latestGenerator.current = id;
+    }
+    const decoded = decodeConfig(id, search);
     setSeed(decoded.config.seed);
     latestParams.current = decoded.config.params;
     setParams(decoded.config.params);
@@ -341,7 +405,12 @@ export function Editor({ generatorId: initialId }: { generatorId: string }) {
    */
   const baseRef = useRef<string | null>(null);
   if (baseRef.current === null && typeof window !== 'undefined') {
-    baseRef.current = window.location.pathname.replace(/p\/[^/]*\/?$/, '');
+    // `/m` carries the pattern in `?g=` rather than in the path, so there is
+    // no last segment to strip and the path stays exactly where it is. The
+    // editor's own route ends in `p/<id>/`, which a tap rewrites.
+    baseRef.current = bare
+      ? window.location.pathname
+      : window.location.pathname.replace(/p\/[^/]*\/?$/, '');
   }
 
   // The URL is the document. Replace rather than push so the back button still
@@ -352,11 +421,12 @@ export function Editor({ generatorId: initialId }: { generatorId: string }) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const id = window.setTimeout(() => {
-      const path = `${baseRef.current ?? ''}p/${generator.id}/`;
-      window.history.replaceState(null, '', `${path}?${query}`);
+      const path = bare ? (baseRef.current ?? '') : `${baseRef.current ?? ''}p/${generator.id}/`;
+      const full = bare ? `g=${encodeURIComponent(generator.id)}&${query}` : query;
+      window.history.replaceState(null, '', `${path}?${full}`);
     }, 220);
     return () => window.clearTimeout(id);
-  }, [query, generator.id]);
+  }, [query, generator.id, bare]);
 
   useEffect(() => {
     if (!copied) return;
@@ -371,17 +441,38 @@ export function Editor({ generatorId: initialId }: { generatorId: string }) {
   }, [collectState]);
 
   const previewWidth = dirty ? PREVIEW_DRAFT : PREVIEW_FULL;
+  // On `/m` the canvas is the device's screen rather than a 9:19.5 mock, so
+  // the render is a true wallpaper for whatever phone is holding it -- and no
+  // bleed, because nothing is going to crop this: the picture *is* the screen.
+  // While scrubbing it still drops to the draft width; a settle then redraws
+  // at the screen's real pixel count, which on a 3x phone is about 1,170.
+  const barePx = screenBox ? Math.min(1400, Math.round(screenBox.w * screenBox.dpr)) : PREVIEW_FULL;
   const spec: RenderSpec = useMemo(
-    () => ({
-      generatorId: generator.id,
-      seed: committed.seed,
-      params: committed.params,
-      palette: committed.palette,
-      width: previewWidth,
-      height: Math.round((previewWidth * 19.5) / 9),
-      bleed: DEFAULT_BLEED,
-    }),
-    [generator.id, committed, previewWidth],
+    () => {
+      if (bare) {
+        const width = dirty ? Math.min(PREVIEW_DRAFT, barePx) : barePx;
+        const ratio = screenBox ? screenBox.h / screenBox.w : 19.5 / 9;
+        return {
+          generatorId: generator.id,
+          seed: committed.seed,
+          params: committed.params,
+          palette: committed.palette,
+          width,
+          height: Math.round(width * ratio),
+          bleed: 0,
+        };
+      }
+      return {
+        generatorId: generator.id,
+        seed: committed.seed,
+        params: committed.params,
+        palette: committed.palette,
+        width: previewWidth,
+        height: Math.round((previewWidth * 19.5) / 9),
+        bleed: DEFAULT_BLEED,
+      };
+    },
+    [generator.id, committed, previewWidth, bare, barePx, dirty, screenBox],
   );
 
   // Shared tags first, then whatever else is in the registry. An empty column
@@ -407,6 +498,66 @@ export function Editor({ generatorId: initialId }: { generatorId: string }) {
       setNotes((n) => [...n, 'This browser blocked the clipboard. The address bar now holds the exact link — copy it from there.']);
     }
   };
+
+  /**
+   * The picture and the controls that sit on it. `/m` is this and nothing
+   * else, so it is built once and used in both places rather than copied --
+   * a second copy is a second set of gesture wiring to drift.
+   */
+  const previewEl = (
+    <PreviewFrame
+        fill={bare ? { w: (screenBox ?? FALLBACK_SCREEN).w, h: (screenBox ?? FALLBACK_SCREEN).h } : null}
+        spec={spec}
+        mode={mode}
+        showZones={showZones}
+        alt={`${generator.name} rendered with the ${palette.name} palette, seed ${committed.seed}`}
+        {...(bare ? {} : { caption: `Previewing with 8% bleed, as exported. Seed ${committed.seed}.` })}
+        onRenderError={setRenderError}
+        channel="editor-preview"
+        {...(bindings.length > 0 ? { gesture: { handlers: gestureHandlers, readout } } : {})}
+        {...(bindings.length > 0
+          ? {
+              settings: (
+                <PreviewSettings
+                  generator={generator}
+                  params={params}
+                  palette={palette}
+                  open={sheet}
+                  onOpen={setSheet}
+                  onChange={(key, value) => applyParams(changeParam(key, value), 110)}
+                  onCommit={() => settle({ params: latestParams.current }, 0)}
+                  onNewSeed={newSeed}
+                  collected={collected}
+                  onCollect={collect}
+                  collectedHref="/collected"
+                  showStamp={bare}
+                  onPalette={(p) => {
+                    setPalette(p);
+                    commitNow({ palette: p });
+                  }}
+                />
+              ),
+            }
+          : {})}
+      />
+  );
+
+  // `/m`: the preview fills the screen and there is no page around it. Black
+  // takes up whatever the device's aspect leaves over, which on a phone is
+  // nothing and on a desktop is most of the window.
+  if (bare) {
+    return (
+      <main id="main" className={styles.bare}>
+        {/* A landmark and a heading, neither of them drawn.
+            A page with no `main` and no `h1` is hostile to a screen reader
+            however tidy it looks, and this one has no chrome to hang them on.
+            It is also load-bearing for the suite: the preview helpers scope to
+            `main`, which is how the missing landmark was found. */}
+        <h1 className="pw-visually-hidden">{generator.name} — phone view</h1>
+        <div className={styles.bareStage}>{previewEl}</div>
+      </main>
+    );
+  }
 
   return (
     <div className={styles.page}>
@@ -448,39 +599,7 @@ export function Editor({ generatorId: initialId }: { generatorId: string }) {
           </div>
           <p className={styles.modeHint}>{PREVIEW_MODES.find((m) => m.value === mode)?.hint}</p>
 
-          <PreviewFrame
-            spec={spec}
-            mode={mode}
-            showZones={showZones}
-            alt={`${generator.name} rendered with the ${palette.name} palette, seed ${committed.seed}`}
-            caption={`Previewing with 8% bleed, as exported. Seed ${committed.seed}.`}
-            onRenderError={setRenderError}
-            channel="editor-preview"
-            {...(bindings.length > 0 ? { gesture: { handlers: gestureHandlers, readout } } : {})}
-            {...(bindings.length > 0
-              ? {
-                  settings: (
-                    <PreviewSettings
-                      generator={generator}
-                      params={params}
-                      palette={palette}
-                      open={sheet}
-                      onOpen={setSheet}
-                      onChange={(key, value) => applyParams(changeParam(key, value), 110)}
-                      onCommit={() => settle({ params: latestParams.current }, 0)}
-                      onNewSeed={newSeed}
-                      collected={collected}
-                      onCollect={collect}
-                      collectedHref="/collected"
-                      onPalette={(p) => {
-                        setPalette(p);
-                        commitNow({ palette: p });
-                      }}
-                    />
-                  ),
-                }
-              : {})}
-          />
+          {previewEl}
 
           <div className={styles.underPreview}>
             <div className={ui.labelRow}>
