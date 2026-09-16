@@ -143,16 +143,16 @@ test.describe('layout and accessibility', () => {
     for (const alt of alts) expect(alt.length).toBeGreaterThan(5);
   });
 
-  // Seen failing twice, intermittently, with React's minified error #418 -- a
-  // text hydration mismatch -- and passing on every attempt to reproduce it
-  // since, including this exact sequence driven by hand at the same viewport.
-  // It was not localised: no page produces it on a fresh load, the prerendered
-  // HTML and the hydrated DOM differ only in the three places that are
-  // deliberately upgraded after mount (the preview clock, its date, and the
-  // build stamp), and nothing under app/ reads Date, Math.random or the window
-  // during render. If it reappears, capture which page and whether stored state
-  // was present, and do not assume the change you are making is the cause --
-  // both sightings were during unrelated work.
+  // This failed twice, intermittently, with React's minified error #418 -- a
+  // text hydration mismatch -- and the cause was found: `next.config.mjs` is
+  // evaluated more than once per build, so a bare `new Date()` in it gave the
+  // prerendered HTML an earlier instant than the client bundle. The footer
+  // renders the stamp to the minute, so the two agreed almost always and
+  // diverged exactly when the loads straddled a minute boundary. The note on
+  // the build-stamp test below has the measurement, and
+  // `scripts/check-build-stamp.mjs` is the same check without a browser, which
+  // is what CI runs. This note used to say the fault was never localised; it
+  // was, sixty lines further down the same file.
   test('nothing is written to the console on a normal visit', async ({ page }) => {
     const noisy: string[] = [];
     page.on('console', (m) => {

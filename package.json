@@ -15,7 +15,9 @@
     "build": "npm run build --workspace @patternwall/core && npm run build --workspace @patternwall/web",
     "test:e2e": "npm run build && npm run test:e2e --workspace @patternwall/web",
     "start": "npm run start --workspace @patternwall/web",
-    "samples": "npm run build --workspace @patternwall/core && node packages/core/scripts/sample.mjs"
+    "samples": "npm run build --workspace @patternwall/core && node packages/core/scripts/sample.mjs",
+    "shots": "node apps/web/scripts/shots.mjs",
+    "check:stamp": "node apps/web/scripts/check-build-stamp.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",

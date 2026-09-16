@@ -42,6 +42,12 @@ jobs:
       - run: npm run build
         env:
           PATTERNWALL_BASE_PATH: /${{ github.event.repository.name }}
+      # The one assertion about the artifact this workflow publishes that does
+      # not need a browser. It lived only in the Playwright suite, which the
+      # comment above deliberately excludes, so the check that guards against
+      # a two-valued build stamp -- the hydration mismatch this repo chased
+      # for a while -- ran on developers' machines and nowhere else.
+      - run: npm run check:stamp
       # Pages will not serve a directory containing an `_`-prefixed entry
       # unless Jekyll is disabled, and Next's output lives in `_next`.
       - run: touch apps/web/out/.nojekyll

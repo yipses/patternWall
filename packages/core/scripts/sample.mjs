@@ -1,7 +1,7 @@
 // Dev-only: rasterise sample renders so we can actually look at them.
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { Resvg } from '@resvg/resvg-js';
-import { generators, getGenerator, getPalette, renderToSvg, defaultParams, curatedPalettes } from '../dist/index.js';
+import { generators, retired, getGenerator, getPalette, renderToSvg, defaultParams, curatedPalettes } from '../dist/index.js';
 
 const out = process.argv[2] || '/tmp/samples';
 mkdirSync(out, { recursive: true });
@@ -13,8 +13,16 @@ const H = Number(process.env.PW_H || 932);
 const BLEED = Number(process.env.PW_BLEED || 0);
 const OUT_W = Number(process.env.PW_OUT_W || W);
 
+// `getGenerator` deliberately does not search `retired`, so a pattern that is
+// not in the app cannot resolve from a URL or a saved collection item. That is
+// right for the app and wrong for a script whose whole job is "look at the
+// output": the retired four are swept by every test suite through
+// ALL_GENERATORS and could not be looked at. Named explicitly, they render;
+// the registry's own list still excludes them.
+const find = (id) => getGenerator(id) ?? retired.find((g) => g.id === id);
+
 for (const id of which) {
-  const g = getGenerator(id);
+  const g = find(id);
   if (!g) { console.error('no generator', id); process.exit(1); }
   for (const pid of paletteIds) {
     const p = getPalette(pid) ?? curatedPalettes[0];
