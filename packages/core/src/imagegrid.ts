@@ -1,35 +1,25 @@
 /**
- * A picture, small enough to put in a link.
+ * A picture, reduced to a grid of 4-bit darknesses and packed into characters
+ * a share link can carry.
  *
- * String art is the first pattern here that takes an input, and that input has
- * to survive the share encoding or the link stops being the picture — which is
- * the one promise every other part of this app keeps. A photograph obviously
- * cannot go in a URL. A photograph *reduced to what the solver actually reads*
- * can: the solver only ever asks the target how dark it is around a point.
+ * The whole point is that the picture *is* a parameter. A link is the portrait
+ * rather than a reference to one, nothing about an upload leaves the browser,
+ * and a saved configuration keeps working with no server behind it.
  *
- * How coarse that reduction may be is a real trade rather than a constant, so
- * the grid carries its own size and the caller picks. Measured against a
- * 300x300 original with detail at several scales — broad tone, features, and
- * fine strands — and solved on a 320 grid:
+ * `GRID_SIZES` is the set a grid may be stored at, and the trade is length:
+ * about 1,500 characters of URL at 48 and about 11,000 at 128. The grid names
+ * its own size in its first character, so a link made at one setting still
+ * reads at another.
  *
- *     48x48    1,540 characters   0.727 correlation
- *     64x64    2,736              0.740
- *     96x96    6,148              0.748
- *     128x128 10,928              0.755
+ * The sizes were once justified here by a table of correlation numbers, which
+ * measured how well a greedy tonal solver reproduced its target. That solver
+ * is gone. What reads the grid now is a blur and a set of quantile thresholds,
+ * and it wants stored resolution for a different reason: an outline traced
+ * from a coarse grid is a smooth curve with the small features already gone,
+ * and no amount of tracing puts them back.
  *
- * An earlier version of this comment claimed the quality plateaued by 64, and
- * that was an artefact of the target it was measured on: a face built from a
- * few Gaussians is low-frequency by construction, so of course a coarse grid
- * caught all of it. On a target with fine detail the stored resolution keeps
- * paying, which is why this is adjustable now and why the ceiling is where it
- * is. 192x192 was measured too and is not worth having: 24,580 characters for
- * 0.776, which a 128 grid beats outright by being solved on a finer field.
- *
- * The grid is 4-bit, two cells to a byte, in a base64 alphabet chosen to avoid
- * `_` because that is what `share.ts` separates parameters with, and `+` and
- * `/` and `=` because those have their own meanings in a query string. One
- * leading character names the size, so a packed grid is self-describing and a
- * link made at one setting still reads at another.
+ * The alphabet deliberately excludes `_`, which is what `share.ts` separates
+ * params with.
  */
 
 /** Standard base64 digits with `+/` swapped for `-.`, and no padding. */

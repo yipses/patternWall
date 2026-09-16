@@ -1,7 +1,7 @@
 /**
  * What a parameter's next value is.
  *
- * The editor can drive a pattern's three chosen controls from the preview
+ * The editor can drive a pattern's two chosen controls from the preview
  * itself — tap to cycle, drag to scrub — and every one of those gestures ends
  * in the same question: given this spec and this value, what is the new value?
  * That is a fact about a `ParamSpec`, the same kind of fact `coerceParams`
@@ -149,11 +149,13 @@ export function effectiveSpec(g: Generator, spec: ParamSpec, params: Record<stri
 /**
  * Values carried across a change that moved their range.
  *
- * Switching truchet from quarter arcs to diagonals takes divisions from a
- * ceiling of twelve to one of six, and clamping alone would answer that badly:
- * eleven of the twelve settings would land on the same place, so tapping
- * through the tile sets would mean losing where you were and getting it back
- * as "the top" whatever you had chosen. Scaled instead, half way along stays
+ * Truchet's tile-set select was the worked example: it took divisions from a
+ * ceiling of twelve to one of six, and clamping alone answers that badly.
+ * Eleven of the twelve settings land on the same place, so stepping through
+ * the modes means losing where you were and getting it back as "the top"
+ * whatever you had chosen. That select is gone -- arcs and diagonals are two
+ * patterns now, and nothing in the registry declares `limits` any more -- but
+ * the next mode switch with a dependent range will want exactly this. Scaled instead, half way along stays
  * half way along — six of twelve becomes three of six, and three of six comes
  * back as six of twelve.
  *

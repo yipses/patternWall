@@ -39,11 +39,6 @@ The same rule runs the other way. Flat country is the one place a contour map ha
 const COLOR_STEPS = 32;
 
 /**
- * How far the warp field may drag a sample, in the same units as the terrain
- * scale. Large enough that ridges genuinely run rather than merely lean;
- * small enough that the land does not fold back through itself.
- */
-/**
  * Fine crenulation, added to the traced line rather than to the grid.
  *
  * A printed survey sheet has texture at two scales at once: landforms that
@@ -78,7 +73,6 @@ const COLOR_STEPS = 32;
  * wobble that reads as a shaky hand, and the fold at the zero crossing gives
  * the sharper kinks a contour traced off real ground actually has.
  */
-const ROUGH_FREQ = 12;
 /**
  * How many wobbles across the canvas. Lower is a slower, longer wave.
  *
@@ -94,6 +88,7 @@ const ROUGH_FREQ = 12;
  * frequency and lands under the resample step below. Finer detail riding on
  * the wobble would mean a finer step, and that is document size.
  */
+const ROUGH_FREQ = 12;
 /**
  * Resample step before displacing, as a fraction of the short edge.
  *
@@ -206,17 +201,15 @@ export const contours: Generator = {
     const { width: w, height: h, palette, params, rng } = ctx;
     const noise = createNoise2D(rng);
 
-    const levels = Math.max(2, Math.round(pNum(params, 'levels', 14)));
-    const scale = pNum(params, 'scale', 1.5);
-    const detail = Math.max(1, Math.round(pNum(params, 'detail', 3)));
-    const indexEvery = Math.max(0, Math.round(pNum(params, 'indexEvery', 5)));
-    const colorSpread = clamp(pNum(params, 'colorSpread', 0.75), 0, 1);
-    const weight = pNum(params, 'weight', 1);
-    // Snapped to a contour: the shoreline is then a line the map already draws,
-    // and the fill beneath it ends exactly where that line runs.
-    const elevationTint = clamp(pNum(params, 'elevationTint', 0.65), 0, 1);
+    const levels = Math.max(2, Math.round(pNum(params, 'levels', 8)));
+    const scale = pNum(params, 'scale', 2);
+    const detail = Math.max(1, Math.round(pNum(params, 'detail', 2)));
+    const indexEvery = Math.max(0, Math.round(pNum(params, 'indexEvery', 2)));
+    const colorSpread = clamp(pNum(params, 'colorSpread', 0.35), 0, 1);
+    const weight = pNum(params, 'weight', 0.3);
+    const elevationTint = clamp(pNum(params, 'elevationTint', 0), 0, 1);
     const hachures = clamp(pNum(params, 'hachures', 0.6), 0, 1);
-    const supplementary = clamp(pNum(params, 'supplementary', 0.5), 0, 1);
+    const supplementary = clamp(pNum(params, 'supplementary', 0.4), 0, 1);
 
     // Sub-levels. With supplementary lines switched on the field is traced at
     // twice the contour interval and every second sub-level is a candidate for
@@ -236,14 +229,16 @@ export const contours: Generator = {
     // most of the canvas, so the wash is invisible where it is not steep.
     const washEvery = Math.max(1, Math.round(levels / 6));
     const washSteps = Math.ceil(levels / washEvery);
-    const seaRaw = clamp(pNum(params, 'seaLevel', 0.32), 0, 0.75);
+    const seaRaw = clamp(pNum(params, 'seaLevel', 0), 0, 0.75);
+    // Snapped to a contour: the shoreline is then a line the map already draws,
+    // and the fill beneath it ends exactly where that line runs.
     const seaIndex = seaRaw <= 0 ? 0 : Math.max(1, Math.min(levels - 1, Math.round(seaRaw * levels)));
 
     // The sampling grid is a parameter, never a function of the canvas size.
     // Deriving it from pixels would trace a 108px thumbnail on a coarser grid
     // than a 1399px export and hand back a different map — the preview has to
     // be the thing you download.
-    const cols = Math.max(8, Math.round(pNum(params, 'resolution', 90)));
+    const cols = Math.max(8, Math.round(pNum(params, 'resolution', 100)));
     const rows = Math.max(8, Math.round((cols * h) / Math.max(1, w)));
 
     const roughness = clamp(pNum(params, 'roughness', 0), 0, 1);
@@ -966,12 +961,15 @@ export const contours: Generator = {
     // nothing to work on.
     //
     // A printed atlas does not tint per contour either. The layer tint has its
-    // own, much coarser interval, and it changes on the index contours -- the
-    // bold ones -- so the wash boundary is always a line the map already draws
-    // heavier. Keying it there gives the cartography and the cost at once: the
-    // bands are wide enough that most cells sit wholly inside one, the runs
-    // merge along the row, and only the cells an index contour crosses need a
-    // polygon.
+    // own, much coarser interval -- `washEvery`, about six steps, always a
+    // whole number of contour intervals so every wash boundary is a line the
+    // map already draws. Keying it to the *index* contours is what this
+    // comment used to claim and is not what ships: it was tried and rejected
+    // for reading better on paper than on a phone, and the note at the
+    // declaration records that. The derived interval gives the cartography and
+    // the cost at once: the bands are wide enough that most cells sit wholly
+    // inside one, the runs merge along the row, and only the cells a band
+    // boundary crosses need a polygon.
     //
     // Within such a cell the nesting still does the work: its own rectangle in
     // the colour of the highest band it touches, then one sub-level polygon per

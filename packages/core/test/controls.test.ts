@@ -270,7 +270,7 @@ describe('controls', () => {
    * and the picture should agree about what the value is rather than the
    * control showing a ceiling the render quietly ignores.
    *
-   * It has to be a second pass. The ceiling depends on `tileSet`, and the two
+   * It has to be a second pass. The ceiling depends on `mode`, and the two
    * sit in whatever order the share encoding put them.
    */
   it('clamps a link that asks for more than its mode allows', () => {

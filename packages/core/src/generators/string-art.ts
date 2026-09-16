@@ -467,9 +467,9 @@ export const stringArt: Generator = {
 
     const tones = Math.round(clamp(pNum(params, 'tones', 3), 1, 5));
     const coverage = clamp(pNum(params, 'coverage', 0.34), 0.12, 0.7);
-    const simplify = clamp(pNum(params, 'simplify', 0.42), 0, 1);
+    const simplify = clamp(pNum(params, 'simplify', 0.5), 0, 1);
     const nailSpacing = clamp(pNum(params, 'nailSpacing', 0.022), 0.012, 0.05);
-    const shading = clamp(pNum(params, 'shading', 0.55), 0, 1);
+    const shading = clamp(pNum(params, 'shading', 0.62), 0, 1);
     const scale = clamp(pNum(params, 'scale', 0.94), 0.4, 1.15);
     const offsetX = clamp(pNum(params, 'offsetX', 0), -0.5, 0.5);
     const offsetY = clamp(pNum(params, 'offsetY', 0), -0.5, 0.5);

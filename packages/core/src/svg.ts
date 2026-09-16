@@ -161,7 +161,7 @@ export function points(pts: readonly (readonly [number, number])[], dp = 2): str
 
 /**
  * Catmull-Rom through the given points, emitted as a cubic Bézier path.
- * Used by the ridgeline generator: sampling a noise field at ~120 points and
+ * Used by the contours generator: sampling a noise field at ~120 points and
  * interpolating beats sampling at 800 points and connecting them with lines,
  * both for file size and for how the curve reads at the crest.
  */
