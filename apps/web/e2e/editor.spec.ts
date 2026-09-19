@@ -234,7 +234,11 @@ test.describe('editor', () => {
     await page.getByRole('link', { name: /^\d+ saved$/ }).click();
     await expect(page).toHaveURL(/\/collected/);
     await expect(page.getByRole('listitem')).toHaveCount(1);
-    await page.getByRole('button', { name: /Remove the saved/ }).click();
+    // Removal lives in select mode now: a tile carries no controls of its own,
+    // because a trash button and a tick do not both fit on a 111px tile.
+    await page.getByTestId('select-start').click();
+    await page.getByRole('button', { name: /palette, seed / }).click();
+    await page.getByTestId('delete-selected').click();
     await expect(page.getByText('Nothing collected yet.')).toBeVisible();
   });
 

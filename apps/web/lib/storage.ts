@@ -18,7 +18,6 @@ export interface CollectedItem {
   params: Record<string, number | string | boolean>;
   palette: Palette;
   savedAt: number;
-  note?: string;
 }
 
 function read<T>(key: string, fallback: T): T {
@@ -74,7 +73,6 @@ function coerceCollected(raw: unknown, fallback: Palette): CollectedItem | null 
     params: params as CollectedItem['params'],
     palette: normalizePalette((i.palette ?? {}) as Partial<Palette>, fallback),
     savedAt: typeof i.savedAt === 'number' && Number.isFinite(i.savedAt) ? i.savedAt : 0,
-    ...(typeof i.note === 'string' ? { note: i.note } : {}),
   };
 }
 
@@ -112,9 +110,27 @@ export function saveCollected(config: PatternConfig): { ok: boolean; items: Coll
 }
 
 export function removeCollected(id: string): CollectedItem[] {
-  const next = loadCollected().filter((i) => i.id !== id);
+  return removeManyCollected([id]);
+}
+
+export function removeManyCollected(ids: string[]): CollectedItem[] {
+  const drop = new Set(ids);
+  const next = loadCollected().filter((i) => !drop.has(i.id));
   write(KEY_COLLECTED, next);
   return next;
+}
+
+/**
+ * Put a list back exactly as it was.
+ *
+ * This is what undo needs and what `removeManyCollected` cannot give it: the
+ * order of the list is insertion order, newest first, and it is not recoverable
+ * from the items themselves -- `savedAt` is a day-resolution display value that
+ * several items collected in the same session will share. So an undo restores
+ * the array it held rather than re-inserting the items it removed.
+ */
+export function writeCollected(items: CollectedItem[]): boolean {
+  return write(KEY_COLLECTED, items.slice(0, 200));
 }
 
 /**

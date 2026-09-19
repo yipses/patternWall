@@ -38,9 +38,92 @@
   gap: 9px;
 }
 
-.thumbLink {
+/* The whole tile is the target. In browse mode it is a link, in select mode a
+   toggle, and in both it is the picture and nothing else -- a trash button and
+   a tick would be two 44px targets on a 111px tile. */
+.tile {
   display: block;
+  position: relative;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
   border-radius: var(--r-md);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+.tile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.check {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--text);
+  border: 1.5px solid rgba(255, 255, 255, 0.8);
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.checkOn {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.tile[aria-pressed='true'] .thumb {
+  opacity: 0.55;
+}
+
+/* An item whose pattern this build does not have. It cannot be drawn, so it
+   gets a card the same shape as a thumbnail rather than being hidden. */
+.gone {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+  aspect-ratio: 9 / 19.5;
+  padding: 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-sunken);
+}
+
+.goneId {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.goneNote {
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.back {
+  display: inline-block;
+  margin-bottom: 14px;
+  font-size: 13.5px;
+  color: var(--text-dim);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
 }
 
 .thumb {
@@ -96,4 +179,158 @@
   max-width: 46ch;
   margin: 0 auto 20px;
   font-size: 14px;
+}
+
+/* The bar and the sheet are fixed, so the page needs room under its last row
+   for them and for the home indicator. */
+.bar,
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  background: var(--bg-raised);
+  border-top: 1px solid var(--line-strong);
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px var(--gutter);
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+
+.barCount {
+  margin-right: auto;
+  font-size: 13.5px;
+  color: var(--text-dim);
+}
+
+.sheet {
+  max-height: 82vh;
+  overflow: auto;
+  padding: 10px var(--gutter);
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+.sheetHead {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* The export section draws its own rule above itself, which is right where it
+   follows a grid and wrong where it is the first thing in a sheet. */
+.sheet > :global(section) {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.snack {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px 9px 16px;
+  border-radius: var(--r-xl);
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+
+/* Clear of the selection bar when both are up. */
+.snackHigh {
+  bottom: calc(80px + env(safe-area-inset-bottom));
+}
+
+/* Three columns on a phone. Two would give a 375px-tall tile and show barely
+   one and a half rows; three gives 111px by 240px, which is a wallpaper you
+   can recognise and four rows you can scan. Below about 330px three is too
+   thin to read, so it drops to two. */
+@media (max-width: 640px) {
+  .page {
+    padding: 0 12px 132px;
+  }
+
+  /* Select sits on the title's line rather than under it. The header is the
+     only thing between the top of the screen and the pictures, and a row of
+     its own costs most of a tile. */
+  .head {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      'back back'
+      'title actions'
+      'sub sub';
+    align-items: baseline;
+    padding: 18px 0 12px;
+    margin-bottom: 14px;
+  }
+
+  /* Named areas rather than auto-placement: the back link is only there when
+     the page was opened from `/m`, and auto-placement would put the actions in
+     a different cell depending on whether it is. */
+  .back {
+    grid-area: back;
+  }
+
+  .title {
+    grid-area: title;
+  }
+
+  .sub {
+    grid-area: sub;
+  }
+
+  .actions {
+    grid-area: actions;
+  }
+
+  .title {
+    margin-bottom: 0;
+  }
+
+  .sub {
+    margin-top: 8px;
+  }
+
+  .actions {
+    margin-top: 0;
+  }
+
+  .sub {
+    font-size: 13px;
+  }
+
+  .grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  .item {
+    gap: 0;
+  }
+
+  /* No text under a tile. This is a visual collection and the words cost more
+     rows than they are worth at this size -- the picture's alt text still
+     carries the pattern, palette and seed for anything reading the page. */
+  .meta,
+  .seed {
+    display: none;
+  }
+}
+
+@media (max-width: 330px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }

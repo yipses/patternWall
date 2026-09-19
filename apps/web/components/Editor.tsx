@@ -529,7 +529,10 @@ export function Editor({ generatorId: initialId, bare = false }: { generatorId: 
                   onNewSeed={newSeed}
                   collected={collected}
                   onCollect={collect}
-                  collectedHref="/collected"
+                  // Where the collection sends a tile back to. From `/m` the
+                  // picture is the whole screen, so handing a tile to the
+                  // editor route with no way back is a one-way door.
+                  collectedHref={bare ? '/collected?from=m' : '/collected'}
                   showStamp={bare}
                   onPalette={(p) => {
                     setPalette(p);

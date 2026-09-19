@@ -19,7 +19,7 @@ import styles from './ExportPanel.module.css';
  * what you actually collected gives the Shortcut a set you curated, and every
  * file keeps its own generator, seed, parameters and palette.
  */
-export function CollectionExport({ items }: { items: CollectedItem[] }) {
+export function CollectionExport({ items, scope = 'all' }: { items: CollectedItem[]; scope?: 'all' | 'selection' }) {
   const s = useExportSettings();
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -90,16 +90,20 @@ export function CollectionExport({ items }: { items: CollectedItem[] }) {
   return (
     <section className={styles.batch} aria-labelledby="collection-export-head">
       <div className={styles.batchHead} id="collection-export-head">
-        Export the collection
+        {scope === 'selection' ? 'Export the selection' : 'Export the collection'}
       </div>
       <p className={styles.hint}>
-        Every configuration above, rendered at one size and zipped together. Each file keeps its own pattern, seed and
-        palette — this is the album a Shortcut picks from each morning.
+        {scope === 'selection' ? 'The wallpapers you ticked' : 'Every configuration above'}, rendered at one size and zipped
+        together. Each file keeps its own pattern, seed and palette — this is the album a Shortcut picks from each morning.
       </p>
 
       <div className={styles.buttons}>
         <Button variant="primary" onClick={() => void onExport()} loading={running} data-testid="export-collection">
-          {running ? `Rendering ${Math.min(total, Math.round(progress * total))} of ${total}…` : `Export all ${total} as a zip`}
+          {running
+            ? `Rendering ${Math.min(total, Math.round(progress * total))} of ${total}…`
+            : scope === 'selection'
+              ? `Export ${total} as a zip`
+              : `Export all ${total} as a zip`}
         </Button>
         {running ? (
           <Button
