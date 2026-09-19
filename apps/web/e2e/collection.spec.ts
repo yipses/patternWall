@@ -22,6 +22,11 @@ const PALETTE = {
 
 const seedCollection = async (page: Page) => {
   await page.addInitScript((p) => {
+    // Only if there is nothing there. `addInitScript` runs on every navigation,
+    // so an unguarded write re-seeds storage on a reload -- which silently made
+    // the undo-persistence assertion below pass against an undo that never
+    // reached localStorage at all.
+    if (window.localStorage.getItem('patternwall.collected.v1')) return;
     window.localStorage.setItem(
       'patternwall.collected.v1',
       JSON.stringify([
