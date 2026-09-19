@@ -709,6 +709,32 @@ quantity nobody is trying to land on an exact step of, and it would not be fine
 for a control where the exact step mattered. If one ever exists here it should
 say so, rather than a constant pushing every parameter around to protect it.
 
+**The other end of that division needed a floor, and the number came from the
+control that already worked.** Spreading a range over the surface means a step
+costs surface/steps, and the entry above is about that being *small*. It is
+equally the reason it can be huge: contours' detail has four steps and
+truchet's diagonal divisions have five, which on a phone preview is 130 and 104
+pixels of finger for one change, and it was reported as exactly that. So a
+control is never spread over the whole surface for fewer than ten steps —
+below that it covers its range in proportionally less of it, holding the step
+at surface/10.
+
+Ten is not a taste. Truchet's arc divisions have eleven steps, about 47px each,
+and are the promoted vertical gesture nobody has complained about; below ten
+there is nothing else in the registry to compare against. So the floor hands a
+coarse control the travel-per-step of the coarsest one that is fine, and ten is
+also the largest value that leaves every existing control byte-for-byte as it
+was. The general form, against the entry above rather than with it: a scale
+calibrated per thing it scales is a smell, and a single floor taken from a
+measurement is not the same thing as a constant per parameter.
+
+The guard for it is worth reading before writing another. "Edge to edge is the
+whole range" is not testable by dragging edge to edge, because the value clamps
+at the end whether the travel is right or merely too short — the first version
+of that test passed with the floor raised to sixteen, which would have squeezed
+the very control it exists to protect. Drag *half* the surface and assert half
+the range.
+
 The general form, which is the part worth keeping: when a scale has to be
 calibrated per thing it scales, the calibration is the smell. Look for a
 quantity already on screen that can carry it.

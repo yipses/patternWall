@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { quantise, scrubTo, wrapPastEnd, type NumberSpec, type ParamSpec, type PrimaryBinding } from '@patternwall/core';
+import { quantise, scrubTo, stepCount, wrapPastEnd, type NumberSpec, type ParamSpec, type PrimaryBinding } from '@patternwall/core';
 
 /**
  * Driving a pattern's two scrubbed controls from the picture itself.
@@ -65,6 +65,29 @@ const FALLBACK_TRAVEL = 300;
 const TRAVEL_FLOOR = 60;
 
 /**
+ * The fewest steps a control is spread over the whole surface for.
+ *
+ * "Edge to edge is the whole range" is the right rule and it has one bad end.
+ * Spreading a range over the surface means a step costs surface/steps, which
+ * is what makes a fine control feel fine — and what makes a coarse one cost a
+ * full sweep of the screen to move once. Contours' detail has four steps and
+ * truchet's diagonal divisions have five: on a phone preview that is 130 and
+ * 104 pixels of finger for a single change.
+ *
+ * Ten, and the number is taken from the control that already works rather
+ * than chosen. Truchet's arc divisions have eleven steps, about 47 pixels
+ * each, and nobody has ever reported it as heavy; below ten nothing else in
+ * the registry exists to compare against. So a coarse control is given the
+ * travel-per-step of the coarsest one that is fine, which puts four steps at
+ * 52 pixels each and lands its whole range in 40% of the surface.
+ *
+ * Ten is also the largest value that changes nothing already in the app —
+ * eleven and up are untouched — so every control anybody has driven so far
+ * behaves exactly as it did.
+ */
+const MIN_SPAN_STEPS = 10;
+
+/**
  * The distance a full range is spread over: the surface, less whatever the
  * axis lock spent deciding which way this drag was going.
  *
@@ -77,10 +100,17 @@ const TRAVEL_FLOOR = 60;
  * where the lead is a larger share of a narrower surface, is closer to 6%.
  * Near enough to look like the control simply will not reach.
  */
-function travelFor(surface: Surface, axis: 'x' | 'y', lead: number): number {
+function travelFor(surface: Surface, axis: 'x' | 'y', lead: number, steps: number): number {
   const measured = axis === 'x' ? surface.w : surface.h;
   const full = measured > 1 ? measured : FALLBACK_TRAVEL;
-  return Math.max(TRAVEL_FLOOR, full - Math.abs(lead));
+  const usable = Math.max(TRAVEL_FLOOR, full - Math.abs(lead));
+  // A control with fewer than `MIN_SPAN_STEPS` covers its range in
+  // proportionally less of the surface, which holds its travel-per-step at
+  // surface/MIN_SPAN_STEPS instead of letting it grow as the count falls.
+  // Everything at or above that count is spread over the whole surface, as it
+  // always was.
+  const share = steps > 0 ? Math.min(1, steps / MIN_SPAN_STEPS) : 1;
+  return Math.max(TRAVEL_FLOOR, usable * share);
 }
 
 /**
@@ -267,7 +297,7 @@ export function useScrub(options: {
         // spread over the travel that is actually left, so that reaching the
         // far edge reaches the end of the parameter.
         d.anchor = axis === 'x' ? e.clientX : e.clientY;
-        d.travel = travelFor(d.surface, axis, lead);
+        d.travel = travelFor(d.surface, axis, lead, stepCount(bound.spec));
         d.emitted = d.from;
         // A wrap is a change, and the lock otherwise announces nothing. Say it
         // now rather than waiting for the next move, which on a swipe that

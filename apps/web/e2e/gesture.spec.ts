@@ -577,3 +577,75 @@ test.describe('gesture', () => {
     });
   });
 });
+
+/**
+ * A coarse control must not cost a full sweep of the screen per step.
+ *
+ * "Edge to edge is the whole range" spreads a range over the surface, so a
+ * step costs surface/steps — right for a fine control and wrong for a control
+ * with four of them, where one change takes most of the preview's height.
+ * Contours' detail is the worst of these and truchet's diagonal divisions are
+ * next; truchet's arc divisions have eleven steps and are the one everybody
+ * drives, so they are the control this must not disturb.
+ *
+ * The assertion is the rule rather than the arithmetic: a short drag on a
+ * coarse control moves it, and the same drag on a fine one does not run away.
+ */
+test.describe('scrub travel', () => {
+  test('a short drag moves a four-step control more than one step', async ({ page }) => {
+    await page.goto('/p/contours');
+    await settled(page);
+    const detail = page.getByLabel('Detail');
+    const min = Number(await detail.getAttribute('min'));
+    const max = Number(await detail.getAttribute('max'));
+    await detail.fill(String(min));
+    await detail.blur();
+    await settled(page);
+
+    // A third of the preview's height. Spread over the whole surface a
+    // four-step control moves one step in this, or none at all once the axis
+    // lock has taken its lead out.
+    const box = await page.locator('[class*="phone"]').first().boundingBox();
+    if (!box) throw new Error('the preview frame has no box');
+    await dragSmoothly(page, 0, -Math.round(box.height / 3));
+    await settled(page);
+
+    const after = await numberOf(page, 'Detail');
+    expect(after, 'a third of the surface should cover more than one step of four').toBeGreaterThan(min + 1);
+    expect(after, 'and should not slam it to the end either').toBeLessThanOrEqual(max);
+  });
+
+  test('the eleven-step control is untouched: half a sweep is still half its range', async ({ page }) => {
+    await page.goto('/p/truchet-arcs');
+    await settled(page);
+    const divisions = page.getByLabel('Divisions');
+    const min = Number(await divisions.getAttribute('min'));
+    await divisions.fill(String(min));
+    await divisions.blur();
+    await settled(page);
+
+    const box = await page.locator('[class*="phone"]').first().boundingBox();
+    if (!box) throw new Error('the preview frame has no box');
+    const cx = box.x + box.width / 2;
+    const from = box.y + box.height - 1;
+    const distance = Math.round(box.height / 2);
+    await page.mouse.move(cx, from);
+    await page.mouse.down();
+    const n = 60;
+    for (let i = 1; i <= n; i++) await page.mouse.move(cx, from - (distance * i) / n);
+    await page.mouse.up();
+    await settled(page);
+
+    // Half the surface is half the range, which is the promise the whole
+    // design rests on and the thing a floor must not quietly rescale.
+    //
+    // Half a sweep rather than a full one on purpose: a full sweep reaches the
+    // end whether the travel is right or merely *short*, because it clamps.
+    // The first version of this test dragged edge to edge and passed happily
+    // with the floor raised to sixteen, which would have squeezed this very
+    // control — the one it exists to protect.
+    const after = await numberOf(page, 'Divisions');
+    expect(after, `half a sweep took divisions to ${after}, where half the range is about 6`).toBeGreaterThanOrEqual(5);
+    expect(after, `half a sweep took divisions to ${after}, where half the range is about 6`).toBeLessThanOrEqual(7);
+  });
+});
