@@ -169,6 +169,27 @@ test.describe('the collection', () => {
     await expect(page.locator('img[src^="data:image/svg"]').first()).toBeVisible();
   });
 
+  test('opened from the phone view, it stays a phone in a desktop window', async ({ page }) => {
+    // `/m` is the phone experience whatever the window is -- it draws the
+    // picture at the device's shape and lets black take the rest. The
+    // collection reached from its book has to match, or a wide window hands
+    // back the desktop page, which is what was reported.
+    await page.goto('/collected?from=m');
+    const grid = page.getByTestId('collected-grid');
+    expect(await grid.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(/\s+/).length)).toBe(3);
+    await expect(page.getByText('Obsidian · alpha')).toBeHidden();
+    const box = await page.getByRole('listitem').first().boundingBox();
+    expect(box!.width).toBeLessThan(160);
+
+    // And the site's own collection at the same width is untouched: the phone
+    // rules are scoped to the column, not turned on for everybody.
+    await page.goto('/collected');
+    expect(
+      await grid.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(/\s+/).length),
+    ).toBeGreaterThan(3);
+    await expect(page.getByText('Obsidian · alpha')).toBeVisible();
+  });
+
   test('opened from the site, a tile goes to the editor route', async ({ page }) => {
     await page.goto('/collected');
     await expect(page.getByTestId('collected-back')).toHaveCount(0);

@@ -4,6 +4,31 @@
   padding: 0 var(--gutter) 80px;
 }
 
+/*
+ * Opened from `/m`, the collection is a phone screen whatever the window is.
+ *
+ * `/m` renders the picture at the device's own shape and lets black take up
+ * whatever a desktop window has left over; the collection reached from its
+ * book has to do the same, or a wide window hands back the desktop page -- a
+ * three-column grid of pictures asked for on a phone, delivered as captioned
+ * cards, which is exactly what was reported.
+ */
+.page[data-phone='true'] {
+  max-width: 430px;
+}
+
+/*
+ * The phone rules below key on this element's width rather than the viewport's,
+ * which is the whole point: in `data-phone` mode the column is 430px inside a
+ * window that may be 2000. `container-type` is on an inner wrapper rather than
+ * on `.page` because it implies layout containment, which would make `.page`
+ * the containing block for the fixed bar and sheet and peg their `bottom: 0` to
+ * a scrolling element instead of to the viewport.
+ */
+.inner {
+  container-type: inline-size;
+}
+
 .head {
   padding: 46px 0 24px;
   border-bottom: 1px solid var(--line);
@@ -256,7 +281,7 @@
    one and a half rows; three gives 111px by 240px, which is a wallpaper you
    can recognise and four rows you can scan. Below about 330px three is too
    thin to read, so it drops to two. */
-@media (max-width: 640px) {
+@container (max-width: 640px) {
   .page {
     padding: 0 12px 132px;
   }
@@ -329,8 +354,20 @@
   }
 }
 
-@media (max-width: 330px) {
+@container (max-width: 330px) {
   .grid {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+/* The bar and the sheet follow the column rather than the window, so the phone
+   view stays one coherent object inside a desktop one. */
+.page[data-phone='true'] .bar,
+.page[data-phone='true'] .sheet {
+  left: 50%;
+  right: auto;
+  width: min(430px, 100%);
+  transform: translateX(-50%);
+  border-left: 1px solid var(--line-strong);
+  border-right: 1px solid var(--line-strong);
 }
