@@ -1309,6 +1309,38 @@ rounded square full of pips, is a shape you have to look at twice. A droplet has
 a silhouette neither of the others can be confused with. **Compared at 19px,
 which is the size it ships at**, not at a size that flatters it.
 
+**A control on every tile is a question about the tile, and the answer was two
+modes.** The collection was asked for as three columns of pictures with a trash
+in one corner and a tick in the other, which the arithmetic rules out before
+anything is built: three columns at 390px with a 12px gutter and 10px gaps is a
+111px tile, and two 44px targets is 88px of it laid over the picture they are
+about. That is the five-buttons entry above in a different frame — work out
+what the space is before choosing how to fill it. What fits is a mode switch:
+browse, where the tile is the link and carries nothing, and select, where every
+tile is a checkbox and the actions live in one bar at the bottom where there is
+room for words. The bar has to carry the way *out* of the mode as well as the
+actions, because the header is gone after the first row of a 240px-tall tile
+and a Done that lives up there is a mode you cannot leave without scrolling
+back to the top.
+
+The captions went with it below 640px, which is a smaller decision than it
+looks: the name, the date and the seed are three lines under a 111px picture,
+and the picture's alt text still carries all three for anything reading the
+page. Nothing is lost; it moves from the screen to the accessibility tree,
+which is where it was more useful anyway.
+
+**A fixture that rewrites itself on every navigation disarms every assertion
+about persistence.** Playwright's `addInitScript` runs on each navigation, not
+once per test, so the obvious way to seed localStorage reinstates the fixture
+on any `page.reload()` — and the reload is precisely what a test of "did this
+reach storage" is for. The collection's undo test read the fixture back and
+passed against an undo that rebuilt the list by sorting on `savedAt`, which is
+the wrong order and is the realistic wrong implementation, since `savedAt`
+looks like it can rebuild insertion order and cannot. Guarding the write on the
+key being absent fixes it, and both injections then fail. The general form is
+the instrument rule again: before trusting a test that survives a reload, ask
+what else runs on that reload.
+
 ---
 
 ## Truchet, as settled
