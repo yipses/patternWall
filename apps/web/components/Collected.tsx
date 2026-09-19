@@ -6,6 +6,7 @@ import { encodeConfig, getGenerator } from '@patternwall/core';
 import { PatternImage } from './PatternImage';
 import { CollectionExport } from './CollectionExport';
 import { Button, uiStyles as ui } from './ui';
+import { FALLBACK_SCREEN, useDeviceScreen } from '../lib/device-screen';
 import { loadCollected, removeManyCollected, writeCollected, type CollectedItem } from '../lib/storage';
 import styles from './Collected.module.css';
 
@@ -44,6 +45,21 @@ export function Collected() {
    * `next.config.mjs`.
    */
   const [fromPhone, setFromPhone] = useState(false);
+
+  /**
+   * A tile is the shape of the screen it was saved for.
+   *
+   * The same hook `/m` uses, and for the same reason: a wallpaper shown at any
+   * other aspect is a picture of a different phone. It falls back to a phone
+   * shape off a phone, so the desktop grid keeps the proportions it had.
+   *
+   * Reading it here costs no hydration risk, unlike on `/m`: the grid does not
+   * exist during the prerender -- `items` is null until the effect below runs,
+   * and the baked HTML says "Reading your collection".
+   */
+  const screen = useDeviceScreen(true) ?? FALLBACK_SCREEN;
+  const thumbWidth = 220;
+  const thumbHeight = Math.round((thumbWidth * screen.h) / screen.w);
 
   useEffect(() => {
     setItems(loadCollected());
@@ -88,7 +104,11 @@ export function Collected() {
   };
 
   return (
-    <div className={styles.page} data-phone={fromPhone ? 'true' : undefined}>
+    <div
+      className={styles.page}
+      data-phone={fromPhone ? 'true' : undefined}
+      style={{ ['--pw-tile' as string]: `${screen.w} / ${screen.h}` }}
+    >
       {/* The width the phone rules measure against. See the note in the
           stylesheet for why the container is here and not on the page. */}
       <div className={styles.inner}>
@@ -155,7 +175,7 @@ export function Collected() {
                 // absent from the list.
                 const face = g ? (
                   <PatternImage
-                    spec={{ generatorId: g.id, seed: item.seed, params: item.params, palette: item.palette, width: 220, height: 477, bleed: 0 }}
+                    spec={{ generatorId: g.id, seed: item.seed, params: item.params, palette: item.palette, width: thumbWidth, height: thumbHeight, bleed: 0 }}
                     alt={selecting ? '' : label}
                     className={styles.thumb}
                   />

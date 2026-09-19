@@ -119,7 +119,7 @@
   flex-direction: column;
   justify-content: flex-end;
   gap: 6px;
-  aspect-ratio: 9 / 19.5;
+  aspect-ratio: var(--pw-tile, 9 / 19.5);
   padding: 12px;
   border: 1px dashed var(--line-strong);
   border-radius: var(--r-md);
@@ -153,7 +153,17 @@
 
 .thumb {
   width: 100%;
-  aspect-ratio: 9 / 19.5;
+  /*
+   * `height: auto` is load-bearing and its absence was a real bug for months.
+   * The element carries `height` and `width` attributes from its render spec,
+   * which are presentational hints but still a *specified* height -- and
+   * `aspect-ratio` only supplies a dimension that is missing. So every
+   * thumbnail rendered at its spec height whatever its width: 477px in a 123px
+   * column, 1:3.9 where 9:19.5 is 1:2.17. `object-fit: cover` cropped rather
+   * than distorted it, which is why it read as a design choice.
+   */
+  height: auto;
+  aspect-ratio: var(--pw-tile, 9 / 19.5);
   object-fit: cover;
   border-radius: var(--r-md);
   border: 1px solid var(--line);

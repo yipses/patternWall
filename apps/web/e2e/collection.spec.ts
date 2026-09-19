@@ -148,6 +148,31 @@ test.describe('the collection', () => {
       await expect(page.getByRole('link', { name: /seed alpha$/ })).toBeVisible();
     });
 
+    test('a tile is the shape of the screen, not the shape of its render spec', async ({ page }) => {
+      await page.goto('/collected');
+      const img = page.getByRole('listitem').first().locator('img');
+      const box = (await img.boundingBox())!;
+      const want = await page.evaluate(() => window.screen.height / window.screen.width);
+
+      // The guard that was missing. The old test asserted the tile's *width*
+      // and nothing else, so it passed against a thumbnail 477px tall in a
+      // 111px column -- the `height` attribute on the element is a specified
+      // height, and `aspect-ratio` only fills in a dimension that is absent.
+      expect(Math.abs(box.height / box.width - want)).toBeLessThan(0.03);
+
+      // And the rendered picture is that shape too, so the tile is the
+      // wallpaper rather than a crop of a differently-shaped one.
+      //
+      // Worth stating what this cannot see: the test viewport's screen is
+      // 390x844, which is 2.164, and the old fixed 9:19.5 spec was 2.167. Those
+      // are the same number to any bound loose enough to survive rounding, so
+      // this catches a render at the wrong shape and not a render that happens
+      // to be a phone of almost exactly this shape. It is a guard against
+      // regression, not evidence the spec follows the device.
+      const spec = await img.evaluate((el: HTMLImageElement) => el.naturalHeight / el.naturalWidth);
+      expect(Math.abs(spec - want)).toBeLessThan(0.03);
+    });
+
     test('the page scrolls clear of the fixed selection bar', async ({ page }) => {
       await page.goto('/collected');
       await page.getByTestId('select-start').click();
