@@ -776,17 +776,34 @@ registering", so a legitimately dead gesture is the same experience as the bug,
 and a person has no way to tell which they are looking at.
 
 What it turns on is *when* the rule applies, and the two readings are not close.
-Wrap whenever a drag reaches an end and a fader rolls over mid-drag: settling
-next to either end becomes impossible, because you keep falling off it and
-reappearing at the far one, and that is worse on a 48-step control than a
-12-step one. Wrap only where a gesture *begins* and a drag stays a fader — it
-clamps at the end like it always did — while lifting and swiping the same way
-again is a second, deliberate statement that comes round. It also gives a short
-path between the ends, which otherwise costs a full sweep of the preview.
+Fill the dead direction whenever a drag reaches an end and a fader changes
+under the finger mid-drag: settling next to either end becomes impossible,
+because you keep falling off it. Fill it only where a gesture *begins* and a
+drag stays a fader — it clamps at the end like it always did — while lifting
+and swiping the same way again is a second, deliberate statement.
 
-So the wrap lives at the axis lock, which is the one place that knows a gesture
-is starting rather than continuing, and `wrapPastEnd` is in core because where
-a parameter goes when it runs out is a fact about the parameter.
+So it lives at the axis lock, which is the one place that knows a gesture is
+starting rather than continuing, and it is in core because what a parameter
+does when it runs out is a fact about the parameter.
+
+**What fills it was a wrap, and a wrap is jarring.** At the minimum a drag
+further down jumped the value to the maximum. It is correct — the direction
+stops being dead, and it gives a short path between the ends — and it was
+reported as jarring, which it is: a control the eye is following crosses its
+whole range in a single frame.
+
+Reversing the axis fills the same gap smoothly. At an end, a gesture that
+begins by pushing further into it drives the parameter *backwards* for the rest
+of the drag, so both directions move the value the only way it can go and
+nothing jumps. `wrapPastEnd` is gone and `invertsAtEnd` returns the flag
+instead; the re-anchor has to multiply by the same sign, or reversing out of an
+inverted drag computes its anchor against the direction it is no longer using.
+
+The guard is the part worth copying. "The value moved" is satisfied perfectly
+by the wrap — it moves it as far as it is possible to move — so a test bounded
+only below would have passed against the exact behaviour being removed. A short
+drag has to move the control a *short* way: 40px must land it off the minimum
+and below the midpoint, which the wrap fails at 24 of 26.
 
 Both halves need a test and the second one is easy to write badly. A first
 attempt at injecting the mid-drag version set `from` to the wrapped value

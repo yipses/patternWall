@@ -120,33 +120,32 @@ export function scrubStride(spec: NumberSpec, travel: number, minPx = MIN_PX_PER
 }
 
 /**
- * Where a scrub goes when it *starts* by pushing further into an end it is
- * already sitting on: round to the other end.
+ * Whether a gesture that *starts* at an end, heading further into it, should
+ * drive the parameter backwards for the rest of the drag.
  *
- * A bounded control has two dead directions, and a gesture that does nothing
- * is indistinguishable from one that is broken — which matters more here than
- * it would elsewhere, because this surface has had three separate faults that
- * all presented as "the swipe isn't registering".
+ * A bounded control has two dead directions, and on this surface a gesture
+ * that does nothing is indistinguishable from one that is broken -- three
+ * separate faults here presented as "the swipe isn't registering", so a
+ * legitimately dead direction is the same experience as the bug.
  *
- * The rule is deliberately about where a gesture *begins*, not about what
- * happens when a drag reaches an end. Within one drag the value clamps, so a
- * fader stays a fader and settling next to an end does not keep throwing you
- * across the range. Lifting and swiping the same way again is a second,
- * deliberate statement — "further, and I know there is no further" — and that
- * is the one that comes round. It also gives a short path from one end to the
- * other, which otherwise costs a full sweep of the preview.
+ * This used to wrap: at the minimum, a drag further down jumped the value to
+ * the maximum. It filled the dead direction and it was jarring, because a
+ * control the eye is tracking crosses its whole range in one frame. Reversing
+ * the axis instead fills the same gap smoothly -- at an end, both directions
+ * move the value the only way it can go, and nothing jumps.
  *
- * `direction` is the way the drag is heading in value terms, already corrected
- * for the screen's y axis growing downward: positive increases.
+ * Only where a gesture begins, which is the one moment that knows a drag is
+ * starting rather than continuing. Flipping mid-drag would make a fader
+ * reverse under the finger every time it touched a bound.
  *
  * Compared with `>=` and `<=` rather than equality because a bound can be a
- * float — truchet's stroke weight floors at 0.02 — and a value that has been
+ * float -- truchet's stroke weight floors at 0.02 -- and a value that has been
  * quantised onto the lattice near it should still count as sitting on it.
  */
-export function wrapPastEnd(spec: NumberSpec, from: number, direction: number): number {
-  if (direction > 0 && from >= spec.max) return spec.min;
-  if (direction < 0 && from <= spec.min) return spec.max;
-  return from;
+export function invertsAtEnd(spec: NumberSpec, from: number, direction: number): boolean {
+  if (direction > 0 && from >= spec.max) return true;
+  if (direction < 0 && from <= spec.min) return true;
+  return false;
 }
 
 /**

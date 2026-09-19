@@ -32,7 +32,7 @@ export {
   MIN_PX_PER_STEP,
   secondaryParams,
   stepCount,
-  wrapPastEnd,
+  invertsAtEnd,
   type NumberSpec,
   type PrimaryBinding,
   type PrimaryRole,

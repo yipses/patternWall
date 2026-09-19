@@ -105,7 +105,7 @@ test.describe('gesture', () => {
     expect(await numberOf(page, 'Grid density'), 'a vertical drag moved the horizontal control too').toBe(densityBefore);
   });
 
-  test('a fresh swipe past an end wraps, and a drag that reaches one does not', async ({ page }) => {
+  test('a swipe into an end drives the control back, smoothly, and only from the lock', async ({ page }) => {
     await page.goto('/p/truchet-arcs');
     await settled(page);
 
@@ -122,19 +122,22 @@ test.describe('gesture', () => {
     await settled(page);
 
     // Swiping left with nothing to the left of you is a dead gesture, and a
-    // dead gesture cannot be told apart from a broken one. A fresh swipe that
-    // starts by pushing into the end it is already on comes round to the top.
+    // dead gesture cannot be told apart from a broken one. So the axis turns
+    // round: at the minimum, dragging either way climbs.
+    //
+    // Smoothly is the whole point, and it is what the assertion has to say.
+    // The wrap this replaced satisfied "the value moved" perfectly by jumping
+    // to the maximum, so a bound of "greater than min" would pass against the
+    // behaviour being removed. A short drag must move it a *short* way.
     await dragBy(page, -40, 0);
     await settled(page);
-    expect(
-      await numberOf(page, 'Grid density'),
-      'a fresh swipe left at the minimum did not come round to the top',
-    ).toBeGreaterThan(mid);
+    const after = await numberOf(page, 'Grid density');
+    expect(after, 'a fresh swipe left at the minimum did not move the control').toBeGreaterThan(min);
+    expect(after, `a 40px swipe took density to ${after}, which is a jump rather than a scrub`).toBeLessThan(mid);
 
-    // The other half of the bargain, and the reason it happens at the lock
-    // rather than at the bound: within one drag the value clamps. A fader that
-    // rolls over mid-drag makes settling beside an end impossible, because you
-    // keep falling off it and reappearing at the far one.
+    // The other half, and the reason it happens at the lock rather than at the
+    // bound: within one drag the value clamps. An axis that turned round every
+    // time it touched an end would make settling beside one impossible.
     await density.fill(String(mid));
     await density.blur();
     await settled(page);
@@ -151,7 +154,7 @@ test.describe('gesture', () => {
 
     expect(
       await numberOf(page, 'Grid density'),
-      'a single drag rolled over the end instead of stopping at it',
+      'a single drag turned round at the end instead of stopping at it',
     ).toBe(min);
   });
 

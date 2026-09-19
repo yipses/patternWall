@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { quantise, scrubStride, scrubTo, stepCount, wrapPastEnd, type NumberSpec, type ParamSpec, type PrimaryBinding } from '@patternwall/core';
+import { invertsAtEnd, quantise, scrubStride, scrubTo, stepCount, type NumberSpec, type ParamSpec, type PrimaryBinding } from '@patternwall/core';
 
 /**
  * Driving a pattern's two scrubbed controls from the picture itself.
@@ -166,6 +166,8 @@ interface Drag {
   from: number;
   /** The coordinate the current run is measured from. Moves when a clamp bites. */
   anchor: number;
+  /** -1 where the drag began at an end and pushed further into it. */
+  invert: 1 | -1;
   /** Steps per felt change, so a fine control does not fire on every pixel. */
   stride: number;
   /** Pixels a full range is spread over, settled when the axis was claimed. */
@@ -242,6 +244,7 @@ export function useScrub(options: {
         moved: 0,
         travel: FALLBACK_TRAVEL,
         stride: 1,
+        invert: 1,
         spec: null,
         key: '',
         from: 0,
@@ -293,7 +296,13 @@ export function useScrub(options: {
         // settling beside one does not keep throwing the value across the
         // range. Lifting and swiping the same way again is the second,
         // deliberate statement, and that is the one that wraps.
-        d.from = wrapPastEnd(bound.spec, at, heading);
+        d.from = at;
+        // A gesture that begins at an end, heading further into it, drives the
+        // parameter backwards for the rest of the drag rather than wrapping to
+        // the far end. Both fill a direction that would otherwise be dead;
+        // only this one does it without the value crossing its whole range in
+        // a single frame.
+        d.invert = invertsAtEnd(bound.spec, at, heading) ? -1 : 1;
 
         // Anchored where the axis was claimed, so the value does not jump by a
         // threshold's worth the instant it locks — and the range is then
@@ -305,13 +314,9 @@ export function useScrub(options: {
         // it is derived from it and neither changes again mid-gesture.
         d.stride = scrubStride(bound.spec, d.travel);
         d.emitted = d.from;
-        // A wrap is a change, and the lock otherwise announces nothing. Say it
-        // now rather than waiting for the next move, which on a swipe that
-        // stops dead at the threshold would never arrive.
-        if (d.from !== at) {
-          setReadout({ key: d.key, spec: bound.spec, value: d.from });
-          onScrub(d.key, d.from);
-        }
+        // Nothing to announce at the lock any more. The wrap this replaced
+        // moved the value before the finger had gone anywhere, so it had to
+        // say so; an inverted axis changes only what the *next* move means.
         return;
       }
 
@@ -322,7 +327,7 @@ export function useScrub(options: {
       const coord = d.axis === 'x' ? e.clientX : e.clientY;
       const travel = d.travel;
       const span = spec.max - spec.min;
-      const fraction = (dir * (coord - d.anchor)) / travel;
+      const fraction = (dir * d.invert * (coord - d.anchor)) / travel;
       const value = scrubTo(spec, d.from, fraction, d.stride);
 
       // Past either end, re-anchor so that reversing responds on the first
@@ -349,7 +354,9 @@ export function useScrub(options: {
       const overshot = fraction > (spec.max - d.from) / span || fraction < (spec.min - d.from) / span;
       if (overshot) {
         const reached = (value - d.from) / span;
-        d.anchor = coord - dir * reached * travel;
+        // `dir * invert` is the same ±1 the fraction was read through, so it
+        // is its own reciprocal — solving for the anchor uses it unchanged.
+        d.anchor = coord - dir * d.invert * reached * travel;
       }
 
       if (value === d.emitted) return;
