@@ -66,8 +66,57 @@ export function stepCount(spec: NumberSpec): number {
  * refines the first instead of replacing it, and so putting a finger down
  * cannot move anything.
  */
-export function scrubTo(spec: NumberSpec, from: number, fraction: number): number {
-  return quantise(spec, from + fraction * (spec.max - spec.min));
+export function scrubTo(spec: NumberSpec, from: number, fraction: number, stride = 1): number {
+  const raw = from + fraction * (spec.max - spec.min);
+  if (stride <= 1) return quantise(spec, raw);
+  // Snap to every `stride`-th step instead of every one. Still the spec's own
+  // lattice -- an integer multiple of it -- so a scrubbed value is one the
+  // slider and the share link can both express, and the ends stay reachable
+  // because `quantise` clamps whatever the coarse lattice overshoots to.
+  const coarse = spec.step * stride;
+  const clamped = Math.min(spec.max, Math.max(spec.min, raw));
+  const n = Math.round((clamped - spec.min) / coarse);
+  return quantise(spec, spec.min + n * coarse);
+}
+
+/** The finest change a drag should be able to make, in CSS pixels. */
+export const MIN_PX_PER_STEP = 10;
+
+/**
+ * How close to that counts as already there. "Around ten" rather than "ten or
+ * more": without it a control at 9.6px is doubled to 19.2, which moves it
+ * further from the target than leaving it alone does.
+ */
+const TOLERANCE = 0.9;
+
+/**
+ * How many of a spec's steps one *felt* change should cover, for a scrub
+ * spread over `travel` pixels.
+ *
+ * The surface divided by the step count is what makes a drag mean the whole
+ * range, and on a fine control it is tiny: chevron's relief has a hundred
+ * steps, which on a phone preview is 5.2 pixels each, and contours' terrain
+ * scale is 7.1. A change every five pixels is a render every five pixels, and
+ * the preview cannot keep up — reported as feeling laggy, which is exactly
+ * what it is rather than a figure of speech.
+ *
+ * Coarsening the lattice rather than stretching the travel is what keeps
+ * "edge to edge is the whole range" true. Insisting on ten pixels by lengthening
+ * the drag would need 1,000 pixels for relief on a 520px preview, so a sweep
+ * would cover half the control; snapping to every second step covers all of it
+ * and changes half as often.
+ */
+export function scrubStride(spec: NumberSpec, travel: number, minPx = MIN_PX_PER_STEP): number {
+  const steps = stepCount(spec);
+  const perStep = travel / steps;
+  if (!Number.isFinite(perStep) || perStep <= 0) return 1;
+  // "Around ten", so a control already within a tenth of it is left alone.
+  // Chevron's block size sits at 9.6px, and doubling it to 19.2 to satisfy a
+  // hard ten would be a bigger change than the fault being fixed.
+  if (perStep >= minPx * TOLERANCE) return 1;
+  // Ceil rather than round past that: ten is the point below which it drags,
+  // so landing at 7.1 because 1.4 rounded down would leave the fault in place.
+  return Math.max(1, Math.min(steps, Math.ceil(minPx / perStep)));
 }
 
 /**

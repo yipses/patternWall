@@ -735,6 +735,28 @@ of that test passed with the floor raised to sixteen, which would have squeezed
 the very control it exists to protect. Drag *half* the surface and assert half
 the range.
 
+**And the fine end needed a floor too, which is a different clamp entirely.**
+Chevron's relief has a hundred steps, 5.2px each on a phone, and contours'
+terrain scale is 7.1. A change every five pixels is a *render* every five
+pixels, and the preview cannot keep up: reported as feeling laggy, which is
+what it is rather than a turn of phrase. So no felt change costs less than
+about ten pixels.
+
+The fix is not the obvious one, and the obvious one is worth naming because it
+is what the guard rules out. Lengthening the drag until a step is ten pixels
+needs 1,000px for relief on a 520px preview, so a full sweep would cover half
+the control — it buys the ten pixels by spending the promise the entry above is
+about. What works instead is coarsening the *lattice*: snap to every second
+step. The value still crosses its whole range edge to edge and changes half as
+often, and it stays on the spec's own lattice, so a scrubbed value is one the
+slider and the share link can both hold.
+
+The two clamps meet in the middle and the band is worth knowing: every scrubbed
+control in the app now moves somewhere between 9.6 and 52 pixels per felt
+change, where before it ran from 5.2 to 130. "Around ten" is literal — a
+control already at 9.6 is left alone, because doubling it to 19.2 moves it
+further from the target than leaving it does.
+
 The general form, which is the part worth keeping: when a scale has to be
 calibrated per thing it scales, the calibration is the smell. Look for a
 quantity already on screen that can carry it.

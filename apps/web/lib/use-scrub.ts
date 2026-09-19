@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { quantise, scrubTo, stepCount, wrapPastEnd, type NumberSpec, type ParamSpec, type PrimaryBinding } from '@patternwall/core';
+import { quantise, scrubStride, scrubTo, stepCount, wrapPastEnd, type NumberSpec, type ParamSpec, type PrimaryBinding } from '@patternwall/core';
 
 /**
  * Driving a pattern's two scrubbed controls from the picture itself.
@@ -166,6 +166,8 @@ interface Drag {
   from: number;
   /** The coordinate the current run is measured from. Moves when a clamp bites. */
   anchor: number;
+  /** Steps per felt change, so a fine control does not fire on every pixel. */
+  stride: number;
   /** Pixels a full range is spread over, settled when the axis was claimed. */
   travel: number;
   /** The last value handed out, so a move that changes nothing says nothing. */
@@ -239,6 +241,7 @@ export function useScrub(options: {
         started: false,
         moved: 0,
         travel: FALLBACK_TRAVEL,
+        stride: 1,
         spec: null,
         key: '',
         from: 0,
@@ -298,6 +301,9 @@ export function useScrub(options: {
         // far edge reaches the end of the parameter.
         d.anchor = axis === 'x' ? e.clientX : e.clientY;
         d.travel = travelFor(d.surface, axis, lead, stepCount(bound.spec));
+        // How coarsely this drag snaps. Settled here with the travel, because
+        // it is derived from it and neither changes again mid-gesture.
+        d.stride = scrubStride(bound.spec, d.travel);
         d.emitted = d.from;
         // A wrap is a change, and the lock otherwise announces nothing. Say it
         // now rather than waiting for the next move, which on a swipe that
@@ -317,7 +323,7 @@ export function useScrub(options: {
       const travel = d.travel;
       const span = spec.max - spec.min;
       const fraction = (dir * (coord - d.anchor)) / travel;
-      const value = scrubTo(spec, d.from, fraction);
+      const value = scrubTo(spec, d.from, fraction, d.stride);
 
       // Past either end, re-anchor so that reversing responds on the first
       // pixel rather than after paying back however far beyond it you dragged.

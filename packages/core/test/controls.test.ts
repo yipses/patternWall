@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MIN_PX_PER_STEP,
   coerceParams,
   effectiveSpec,
   retuneParams,
@@ -10,6 +11,7 @@ import {
   getGenerator,
   quantise,
   resolvePrimaries,
+  scrubStride,
   scrubTo,
   secondaryParams,
   stepCount,
@@ -290,5 +292,77 @@ describe('controls', () => {
     expect(decimalsOf(0.05)).toBe(2);
     expect(decimalsOf(0.005)).toBe(3);
     expect(decimalsOf(0)).toBe(3);
+  });
+});
+
+/**
+ * A drag must not change the value more often than about every ten pixels.
+ *
+ * The surface divided by the step count is what makes a drag mean the whole
+ * range, and on a fine control that quotient is tiny — a change every five
+ * pixels is a render every five pixels, and the preview falls behind. Reported
+ * as feeling laggy, which is what it is rather than a turn of phrase.
+ *
+ * The rule was available before the fix: no felt change costs less than ten
+ * pixels, and a sweep still covers the whole range. Both halves are asserted,
+ * because satisfying the first alone is easy and wrong — lengthening the drag
+ * would do it, and take edge-to-edge with it.
+ */
+describe('scrub stride', () => {
+  const spec = (min: number, max: number, step: number): NumberSpec => ({
+    key: 'k',
+    label: 'k',
+    type: 'number',
+    min,
+    max,
+    step,
+    default: min,
+    description: '',
+  });
+
+  /** Every scrubbed control in the app, against a phone-sized surface. */
+  const CASES: [string, NumberSpec, number][] = [
+    ['chevron relief, the finest', spec(0, 1, 0.01), 520],
+    ['contours terrain scale', spec(0.6, 4, 0.1), 240],
+    ['truchet density', spec(3, 26, 1), 240],
+    ['truchet arc divisions', spec(1, 12, 1), 520],
+    ['contours detail, the coarsest', spec(1, 5, 1), 520],
+  ];
+
+  it.each(CASES)('%s never changes more often than every ten pixels', (_label, s, travel) => {
+    const stride = scrubStride(s, travel);
+    const felt = travel / (stepCount(s) / stride);
+    // "Around ten": a control already within a tenth of it is left where it is,
+    // because doubling 9.6px to 19.2 moves it further from the target than
+    // leaving it alone. Nothing may sit below that band.
+    expect(felt, `a change every ${felt.toFixed(1)}px`).toBeGreaterThanOrEqual(MIN_PX_PER_STEP * 0.9);
+  });
+
+  it.each(CASES)('%s still reaches both ends in one sweep', (_label, s, travel) => {
+    const stride = scrubStride(s, travel);
+    // A full sweep is a fraction of 1 either way, whatever the stride is: the
+    // lattice changes how often the value moves, never how far the drag means.
+    expect(scrubTo(s, s.min, 1, stride)).toBe(s.max);
+    expect(scrubTo(s, s.max, -1, stride)).toBe(s.min);
+  });
+
+  it('leaves a control that is already coarse enough exactly as it was', () => {
+    // Truchet's divisions are the promoted gesture nobody has reported, at 47px
+    // a step. A stride of one is the same lattice `scrubTo` always used.
+    const s = spec(1, 12, 1);
+    expect(scrubStride(s, 520)).toBe(1);
+    for (const f of [0.1, 0.25, 0.5, 0.73, 0.9]) {
+      expect(scrubTo(s, s.min, f, 1)).toBe(scrubTo(s, s.min, f));
+    }
+  });
+
+  it('snaps to the spec\'s own lattice, so a scrubbed value is one a slider can hold', () => {
+    const s = spec(0, 1, 0.01);
+    const stride = scrubStride(s, 520);
+    expect(stride).toBeGreaterThan(1);
+    for (const f of [0.13, 0.37, 0.61, 0.88]) {
+      const v = scrubTo(s, s.min, f, stride);
+      expect(Math.round(v / s.step) * s.step).toBeCloseTo(v, 10);
+    }
   });
 });

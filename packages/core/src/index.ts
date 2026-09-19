@@ -28,6 +28,8 @@ export {
   resolvePrimaries,
   retuneParams,
   scrubTo,
+  scrubStride,
+  MIN_PX_PER_STEP,
   secondaryParams,
   stepCount,
   wrapPastEnd,
