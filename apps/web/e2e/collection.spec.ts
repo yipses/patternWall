@@ -63,7 +63,7 @@ test.describe('the collection', () => {
     await expect(page.getByTestId('export-collection')).toHaveText(/Export all 3 as a zip/);
 
     await page.getByTestId('select-start').click();
-    await expect(page.getByTestId('selection-bar')).toContainText('None selected');
+    await expect(page.getByTestId('selection-bar')).toContainText('Select all');
     // Nothing to act on yet, so neither action is live.
     await expect(page.getByTestId('delete-selected')).toBeDisabled();
     await expect(page.getByTestId('export-selected')).toBeDisabled();
@@ -83,10 +83,73 @@ test.describe('the collection', () => {
   test('select all, then none', async ({ page }) => {
     await page.goto('/collected');
     await page.getByTestId('select-start').click();
-    await page.getByRole('button', { name: 'Select all' }).click();
+    // One slot, both jobs: it offers Select all at zero and clears once there
+    // is something to clear.
+    await page.getByTestId('select-toggle-all').click();
     await expect(page.getByTestId('selection-bar')).toContainText('3 selected');
-    await page.getByRole('button', { name: 'Select none' }).click();
-    await expect(page.getByTestId('selection-bar')).toContainText('None selected');
+    await page.getByTestId('select-toggle-all').click();
+    await expect(page.getByTestId('selection-bar')).toContainText('Select all');
+  });
+
+  test('a long press enters select mode with that tile picked, and does not open it', async ({ page }) => {
+    await page.goto('/m/collected');
+    const tile = page.getByRole('link', { name: /seed bravo$/ });
+    const box = (await tile.boundingBox())!;
+
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    // Past the 450ms hold, and without moving, so it is a press and not a
+    // scroll that happened to start on a picture.
+    await page.waitForTimeout(700);
+    await page.mouse.up();
+
+    await expect(page.getByTestId('selection-bar')).toContainText('1 selected');
+    await expect(page.getByRole('button', { name: /seed bravo$/ })).toHaveAttribute('aria-pressed', 'true');
+    // And the link the press started on did not navigate.
+    await expect(page).toHaveURL(/\/m\/collected/);
+  });
+
+  test('a press that travels is a scroll, not a selection', async ({ page }) => {
+    await page.goto('/m/collected');
+
+    // This assertion is what makes the one below mean anything. Chromium
+    // starts a native drag when a pointer moves off a link or an image, and a
+    // native drag fires `pointercancel` -- which ends the press being timed.
+    // With the tile draggable, the test passes against a slop threshold that
+    // has been deleted outright, which is exactly what it did before this line
+    // was here. Both the anchor and the picture inside it have to say no.
+    await expect(page.getByRole('link', { name: /seed bravo$/ })).toHaveAttribute('draggable', 'false');
+    await expect(page.getByRole('link', { name: /seed bravo$/ }).locator('img')).toHaveAttribute('draggable', 'false');
+
+    const box = (await page.getByRole('link', { name: /seed bravo$/ }).boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - 40, { steps: 6 });
+    await page.waitForTimeout(700);
+    await page.mouse.up();
+    await expect(page.getByTestId('selection-bar')).toHaveCount(0);
+  });
+
+  test('deleting one does not ask, and the undo covers it', async ({ page }) => {
+    await page.goto('/collected');
+    await page.getByTestId('select-start').click();
+    await tile(page, 'bravo').click();
+    await page.getByTestId('delete-selected').click();
+    // No confirm for one: an undo already covers the only mistake available.
+    await expect(page.getByTestId('confirm-bar')).toHaveCount(0);
+    await expect(page.getByRole('listitem')).toHaveCount(2);
+    await expect(page.getByTestId('undo-delete')).toBeVisible();
+  });
+
+  test('a multi-delete can be called off with nothing removed', async ({ page }) => {
+    await page.goto('/collected');
+    await page.getByTestId('select-start').click();
+    await tile(page, 'alpha').click();
+    await tile(page, 'bravo').click();
+    await page.getByTestId('delete-selected').click();
+    await page.getByTestId('confirm-cancel').click();
+    await expect(page.getByRole('listitem')).toHaveCount(3);
+    await expect(page.getByTestId('selection-bar')).toContainText('2 selected');
   });
 
   test('leaving select mode is on the bar, not in a header that scrolls away', async ({ page }) => {
@@ -123,8 +186,12 @@ test.describe('the collection', () => {
   test('deleting everything leaves the empty state rather than an empty grid', async ({ page }) => {
     await page.goto('/collected');
     await page.getByTestId('select-start').click();
-    await page.getByRole('button', { name: 'Select all' }).click();
+    await page.getByTestId('select-toggle-all').click();
     await page.getByTestId('delete-selected').click();
+    // Three at once asks first. This is the Select-all-then-trash case, which
+    // is the whole collection in two taps.
+    await expect(page.getByTestId('confirm-bar')).toContainText('Delete 3 wallpapers');
+    await page.getByTestId('confirm-delete').click();
     await expect(page.getByText('Nothing collected yet.')).toBeVisible();
     await expect(page.getByTestId('selection-bar')).toHaveCount(0);
   });
@@ -227,6 +294,25 @@ test.describe('the collection', () => {
       await grid.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(/\s+/).length),
     ).toBeGreaterThan(3);
     await expect(page.getByText('Obsidian · alpha')).toBeVisible();
+  });
+
+  test('a tile leaves the address bar naming the page it went to', async ({ page }) => {
+    await page.goto('/m/collected');
+    await page.getByRole('link', { name: /seed bravo$/ }).click();
+    await expect(page).toHaveURL(/\/m\/\?g=truchet-diagonals/);
+
+    // Past the editor's 220ms URL debounce, which is where this went wrong:
+    // the base was captured during the first render, and on a soft navigation
+    // React renders the new tree before the router pushes history, so it read
+    // the page being left. It was right at +60ms and wrong at +400ms, and a
+    // reload landed back on the collection.
+    await page.waitForTimeout(600);
+    await expect(page).toHaveURL(/\/m\/\?g=truchet-diagonals/);
+
+    // And the address really is the page: reloading it stays on the wallpaper.
+    await page.reload();
+    await expect(page.getByTestId('preview-book')).toBeVisible();
+    await expect(page.getByTestId('collected-rail')).toHaveCount(0);
   });
 
   test('the site collection keeps its heading, and a tile goes to the editor route', async ({ page }) => {

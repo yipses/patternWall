@@ -69,6 +69,14 @@
    a tick would be two 44px targets on a 111px tile. */
 .tile {
   display: block;
+  /*
+   * A press and hold on a tile means "select this", so the platform must not
+   * claim it first: iOS shows its link callout, and Chromium starts a native
+   * drag whose `pointercancel` silently ends the press being timed.
+   */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
   position: relative;
   width: 100%;
   padding: 0;
@@ -109,8 +117,26 @@
   color: var(--accent-text);
 }
 
+/*
+ * Selection adds presence rather than taking it away. Dimming a picked tile to
+ * 55% said "this one is out", which is the opposite of what it means, and on
+ * dark palettes it was nearly invisible anyway. Shrinking it lifts it off the
+ * grid and the filled tick does the rest.
+ */
 .tile[aria-pressed='true'] .thumb {
-  opacity: 0.55;
+  transform: scale(0.94);
+}
+
+.thumb,
+.gone {
+  transition: transform 120ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thumb,
+  .gone {
+    transition: none;
+  }
 }
 
 /* An item whose pattern this build does not have. It cannot be drawn, so it
@@ -268,8 +294,22 @@
 
 .barCount {
   margin-right: auto;
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  font: inherit;
   font-size: 13.5px;
   color: var(--text-dim);
+  cursor: pointer;
+}
+
+.barConfirm {
+  border-top-color: var(--danger);
+}
+
+.danger {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 .sheet {

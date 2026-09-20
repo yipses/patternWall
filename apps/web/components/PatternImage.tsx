@@ -43,10 +43,20 @@ export function PatternImage({
   className,
   onRenderError,
   channel,
+  draggable,
 }: {
   spec: RenderSpec;
   alt: string;
   className?: string;
+  /**
+   * Pass `false` where a long press on the picture means something.
+   *
+   * Chromium starts a native drag when a pointer moves off an image or a link,
+   * and a native drag fires `pointercancel` — which silently ends any
+   * press-and-hold the caller is timing. It cost a test that appeared to prove
+   * a slop threshold worked and was in fact proving the drag cancelled it.
+   */
+  draggable?: boolean;
   onRenderError?: (message: string) => void;
   /**
    * Names a stream of renders that replace one another. Give it to a preview
@@ -154,6 +164,14 @@ export function PatternImage({
   return (
     /* A data-URL SVG raster. next/image is deliberately not used: it would add
        a loader that a static export cannot run, for an image we generated. */
-    <img className={className} src={result.url ?? ''} alt={alt} width={spec.width} height={spec.height} decoding="async" />
+    <img
+      className={className}
+      src={result.url ?? ''}
+      alt={alt}
+      width={spec.width}
+      height={spec.height}
+      decoding="async"
+      {...(draggable === undefined ? {} : { draggable })}
+    />
   );
 }

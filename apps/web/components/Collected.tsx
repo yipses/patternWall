@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { encodeConfig, getGenerator } from '@patternwall/core';
 import { BuildStamp } from './BuildStamp';
 import { PatternImage } from './PatternImage';
@@ -19,7 +19,19 @@ import styles from './Collected.module.css';
  * wrong trade on a phone: it taxes the common case to guard the rare one. An
  * undo taxes nothing and covers the same mistake.
  */
-const UNDO_MS = 9000;
+const UNDO_MS = 5000;
+
+/**
+ * How long a press has to hold before it means "select this" rather than "open
+ * this".
+ *
+ * 450ms is the iOS context-menu feel. Much below it a slow tap starts selecting
+ * things; much above it stops reading as a response to the finger at all.
+ */
+const LONG_PRESS_MS = 450;
+
+/** A press that travels this far was a scroll. */
+const PRESS_SLOP = 10;
 
 /**
  * The collection, browsable on a phone.
@@ -38,6 +50,7 @@ export function Collected({ bare = false }: { bare?: boolean }) {
   const [picked, setPicked] = useState<string[]>([]);
   const [exportOpen, setExportOpen] = useState(false);
   const [undo, setUndo] = useState<{ before: CollectedItem[]; count: number } | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   /**
    * A tile is the shape of the screen it was saved for.
@@ -72,10 +85,71 @@ export function Collected({ bare = false }: { bare?: boolean }) {
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   };
 
+  /**
+   * Long-press to enter select mode, which is the gesture a phone already
+   * teaches. The rail's tick is the discoverable path and this is the fast one;
+   * a labelled Select button was neither, and it was anchored to a heading that
+   * no longer exists.
+   *
+   * A tile is a link, so the press that becomes a selection has to stop the
+   * navigation that would otherwise follow it. `suppress` survives exactly one
+   * click and is cleared on the next press either way, so a long-press that
+   * somehow produces no click cannot swallow a later tap.
+   */
+  const press = useRef<{ id: string; timer: number; x: number; y: number } | null>(null);
+  const suppress = useRef(false);
+
+  const endPress = (): void => {
+    if (!press.current) return;
+    window.clearTimeout(press.current.timer);
+    press.current = null;
+  };
+
+  const startPress = (id: string) => (e: React.PointerEvent) => {
+    suppress.current = false;
+    endPress();
+    const timer = window.setTimeout(() => {
+      press.current = null;
+      suppress.current = true;
+      setSelecting(true);
+      setPicked([id]);
+    }, LONG_PRESS_MS);
+    press.current = { id, timer, x: e.clientX, y: e.clientY };
+  };
+
+  const movePress = (e: React.PointerEvent): void => {
+    const p = press.current;
+    if (!p) return;
+    if (Math.abs(e.clientX - p.x) > PRESS_SLOP || Math.abs(e.clientY - p.y) > PRESS_SLOP) endPress();
+  };
+
+  const clickTile = (e: React.MouseEvent): void => {
+    endPress();
+    if (!suppress.current) return;
+    suppress.current = false;
+    e.preventDefault();
+  };
+
   const endSelect = () => {
     setSelecting(false);
     setPicked([]);
     setExportOpen(false);
+    setConfirming(false);
+  };
+
+  /**
+   * One tile goes straight away and the undo covers it; more than one asks
+   * first.
+   *
+   * They guard different mistakes. An undo covers a mistap, which is the whole
+   * risk when the target is one picture. A confirm covers Select All followed
+   * by the trash, which is the entire collection in two taps and is the only
+   * genuinely destructive thing on this screen. Asking on every single delete
+   * would tax the common case to guard the rare one.
+   */
+  const askDelete = () => {
+    if (picked.length > 1) setConfirming(true);
+    else deletePicked();
   };
 
   const deletePicked = () => {
@@ -85,6 +159,7 @@ export function Collected({ bare = false }: { bare?: boolean }) {
     setUndo({ before, count: picked.length });
     setPicked([]);
     setExportOpen(false);
+    setConfirming(false);
     if (next.length === 0) setSelecting(false);
   };
 
@@ -117,24 +192,14 @@ export function Collected({ bare = false }: { bare?: boolean }) {
               Configurations you saved, kept in this browser&rsquo;s local storage. Nothing here is uploaded anywhere, which
               also means it does not follow you to another device — copy a link if you want that.
             </p>
-            {list.length > 0 ? (
+            {list.length > 0 && !selecting ? (
+              /* Entering the mode only. Everything you do inside it -- select
+                 all, clear, delete, export, leave -- is in the bar, which is
+                 the one surface that does not scroll away after a row. */
               <div className={styles.actions}>
-                {selecting ? (
-                  /* Leaving select mode is in the bar, not here: the header
-                     scrolls away after the first row and a mode you cannot get
-                     out of without scrolling back to the top is a trap. */
-                  <Button
-                    size="small"
-                    variant="ghost"
-                    onClick={() => setPicked(picked.length === list.length ? [] : list.map((i) => i.id))}
-                  >
-                    {picked.length === list.length ? 'Select none' : 'Select all'}
-                  </Button>
-                ) : (
-                  <Button size="small" variant="ghost" onClick={() => setSelecting(true)} data-testid="select-start">
-                    Select
-                  </Button>
-                )}
+                <Button size="small" variant="ghost" onClick={() => setSelecting(true)} data-testid="select-start">
+                  Select
+                </Button>
               </div>
             ) : null}
           </div>
@@ -173,6 +238,7 @@ export function Collected({ bare = false }: { bare?: boolean }) {
                     spec={{ generatorId: g.id, seed: item.seed, params: item.params, palette: item.palette, width: thumbWidth, height: thumbHeight, bleed: 0 }}
                     alt={selecting ? '' : label}
                     className={styles.thumb}
+                    draggable={false}
                   />
                 ) : (
                   <span className={styles.gone}>
@@ -205,7 +271,20 @@ export function Collected({ bare = false }: { bare?: boolean }) {
                         </span>
                       </button>
                     ) : g ? (
-                      <Link className={styles.tile} href={href}>
+                      <Link
+                        className={styles.tile}
+                        href={href}
+                        // An anchor is draggable by default, and a native drag
+                        // fires `pointercancel`, which ends the press this is
+                        // timing. Without it the hold never becomes a
+                        // selection the moment the finger moves at all.
+                        draggable={false}
+                        onPointerDown={startPress(item.id)}
+                        onPointerMove={movePress}
+                        onPointerUp={endPress}
+                        onPointerCancel={endPress}
+                        onClick={clickTile}
+                      >
                         {face}
                       </Link>
                     ) : (
@@ -295,13 +374,36 @@ export function Collected({ bare = false }: { bare?: boolean }) {
         </div>
       ) : null}
 
-      {selecting && !exportOpen ? (
+      {selecting && !exportOpen && confirming ? (
+        /* The confirm takes the bar over rather than opening a dialog on top
+           of it. The count is in the verb, so there is nothing to read twice. */
+        <div className={`${styles.bar} ${styles.barConfirm}`} data-testid="confirm-bar">
+          <Button size="small" variant="ghost" onClick={() => setConfirming(false)} data-testid="confirm-cancel">
+            Cancel
+          </Button>
+          <span className={styles.barCount} />
+          <Button size="small" className={styles.danger} onClick={deletePicked} data-testid="confirm-delete">
+            Delete {picked.length} wallpapers
+          </Button>
+        </div>
+      ) : null}
+
+      {selecting && !exportOpen && !confirming ? (
         <div className={styles.bar} data-testid="selection-bar">
           <Button size="small" variant="ghost" onClick={endSelect} data-testid="select-done">
             Done
           </Button>
-          <span className={styles.barCount}>{picked.length === 0 ? 'None selected' : `${picked.length} selected`}</span>
-          <Button size="small" variant="ghost" disabled={picked.length === 0} onClick={deletePicked} data-testid="delete-selected">
+          {/* One slot doing both jobs. At zero it offers the only thing worth
+              offering; with a selection it says what you have and clears it. */}
+          <button
+            type="button"
+            className={styles.barCount}
+            onClick={() => setPicked(picked.length === 0 ? list.map((i) => i.id) : [])}
+            data-testid="select-toggle-all"
+          >
+            {picked.length === 0 ? 'Select all' : `${picked.length} selected`}
+          </button>
+          <Button size="small" variant="ghost" disabled={picked.length === 0} onClick={askDelete} data-testid="delete-selected">
             Delete
           </Button>
           <Button
