@@ -26,7 +26,7 @@ const OFFSETS: Record<HarmonyScheme, number[]> = {
  * lightness and chroma: the result stays distinguishable in greyscale, which is
  * roughly what a wallpaper looks like once iOS dims it behind the app grid.
  */
-export function harmonyAccents(seedHex: string, scheme: HarmonyScheme, mode: 'light' | 'dark'): string[] {
+function harmonyAccents(seedHex: string, scheme: HarmonyScheme, mode: 'light' | 'dark'): string[] {
   const base = hexToOklch(seedHex);
   const offsets = OFFSETS[scheme];
   const lSteps = mode === 'dark' ? [0, 0.1, -0.09] : [0, -0.11, 0.09];

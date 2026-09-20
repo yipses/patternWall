@@ -48,14 +48,30 @@ test.describe('browser and Node render identically', () => {
     });
   }
 
+  /*
+   * Every param kind, at a value that is not its default.
+   *
+   * The `boolean` and `image` branches below are unreachable today and are not
+   * dead code: both boolean params and the only image param live in `retired`,
+   * and nothing registered declares either. They stay because the fallthrough
+   * reads `spec.options`, so the first registered generator to declare one
+   * would not fail this test, it would crash it somewhere unhelpful.
+   *
+   * What they cannot do is make the claim they look like they make. The
+   * browser side of this comparison goes through `RenderBridge`, which calls
+   * `getGenerator`, which deliberately does not search `retired` — a pattern
+   * that is not in the app must not resolve from anywhere. So browser-vs-Node
+   * parity for the image param is **not** covered here, only in the core
+   * suite, which sweeps `ALL_GENERATORS` in Node alone. Reaching it would mean
+   * giving the bridge a way to resolve a retired id, which is the invariant
+   * this repo would rather keep.
+   */
   test('non-default parameters also match', async ({ page }) => {
     for (const g of generators) {
       const params = { ...defaultParams(g) } as Record<string, number | string | boolean>;
       for (const spec of g.params) {
         if (spec.type === 'number') params[spec.key] = Number(((spec.min + spec.max) / 2).toFixed(2));
         else if (spec.type === 'boolean') params[spec.key] = !spec.default;
-        // A picture, not the empty default: the byte-for-byte claim has to cover
-        // the one parameter that carries ten thousand characters of payload.
         else if (spec.type === 'image') params[spec.key] = sampleGrid();
         else params[spec.key] = spec.options[spec.options.length - 1]!.value;
       }

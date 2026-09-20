@@ -3,15 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import JSZip from 'jszip';
 import { Button, Notice, Progress } from './ui';
-import { ExportSettingsFields, useExportSettings } from './ExportSettings';
+import { DeviceList, ExportSettingsFields, useExportSettings } from './ExportSettings';
 import { PatternImage } from './PatternImage';
 import { DEVICE_PRESETS } from '../lib/devices';
 import { downloadBlob, formatBytes, safeFilename } from '../lib/export-png';
 import { deliverWallpapers, exportableItems, renderCollection, type RenderedWallpaper } from '../lib/export-collection';
+import { useSheetDrag } from '../lib/use-sheet-drag';
 import type { CollectedItem } from '../lib/storage';
 import styles from './ExportSheet.module.css';
 
-type Stage = 'summary' | 'settings' | 'running' | 'done';
+type Stage = 'summary' | 'settings' | 'devices' | 'running' | 'done';
 
 /** What became of the files, in the words the app is entitled to use. */
 type Outcome = 'shared' | 'dismissed' | 'downloaded' | 'zipped' | 'cancelled' | 'failed';
@@ -40,7 +41,6 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
   const [error, setError] = useState<string | null>(null);
   const [rendered, setRendered] = useState<RenderedWallpaper[] | null>(null);
   const cancelRef = useRef(false);
-  const sheetRef = useRef<HTMLDivElement | null>(null);
 
   const drawable = exportableItems(items);
   const total = drawable.length;
@@ -64,6 +64,10 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
     cancelRef.current = true;
     onCloseRef.current();
   }, []);
+
+  // Dragging it away is a cancel, mid-render included. A render is seconds and
+  // re-runnable; a modal that traps you while a bar moves is the worse failure.
+  const { sheetRef, gripProps, sheetStyle } = useSheetDrag(dismiss);
 
   /**
    * A dialog that behaves like one.
@@ -99,7 +103,7 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [dismiss]);
+  }, [dismiss, sheetRef]);
 
   const zipUp = async (files: RenderedWallpaper[]): Promise<void> => {
     const zip = new JSZip();
@@ -171,13 +175,22 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
         data-testid="export-sheet"
         ref={sheetRef}
         tabIndex={-1}
+        style={sheetStyle}
       >
-        {/* No grabber. It was 36x4px of decoration promising a drag this sheet
-            does not implement, and a rounded top edge over a scrim says the
-            same thing without promising anything. */}
-        <div className={styles.head}>
+        {/* The grip, and the grabber is drawn again because there is now
+            something behind it. It was deleted when the drag was not
+            implemented -- a glyph that means drag is either wired up or not
+            drawn -- and the header is part of the grip so the whole top of the
+            sheet pulls, not just four pixels of bar. */}
+        <div className={styles.grip} {...gripProps} data-testid="export-grip">
+          <span className={styles.grabber} aria-hidden="true" />
+          <div className={styles.head}>
           <span className={styles.slot}>
-            {stage === 'settings' ? (
+            {stage === 'devices' ? (
+              <Button size="small" variant="ghost" onClick={() => setStage('settings')} data-testid="export-back-devices">
+                ‹ Size &amp; Format
+              </Button>
+            ) : stage === 'settings' ? (
               <Button size="small" variant="ghost" onClick={() => setStage('summary')} data-testid="export-back">
                 ‹ Export
               </Button>
@@ -190,7 +203,9 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
 
           {/* One title for summary, running and done: it is the same task
               throughout, and a title that changes under the finger flickers. */}
-          <span className={styles.headTitle}>{stage === 'settings' ? 'Size & Format' : 'Export'}</span>
+          <span className={styles.headTitle}>
+            {stage === 'devices' ? 'Device' : stage === 'settings' ? 'Size & Format' : 'Export'}
+          </span>
 
           <span className={`${styles.slot} ${styles.slotEnd}`}>
             {stage === 'done' ? (
@@ -198,12 +213,32 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
                 Done
               </Button>
             ) : null}
-          </span>
+            </span>
+          </div>
         </div>
+
+        {stage === 'devices' ? (
+          <div className={styles.body}>
+            <DeviceList settings={s} onPick={() => setStage('settings')} />
+          </div>
+        ) : null}
 
         {stage === 'settings' ? (
           <div className={styles.body}>
-            <ExportSettingsFields settings={s} onDetectFailed={setError} only="size" />
+            {/* A row that pushes, not a select that opens a wheel picker over
+                a sheet over a scrim. */}
+            <button type="button" className={styles.summary} onClick={() => setStage('devices')} data-testid="export-device">
+              <span className={styles.summaryText}>
+                <span className={styles.summaryTop}>{deviceName}</span>
+                <span className={styles.summarySub}>
+                  {s.base.width} × {s.base.height}
+                </span>
+              </span>
+              <span className={styles.chev} aria-hidden="true">
+                ›
+              </span>
+            </button>
+            <ExportSettingsFields settings={s} onDetectFailed={setError} only="custom" />
             <Button
               size="small"
               variant="ghost"
@@ -236,11 +271,10 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
             </button>
 
             {outcomeLine ? <p className={styles.outcome}>{outcomeLine}</p> : null}
-            {error ? (
-              <Notice level="error" onDismiss={() => setError(null)}>
-                {error}
-              </Notice>
-            ) : null}
+            {/* No dismiss of its own -- one surface, one dismiss target. It
+                clears when the next export starts, which is the only thing
+                that can change the answer. */}
+            {error ? <Notice level="error">{error}</Notice> : null}
 
             <Button variant="primary" className={styles.go} onClick={() => void run()} data-testid="export-run">
               Export {total}

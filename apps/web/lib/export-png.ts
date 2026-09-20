@@ -22,7 +22,7 @@ export interface EncodeOptions {
   colors: number;
 }
 
-export async function svgToImageData(svg: string, width: number, height: number): Promise<ImageData> {
+async function svgToImageData(svg: string, width: number, height: number): Promise<ImageData> {
   const url = svgToDataUrl(svg);
   const img = new Image();
   img.width = width;
@@ -44,7 +44,7 @@ export async function svgToImageData(svg: string, width: number, height: number)
   return ctx.getImageData(0, 0, width, height);
 }
 
-export function encodePng(data: ImageData, options: EncodeOptions): Blob {
+function encodePng(data: ImageData, options: EncodeOptions): Blob {
   const cnum = options.depth === 'png24' ? 0 : Math.max(2, Math.min(256, Math.round(options.colors)));
   const buffer = UPNG.encode([data.data.buffer as ArrayBuffer], data.width, data.height, cnum);
   return new Blob([buffer], { type: 'image/png' });

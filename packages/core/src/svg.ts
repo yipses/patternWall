@@ -32,7 +32,7 @@ export const ALLOWED_ELEMENTS: readonly string[] = [
 ];
 
 /** Attributes that would drag in CSS, scripting or an external resource. */
-export const FORBIDDEN_ATTRIBUTES: readonly string[] = ['style', 'class', 'filter', 'requiredExtensions', 'systemLanguage'];
+const FORBIDDEN_ATTRIBUTES: readonly string[] = ['style', 'class', 'filter', 'requiredExtensions', 'systemLanguage'];
 
 export interface VocabularyViolation {
   kind: 'element' | 'attribute' | 'text';

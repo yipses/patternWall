@@ -37,7 +37,7 @@ import type { RenderRequest, RenderResponse } from './render.worker';
  */
 
 /** The reason a request rejects when a newer one on its channel replaced it. */
-export const SUPERSEDED = 'render superseded';
+const SUPERSEDED = 'render superseded';
 
 /** True for the rejection of a request that was replaced rather than failed. */
 export function isSuperseded(err: unknown): boolean {

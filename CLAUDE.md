@@ -1472,6 +1472,60 @@ which is the order that catches a single-pass implementation.
 
 ## Conventions
 
+## How a surface is left
+
+Eight rules, from the UX review that settled the collection and the export
+sheet. They are stated here rather than rediscovered per screen, because the
+recurring failure is reasoning outward from this app instead of inward from the
+conventions, and every one of these was arrived at by getting it wrong first.
+
+**R1. Two surfaces, two exits.** A *screen* has its own route and its own
+history entry, so leaving it is navigation: a back chevron, top left. A
+*sheet or panel* is a mode with no history entry, so leaving it is a word, top
+right. `/m/collected` is a screen; the gear, the droplet and the export sheet
+are not.
+
+**R2. Left is retreat, right is commit, and they do not swap within a stage.**
+A screen's retreat is navigation and goes left. A sheet's retreat *is* its
+completion, so it goes right and reads Done — unless the sheet **stages** an
+action, in which case retreat means discard, moves left and reads Cancel, and
+the commit becomes a full-width button at the bottom. That is the whole reason
+the export sheet and the gear look different: one stages and one edits live.
+The export sheet's escape crosses to the right at its last stage, because once
+the files exist there is nothing left to discard.
+
+**R3. The bottom-right rail is for entering things, never for leaving them.**
+Book, heart, droplet, dice, gear, the collection's tick — all openers. The
+moment a rail button would mean close, back or done, it belongs in a header.
+This is the rule the corner close broke, and it covers every surface not yet
+built.
+
+**R4. Every mode is dismissible three ways**: the word in the header, a
+downward drag, and the scrim. The button is the discoverable and
+keyboard-reachable path and is never the only one. Escape counts as the
+keyboard's version of the word.
+
+**R5. One primary action per surface** — full width, at the bottom, above the
+safe-area inset, carrying its count, morphing through its own states rather
+than being replaced by a different layout.
+
+**R6. One dismiss target per surface.** No `×` inside a sheet that already has
+an escape. A message that needs dismissing on its own is a toast and belongs
+outside. (The palette's warnings keep theirs: dismissing one is a decision
+about that warning which persists, not a second way to close the sheet. Where
+this rule and that distinction disagree, say which you are applying.)
+
+**R7. No decorative affordances.** A grabber means drag, a chevron means push,
+an `×` means close. If the behaviour is not implemented, the glyph is not
+drawn — and the corollary is that implementing the behaviour is what earns the
+glyph back.
+
+**R8. Copy names what actually happened.** "Exported", not "Saved to Photos",
+unless the platform said so. `navigator.share` resolving means the files were
+handed over; an `AbortError` means they were not.
+
+---
+
 **Put any screen design past a UX specialist agent before building it.** Not
 after, and not only when it feels uncertain. This was asked for after the
 collection screen went three rounds — the layout had to be rebuilt, the way out

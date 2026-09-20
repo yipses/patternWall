@@ -110,6 +110,77 @@ export function useExportSettings(): ExportSettingsController {
   };
 }
 
+/**
+ * The device list, as a pushed level rather than a `<select>`.
+ *
+ * A native select on iOS opens a wheel picker: a sheet, over a sheet, over a
+ * scrim, for the one choice on this screen that matters. A list of rows with a
+ * tick is the pattern every Settings app uses, and it has room to print the
+ * pixel size beside each name, which the select could only do by running the
+ * two together in a line nobody can scan.
+ *
+ * The desktop panel keeps the select. It is a mouse and a dropdown, and the
+ * three layers this avoids do not exist there.
+ */
+export function DeviceList({
+  settings: s,
+  onPick,
+}: {
+  settings: ExportSettingsController;
+  onPick: () => void;
+}) {
+  const grouped = useMemo(() => {
+    const groups = new Map<string, typeof DEVICE_PRESETS>();
+    for (const d of DEVICE_PRESETS) groups.set(d.group, [...(groups.get(d.group) ?? []), d]);
+    return [...groups.entries()];
+  }, []);
+
+  const row = (key: string, label: string, detail: string, picked: boolean, onClick: () => void) => (
+    <li key={key}>
+      <button
+        type="button"
+        className={styles.deviceRow}
+        role="radio"
+        aria-checked={picked}
+        onClick={() => {
+          onClick();
+          onPick();
+        }}
+      >
+        <span className={styles.deviceName}>{label}</span>
+        <span className={styles.deviceSize}>{detail}</span>
+        <span className={styles.deviceTick} aria-hidden="true">
+          {picked ? '✓' : ''}
+        </span>
+      </button>
+    </li>
+  );
+
+  return (
+    <div className={styles.devices} role="radiogroup" aria-label="Device">
+      {grouped.map(([group, items]) => (
+        <div key={group}>
+          <div className={styles.deviceGroup}>{group}</div>
+          <ul className={styles.deviceList}>
+            {items.map((d) =>
+              row(d.id, d.label, `${d.width} × ${d.height}`, !s.custom && s.presetId === d.id, () => {
+                s.setCustom(null);
+                s.setPresetId(d.id);
+              }),
+            )}
+          </ul>
+        </div>
+      ))}
+      <div className={styles.deviceGroup}>Anything else</div>
+      <ul className={styles.deviceList}>
+        {row('custom', 'Custom size', s.custom ? `${s.custom.width} × ${s.custom.height}` : 'Set it yourself', !!s.custom, () =>
+          s.setCustom({ width: s.base.width, height: s.base.height }),
+        )}
+      </ul>
+    </div>
+  );
+}
+
 export function ExportSettingsFields({
   settings: s,
   onDetectFailed,
@@ -126,7 +197,7 @@ export function ExportSettingsFields({
    * `'size'` is the device and its custom fields, `'rest'` is bleed, depth,
    * palette size and the Home Screen variant.
    */
-  only?: 'size' | 'rest';
+  only?: 'size' | 'rest' | 'custom';
 }) {
   const id = useId();
   const grouped = useMemo(() => {
@@ -137,7 +208,7 @@ export function ExportSettingsFields({
 
   return (
     <>
-      {only === 'rest' ? null : (
+      {only === 'rest' || only === 'custom' ? null : (
       <>
       <div className={ui.field}>
         <label className={ui.label} htmlFor={`${id}-device`}>
@@ -168,7 +239,11 @@ export function ExportSettingsFields({
         </select>
         <p className={ui.help}>Panel pixels, not points. Several phones share a panel, so one entry can cover two models.</p>
       </div>
+      </>
+      )}
 
+      {only === 'rest' ? null : (
+      <>
       {s.custom ? (
         <div className={styles.row}>
           <div className={ui.field}>

@@ -51,7 +51,6 @@ export {
 } from './geometry.js';
 export {
   ALLOWED_ELEMENTS,
-  FORBIDDEN_ATTRIBUTES,
   attrs,
   el,
   escapeText,

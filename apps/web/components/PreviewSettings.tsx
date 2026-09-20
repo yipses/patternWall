@@ -1,11 +1,13 @@
 'use client';
 
+import { useCallback, useEffect } from 'react';
 import { GRID_SIZE, effectiveSpec, secondaryParams, type Generator, type Palette, type ParamValue } from '@patternwall/core';
 import Link from 'next/link';
 import { uiStyles as ui } from './ui';
 import { PalettePanel } from './PalettePanel';
 import { Control } from './ParamControls';
 import { BuildStamp } from './BuildStamp';
+import { useSheetDrag } from '../lib/use-sheet-drag';
 import styles from './PreviewSettings.module.css';
 
 /**
@@ -71,6 +73,42 @@ export function PreviewSettings({
 }) {
   const rest = secondaryParams(generator);
   const toggle = (sheet: Exclude<Sheet, null>) => () => onOpen(open === sheet ? null : sheet);
+
+  /**
+   * These two edit the picture live, so there is nothing staged to discard and
+   * their escape *is* their completion: a word, top right, reading Done. The
+   * export sheet stages an action instead, which is why its escape is Cancel
+   * on the left with the commit at the bottom — different layouts because they
+   * are different objects, not because they drifted.
+   *
+   * Three ways out of each, the same three everywhere: the word, a downward
+   * drag on the grip, and the scrim.
+   */
+  const close = useCallback(() => onOpen(null), [onOpen]);
+  const drag = useSheetDrag(close);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      close();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, close]);
+
+  const grip = (label: string) => (
+    <div className={styles.grip} {...drag.gripProps} data-testid={`preview-${label}-grip`}>
+      <span className={styles.grabber} aria-hidden="true" />
+      <div className={styles.head}>
+        <span className={styles.headTitle}>{label === 'palette' ? 'Palette' : 'Settings'}</span>
+        <button type="button" className={`${ui.btn} ${ui.small}`} data-testid={`preview-${label}-done`} onClick={close}>
+          Done
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -194,7 +232,14 @@ export function PreviewSettings({
       ) : null}
 
       {open === 'settings' ? (
-        <div className={styles.sheet} role="group" aria-label={`${generator.name} settings`}>
+        <div
+          className={styles.sheet}
+          role="group"
+          aria-label={`${generator.name} settings`}
+          ref={drag.sheetRef}
+          style={drag.sheetStyle}
+        >
+          {grip('settings')}
           <div className={styles.rows}>
             {rest.map((declared) => {
               const spec = effectiveSpec(generator, declared, params);
@@ -220,16 +265,20 @@ export function PreviewSettings({
           same state behind both — colour is the one choice you judge entirely
           by looking at the preview, so it has to be reachable from there. */}
       {open === 'palette' ? (
-        <div className={`${styles.sheet} ${styles.tall}`} role="group" aria-label="Palette">
+        <div
+          className={`${styles.sheet} ${styles.tall}`}
+          role="group"
+          aria-label="Palette"
+          ref={drag.sheetRef}
+          style={drag.sheetStyle}
+        >
+          {/* Done was a full-width button at the foot of this sheet. That is
+              the shape a *staged* sheet's commit takes, and this one commits
+              nothing — the palette is already applied behind it — so the word
+              belongs in the header where a completion goes, and the bottom of
+              the sheet goes back to being content. */}
+          {grip('palette')}
           <PalettePanel palette={palette} onChange={onPalette} />
-          {/* The rail is hidden while this is up, so the sheet can have the
-              whole width — a palette library in a 177px column clips its own
-              tab strip. That leaves nothing to press but the sliver of scrim
-              around the edge, which is not an affordance. Hence a real way
-              out, at the bottom where a thumb already is. */}
-          <button type="button" className={`${ui.btn} ${styles.done}`} data-testid="preview-palette-done" onClick={() => onOpen(null)}>
-            Done
-          </button>
         </div>
       ) : null}
     </>

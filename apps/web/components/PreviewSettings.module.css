@@ -90,12 +90,45 @@
 /* Sticky rather than absolute: the sheet is the scroll container, so an
    absolutely positioned button scrolls away with the content it is sitting
    over and the palette library runs underneath it. */
-.done {
+/* The whole top of a sheet pulls it down. The word in the header is the
+   discoverable way out and the drag is the fast one; neither is the only one,
+   because the scrim is the third. */
+.grip {
   position: sticky;
-  bottom: -10px;
-  width: 100%;
-  margin-top: 12px;
+  top: -14px;
+  /* A press on the header text was starting a native text drag, which
+     cancelled the pointer and killed the gesture. */
+  -webkit-user-select: none;
+  user-select: none;
+  z-index: 2;
+  margin: -14px -14px 6px;
+  padding: 0 14px;
   background: rgba(10, 10, 11, 0.97);
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  touch-action: none;
+  cursor: grab;
+}
+
+.grabber {
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: 8px auto 2px;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 40px;
+}
+
+.headTitle {
+  font-family: var(--font-serif);
+  font-size: 15px;
 }
 
 /* A button holding a state rather than opening something: the heart, once

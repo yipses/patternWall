@@ -81,7 +81,12 @@ test.describe('the collection', () => {
     await expect(page.getByTestId('export-summary')).toBeVisible();
 
     await page.getByTestId('export-summary').click();
-    await expect(page.getByLabel('Device')).toBeVisible();
+    // The device is a row that pushes a list, not a select that opens a wheel
+    // picker over a sheet over a scrim.
+    await expect(page.getByTestId('export-device')).toBeVisible();
+    await page.getByTestId('export-device').click();
+    await expect(page.getByRole('radiogroup', { name: 'Device' })).toBeVisible();
+    await page.getByTestId('export-back-devices').click();
     await page.getByTestId('export-back').click();
     await expect(page.getByTestId('export-run')).toBeVisible();
   });
@@ -187,7 +192,8 @@ test.describe('the collection', () => {
 
     // Small, so the suite stays quick.
     await page.getByTestId('export-summary').click();
-    await page.getByLabel('Device').selectOption('custom');
+    await page.getByTestId('export-device').click();
+    await page.getByRole('radio', { name: /Custom size/ }).click();
     await page.getByLabel('Width').fill('120');
     await page.getByLabel('Height').fill('260');
     await page.getByTestId('export-back').click();
@@ -224,7 +230,8 @@ test.describe('the collection', () => {
     await tile(page, 'alpha').click();
     await page.getByTestId('export-selected').click();
     await page.getByTestId('export-summary').click();
-    await page.getByLabel('Device').selectOption('custom');
+    await page.getByTestId('export-device').click();
+    await page.getByRole('radio', { name: /Custom size/ }).click();
     await page.getByLabel('Width').fill('120');
     await page.getByLabel('Height').fill('260');
     await page.getByTestId('export-back').click();
@@ -234,6 +241,41 @@ test.describe('the collection', () => {
     await expect(page.getByText('wallpaper exported')).toHaveCount(0);
     // And the way on from there is to try again, not a dead end.
     await expect(page.getByTestId('export-share-again')).toBeVisible();
+  });
+
+  test('the export sheet can be dragged away, and a short pull snaps back', async ({ page }) => {
+    await page.goto('/m/collected');
+    await page.getByTestId('select-start').click();
+    await tile(page, 'alpha').click();
+    await page.getByTestId('export-selected').click();
+
+    const sheet = page.getByTestId('export-sheet');
+    const box = (await sheet.boundingBox())!;
+    const grip = (await page.getByTestId('export-grip').boundingBox())!;
+    const from = { x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 };
+
+    // A short pull is not a dismissal. Without this the test passes against a
+    // sheet that closes on any downward movement at all, which is the version
+    // nobody can settle a finger on.
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x, from.y + box.height * 0.1, { steps: 8 });
+    await page.mouse.up();
+    await expect(sheet).toBeVisible();
+
+    // Let the snap-back settle before pulling again, and re-measure: the sheet
+    // is mid-transition for 300ms and a press aimed at where the grip *was*
+    // lands on the body, which does not drag. That is what made the first
+    // version of this test fail against a mechanism that works.
+    await page.waitForTimeout(500);
+    const grip2 = (await page.getByTestId('export-grip').boundingBox())!;
+
+    // Past a quarter of its own height it goes.
+    await page.mouse.move(grip2.x + grip2.width / 2, grip2.y + grip2.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(grip2.x + grip2.width / 2, grip2.y + grip2.height / 2 + box.height * 0.6, { steps: 12 });
+    await page.mouse.up();
+    await expect(sheet).toHaveCount(0);
   });
 
   test('the export sheet is a dialog: escape leaves it, and so does the scrim', async ({ page }) => {
@@ -273,7 +315,8 @@ test.describe('the collection', () => {
     await tile(page, 'charlie').click();
     await page.getByTestId('export-selected').click();
     await page.getByTestId('export-summary').click();
-    await page.getByLabel('Device').selectOption('custom');
+    await page.getByTestId('export-device').click();
+    await page.getByRole('radio', { name: /Custom size/ }).click();
     await page.getByLabel('Width').fill('120');
     await page.getByLabel('Height').fill('260');
     await page.getByTestId('export-back').click();
@@ -388,7 +431,8 @@ test.describe('the collection', () => {
     await tile(page, 'alpha').click();
     await page.getByTestId('export-selected').click();
     await page.getByTestId('export-summary').click();
-    await page.getByLabel('Device').selectOption('custom');
+    await page.getByTestId('export-device').click();
+    await page.getByRole('radio', { name: /Custom size/ }).click();
     await page.getByLabel('Width').fill('120');
     await page.getByLabel('Height').fill('260');
     await page.getByTestId('export-back').click();

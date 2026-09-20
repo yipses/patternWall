@@ -86,3 +86,67 @@
   padding-top: 18px;
   border-top: 1px solid var(--line, #26262a);
 }
+
+/* The device list, as a pushed level rather than a wheel picker. */
+.devices {
+  margin: 0 0 6px;
+}
+
+.deviceGroup {
+  margin: 12px 0 4px;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.deviceList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.deviceRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.deviceList li:first-child .deviceRow {
+  border-top: 0;
+}
+
+.deviceRow[aria-checked='true'] {
+  color: var(--accent);
+}
+
+.deviceName {
+  flex: 1;
+  min-width: 0;
+}
+
+.deviceSize {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.deviceTick {
+  width: 14px;
+  text-align: right;
+  color: var(--accent);
+}
