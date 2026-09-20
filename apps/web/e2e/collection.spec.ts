@@ -236,6 +236,60 @@ test.describe('the collection', () => {
     expect(await page.evaluate(() => (window as unknown as { __shared?: number }).__shared)).toBeUndefined();
   });
 
+  test('a big collection does not draw what is off screen, and does not block the page', async ({ page }) => {
+    // Contours is the expensive one: 28.3ms a tile at the size the grid uses,
+    // measured against `dist`. Sixty of them rendered inline in one commit
+    // blocked the main thread for 2,469ms; drawn in the worker, on demand, the
+    // longest block is 0. Two hundred is the cap `loadCollected` allows.
+    const palette = PALETTE;
+    await page.addInitScript((p) => {
+      const many = [];
+      for (let i = 0; i < 60; i++) {
+        many.push({ id: `i${i}`, generatorId: 'contours', seed: `s${i}`, params: {}, savedAt: Date.now() - i, palette: p });
+      }
+      window.localStorage.setItem('patternwall.collected.v1', JSON.stringify(many));
+    }, palette);
+
+    await page.goto('/m/collected');
+    const worst = await page.evaluate(
+      () =>
+        new Promise<number>((res) => {
+          let w = 0;
+          const obs = new PerformanceObserver((l) => {
+            for (const e of l.getEntries()) w = Math.max(w, e.duration);
+          });
+          try {
+            obs.observe({ entryTypes: ['longtask'] });
+          } catch {
+            /* not every engine reports these; the structural half below still holds */
+          }
+          setTimeout(() => {
+            obs.disconnect();
+            res(w);
+          }, 3500);
+        }),
+    );
+    // Bound taken from three measurements rather than from what sounds
+    // reasonable, and it has to separate all three: 2,469ms with neither the
+    // lazy gate nor the worker, 806ms with the gate but rendering inline, 0ms
+    // as it ships. A looser bound passed against the middle case, which is
+    // half the fix silently removed.
+    expect(worst).toBeLessThan(300);
+
+    // And the structural half, which does not depend on a timer: most of the
+    // grid has not been drawn at all.
+    const drawn = await page.locator('img[src^="data:image/svg"]').count();
+    expect(drawn).toBeGreaterThan(0);
+    expect(drawn).toBeLessThan(40);
+
+    // Scrolling draws more. Without this the first assertion passes against a
+    // grid that never draws anything.
+    await page.mouse.wheel(0, 3000);
+    await expect
+      .poll(async () => page.locator('img[src^="data:image/svg"]').count(), { timeout: 20_000 })
+      .toBeGreaterThan(drawn);
+  });
+
   test('a delete that cannot be stored says so instead of pretending', async ({ page }) => {
     // Private mode and a full quota both land here. Without this the delete
     // looked like it worked, the items came back on the next load, and the undo
@@ -381,6 +435,12 @@ test.describe('the collection', () => {
       // this catches a render at the wrong shape and not a render that happens
       // to be a phone of almost exactly this shape. It is a guard against
       // regression, not evidence the spec follows the device.
+      // Wait for it to be decoded. Tiles are drawn in the worker now, so
+      // `naturalHeight` is 0 until the picture arrives and the ratio reads NaN
+      // -- which is how this surfaced. The box assertion above comes from CSS
+      // and was unaffected, so the test half-passed.
+      await expect(img).toHaveAttribute('src', /^data:image\/svg/);
+      await img.evaluate((el: HTMLImageElement) => (el.complete ? undefined : el.decode()));
       const spec = await img.evaluate((el: HTMLImageElement) => el.naturalHeight / el.naturalWidth);
       expect(Math.abs(spec - want)).toBeLessThan(0.03);
     });

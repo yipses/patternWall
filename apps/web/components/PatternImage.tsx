@@ -44,6 +44,7 @@ export function PatternImage({
   onRenderError,
   channel,
   draggable,
+  deferred = false,
 }: {
   spec: RenderSpec;
   alt: string;
@@ -64,6 +65,24 @@ export function PatternImage({
    * channel between two pictures means one of them never gets drawn.
    */
   channel?: string;
+  /**
+   * Skip the inline first render and go straight to the worker.
+   *
+   * The inline path below exists so the client's opening `src` matches the data
+   * URL the static export baked into the HTML. That argument holds wherever the
+   * picture is prerendered and is simply false on a page whose pictures are
+   * read from localStorage after mount -- checked in the built export, the two
+   * collection routes carry no baked `data:image/svg` at all, while `/` has
+   * four and `/m` one.
+   *
+   * There it is not a neutral cost. Every tile renders synchronously in one
+   * commit on the main thread, and a contours tile at the size the grid uses
+   * measures 28.3ms against `dist` -- so two hundred of them is about six
+   * seconds of frozen page on a laptop and rather worse on a phone, with no
+   * paint, no scroll and nothing to cancel. Deferred, the worker serialises
+   * them and the grid fills in while you are looking at it.
+   */
+  deferred?: boolean;
 }) {
   // Keyed on the spec's content rather than on `spec` itself. See specKey.
   const key = specKey(spec);
@@ -86,6 +105,7 @@ export function PatternImage({
    * and the initial render happens once.
    */
   const initial = useMemo(() => {
+    if (deferred) return { url: null as string | null, error: null as string | null };
     try {
       return { url: renderDataUrl(spec), error: null as string | null };
     } catch (err) {
@@ -113,7 +133,7 @@ export function PatternImage({
    * this is hardening rather than a fix, and it is worth having only because
    * tracking what was last drawn says what the guard means and costs the same.
    */
-  const renderedKey = useRef(key);
+  const renderedKey = useRef<string | null>(deferred ? null : key);
 
   useEffect(() => {
     if (key === renderedKey.current) return;

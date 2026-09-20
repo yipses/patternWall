@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { encodeConfig, getGenerator } from '@patternwall/core';
 import { BuildStamp } from './BuildStamp';
 import { PatternImage } from './PatternImage';
+import type { RenderSpec } from '../lib/render';
 import { CollectionExport } from './CollectionExport';
 import { ExportSheet } from './ExportSheet';
 import { Button, uiStyles as ui } from './ui';
@@ -31,8 +32,70 @@ const UNDO_MS = 5000;
  */
 const LONG_PRESS_MS = 450;
 
+/**
+ * How far outside the viewport a tile starts drawing.
+ *
+ * About two rows at phone width, so a scroll meets pictures rather than
+ * placeholders, and a collection you never scroll costs only what is on screen.
+ */
+const TILE_MARGIN = '600px 0px';
+
 /** A press that travels this far was a scroll. */
 const PRESS_SLOP = 10;
+
+/**
+ * A tile that does not draw until it is nearly on screen.
+ *
+ * Until then it is a rectangle of the wallpaper's own background colour, which
+ * is the right placeholder for free: the grid has its layout and its palette
+ * immediately, and the picture arrives into a box that was already the right
+ * shape and roughly the right colour.
+ *
+ * The observer is disconnected as soon as it fires -- a tile that has been seen
+ * stays drawn, because re-rendering it on scroll would cost more than keeping
+ * it. Where there is no `IntersectionObserver` it draws at once, which is the
+ * behaviour this replaces.
+ */
+function LazyTile({
+  spec,
+  className,
+  placeholderClassName,
+  background,
+}: {
+  spec: RenderSpec;
+  className: string | undefined;
+  placeholderClassName: string | undefined;
+  background: string;
+}) {
+  const [seen, setSeen] = useState(false);
+  const ref = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    if (seen) return;
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setSeen(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setSeen(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: TILE_MARGIN },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [seen]);
+
+  if (!seen) return <span ref={ref} className={placeholderClassName} style={{ background }} aria-hidden="true" />;
+  // `alt` is empty and `deferred` is on: the link around this carries the name,
+  // and the picture is drawn in the worker rather than inline. See PatternImage.
+  return <PatternImage spec={spec} alt="" className={className} draggable={false} deferred />;
+}
 
 /**
  * The collection, browsable on a phone.
@@ -260,11 +323,11 @@ export function Collected({ bare = false }: { bare?: boolean }) {
                 // returning null once left it counted by the export button and
                 // absent from the list.
                 const face = g ? (
-                  <PatternImage
+                  <LazyTile
                     spec={{ generatorId: g.id, seed: item.seed, params: item.params, palette: item.palette, width: thumbWidth, height: thumbHeight, bleed: 0 }}
-                    alt={selecting ? '' : label}
                     className={styles.thumb}
-                    draggable={false}
+                    placeholderClassName={styles.thumb}
+                    background={item.palette.background}
                   />
                 ) : (
                   <span className={styles.gone}>
@@ -300,6 +363,12 @@ export function Collected({ bare = false }: { bare?: boolean }) {
                       <Link
                         className={styles.tile}
                         href={href}
+                        // The name is on the link, not on the picture. A tile
+                        // that has not drawn yet has no `alt` to borrow one
+                        // from, and a link with no accessible name is both an
+                        // accessibility fault and unaddressable by every
+                        // locator in the suite.
+                        aria-label={label}
                         // An anchor is draggable by default, and a native drag
                         // fires `pointercancel`, which ends the press this is
                         // timing. Without it the hold never becomes a

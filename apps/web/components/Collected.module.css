@@ -156,6 +156,13 @@
   transition: transform 120ms ease;
 }
 
+/* A tile before it has drawn. Same box, painted in the wallpaper's own
+   background, so the grid has its layout and its colour before the worker
+   gets to it and the picture arrives into a space that already fitted. */
+.thumb:not(img) {
+  display: block;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .thumb,
   .gone {
