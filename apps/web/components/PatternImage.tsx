@@ -13,7 +13,7 @@ import { isSuperseded, renderDataUrl, renderDataUrlAsync } from '../lib/render-c
  * time, and since the editor re-renders on each keystroke and each pointermove
  * of a drag, the three related-pattern thumbnails were re-rendered from scratch
  * while you typed a seed they have nothing to do with. Measured over twelve
- * keystrokes: 13 long tasks totalling 905ms on /p/truchet, and the cost tracked
+ * keystrokes: 13 long tasks totalling 905ms on the truchet editor (then `/p/truchet`, a route the split retired), and the cost tracked
  * whether flow-dots happened to be in the related list rather than anything
  * being edited — it costs about 27ms at any size, so a 108px thumbnail is as
  * expensive as a full export.

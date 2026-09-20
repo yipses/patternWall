@@ -290,12 +290,11 @@ export function useScrub(options: {
         const heading = axis === 'x' ? lead : -lead;
         const at = quantise(bound.spec, read(bound.key));
 
-        // A gesture that *begins* by pushing further into the end it is
-        // already on comes round to the other one. Only at the lock, which is
-        // what keeps a drag a fader: reach an end mid-drag and it clamps, so
-        // settling beside one does not keep throwing the value across the
-        // range. Lifting and swiping the same way again is the second,
-        // deliberate statement, and that is the one that wraps.
+        // Where the value is as the axis is claimed. Only read at the lock,
+        // which is what keeps a drag a fader: reach an end mid-drag and it
+        // clamps, so settling beside one does not keep throwing the value
+        // across the range. Lifting and swiping the same way again is the
+        // second, deliberate statement.
         d.from = at;
         // A gesture that begins at an end, heading further into it, drives the
         // parameter backwards for the rest of the drag rather than wrapping to

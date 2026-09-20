@@ -29,7 +29,9 @@ Other scripts, all run from the repository root:
 | `npm run build` | Builds core, then a static Next.js export into `apps/web/out` |
 | `npm run test:e2e` | Builds, serves the export, and runs Playwright against it |
 | `npm run start` | Serves an existing build on port 3100 |
-| `npm run samples <dir>` | Rasterises sample PNGs of every generator, for looking at |
+| `npm run samples <dir>` | Rasterises sample PNGs of every registered generator, for looking at |
+| `npm run shots <dir>` | Drives a running site and screenshots nineteen views, desktop and phone |
+| `npm run check:stamp` | Asserts the built export carries one build stamp rather than two |
 
 The Playwright suite expects a Chromium binary at `/opt/pw-browsers/chromium`; override it with
 `PW_CHROMIUM=/path/to/chrome`.
@@ -38,7 +40,7 @@ The Playwright suite expects a Chromium binary at `/opt/pw-browsers/chromium`; o
 
 ## Deploying
 
-The build is a static export — 44 files, no server, no database, no API. `apps/web/out`
+The build is a static export — about sixty files, no server, no database, no API. `apps/web/out`
 can be dropped onto any static host as-is.
 
 GitHub Pages is wired up in `.github/workflows/pages.yml`. Enable it once under
@@ -73,6 +75,25 @@ over `http(s)://` — opening `out/index.html` from the filesystem will not work
 packages/core   @patternwall/core — pure, zero runtime dependencies, no DOM, no Node APIs
 apps/web        Next.js App Router, static export, CSS Modules
 ```
+
+### Two groups of routes
+
+| Route | What it is |
+| --- | --- |
+| `/` | The gallery |
+| `/p/<id>` | The editor: preview, parameters, palette, export |
+| `/collected` | Wallpapers you saved, as a captioned grid |
+| `/setup` | The Apple Shortcuts recipe |
+| `/m` | The phone view: the render fills the device's own screen, no chrome |
+| `/m/collected` | The collection as pictures and nothing else |
+
+The first four live under `app/(site)/`, which is where the header, the footer and the skip link
+are. The last two live outside it and have none of that: on those the render *is* the screen, and
+it is driven by swipe, tap and a rail of icon buttons in the corner rather than by a panel.
+
+They are not a second app. `/m` is `<Editor bare />` and `/m/collected` is `<Collected bare />` —
+one component each, two dressings — because a second copy would be a second set of gesture wiring
+to drift. The chrome moved into a route group so that could work.
 
 ### Generators are pure functions
 
@@ -152,9 +173,13 @@ both numbers — your panel size and the file size — and the bleed can be turn
 
 1. Create `packages/core/src/generators/<id>.ts` exporting a `Generator`.
 2. Import it in `packages/core/src/generators/index.ts` and add it to the `generators` array.
+3. Add its param keys, in order, to `ORDER` in `packages/core/test/param-order.test.ts`.
 
-That is the whole registration step. The gallery, the router's static params, the related-patterns
-list, the tag filter and every test read from that array.
+Step 2 is what the gallery, the router's static params, the related-patterns list and the tag
+filter read. Step 3 is not optional and the suite will tell you so: the share encoding is
+positional, every share test encodes and decodes inside one build so they agree with each other
+whatever the order is, and that snapshot is the only thing standing between reordering a param and
+silently breaking every link anybody has saved.
 
 What the contract asks of you:
 
@@ -167,17 +192,23 @@ What the contract asks of you:
   and a 1496px export. Never gate a decision on an absolute pixel threshold — the thumbnail and the
   export would then be different pictures, and if the decision touches `ctx.rng` it desynchronises
   everything after it. `packages/core/test/determinism.test.ts` enforces this.
+- **Nominate two scrubbed params.** `primary: { x, y }`, both numbers with more than one step. They
+  are what a drag across the preview moves, and `packages/core/test/controls.test.ts` requires them
+  of anything registered — a pattern whose preview does nothing when you drag it is
+  indistinguishable from a broken gesture.
 - **Compose portrait-first.** Tune for 9:19.5. Where the pattern's density is free to vary across
   the canvas, take a `quietTop` number param and apply
   `quietFactor(y, height, quietTop, ctx.safeZones)`. Where it is not — a uniform tiling, say — do
-  not fake it: a factor applied to a regular grid reads as a band, not as calm.
+  not fake it: a factor applied to a regular grid reads as a band, not as calm. Worth knowing before
+  you reach for it: every current caller of `quietFactor` is a retired generator, so nothing in the
+  app uses it. chevron-blocks holds its clock zone back structurally instead, with `skyline`.
 - **Stay inside the vocabulary,** and emit numbers through `num()` so output stays byte-stable.
 - **Write the `description`.** Three to five paragraphs of plain-language prose explaining how the
   algorithm works and why the parameters are the ones they are. It is rendered on the pattern page
   and it is a deliverable, not filler. Markdown, but only paragraphs, `**bold**` and `*italic*`.
 
-The existing tests will pick the new generator up automatically and hold it to determinism, the SVG
-vocabulary at default and extreme parameters, exact rasterised dimensions, byte-stable rasterisation,
+With those three steps done the existing tests pick the new generator up automatically and hold it
+to determinism, the SVG vocabulary at default and extreme parameters, exact rasterised dimensions, byte-stable rasterisation,
 a non-blank canvas on six palettes, share-link round-tripping, and browser/Node parity.
 
 ---
@@ -198,7 +229,11 @@ a non-blank canvas on six palettes, share-link round-tripping, and browser/Node 
 - **PNG export is still synchronous.** The export path renders and rasterises on the main thread;
   only the preview goes through the worker so far.
 - **Batch export is chunked, not parallel.** A collection of full-resolution renders takes a while; the work
-  yields a frame between each so the UI stays live, but it is one core doing one image at a time.
+  yields a frame between each so the UI stays live, but it is one core doing one image at a time —
+  deliberately, since holding a dozen phone-resolution canvases at once is enough to have the tab
+  killed. Where the files end up depends on the device: on a coarse-pointer one they go to
+  `navigator.share({ files })`, which on iOS offers "Save N Images" into Photos, and everywhere else
+  they download — a zip for several, the plain PNG for one, never a zip for one.
 - **PNG quantisation happens after rasterisation.** UPNG's quantiser is good but it works on pixels,
   not on the palette the generator actually used, so a very smooth gradient can band at low colour
   counts. The PNG-24 toggle exists for that case.
@@ -216,8 +251,9 @@ a non-blank canvas on six palettes, share-link round-tripping, and browser/Node 
 - **Four patterns in the app, four written and set aside.** `truchet-arcs`, `truchet-diagonals`,
   `chevron-blocks` and `contours` are the registry; `flow-dots`, `phyllotaxis`, `ridgelines` and
   `string-art` are in `retired` — no page, no gallery card, no slot in the tap cycle, but the code
-  and its tests are still here and still run. The taxonomy has eight tags and most of them now have
-  no pattern at all, which is a consequence of narrowing rather than a gap to fill.
+  and its tests are still here and still run. The taxonomy has eight tags and half of them now have
+  no pattern at all, which is a consequence of narrowing rather than a gap to fill; the gallery
+  only offers the ones in use.
 - **String art is one of the four set aside, and it carried its picture in the link.** That was a
   deliberate trade — the whole portrait travelling in a URL rather than living on a server — and it
   is the only pattern whose input is lossy before you see it: about 1,500 characters of URL at the

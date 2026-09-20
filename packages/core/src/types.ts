@@ -190,7 +190,8 @@ export function coerceParams(g: Generator, input: Record<string, unknown> | unde
       // Every other branch leaves the declared default alone when it cannot
       // read the value; this one used to coerce instead, so anything it did
       // not recognise became `false` -- the opposite of a default of `true`,
-      // which is what both boolean params in the registry declare. Recognise
+      // which is what both boolean params declare -- both of which are in
+      // `retired` today rather than in the registry. Recognise
       // both sets and fall back on anything else, like the rest of them.
       if (raw === true || raw === 'true' || raw === 1 || raw === '1') out[spec.key] = true;
       else if (raw === false || raw === 'false' || raw === 0 || raw === '0') out[spec.key] = false;

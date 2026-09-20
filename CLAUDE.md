@@ -213,6 +213,12 @@ this across many generators later is miserable.
 in the middle silently reinterprets every existing link. Old links with fewer
 values decode correctly and surface a note.
 
+`param-order.test.ts` is the guard, and it exists because nothing else could be:
+every share test encodes and decodes inside one build, so they agree with each
+other whatever the order is, and **moving a param into the middle of any
+generator's list passed the entire suite**. It pins every key of every
+generator, retired included.
+
 Removing one is the same problem in reverse: everything after it shifts, so old
 links misread from that slot on. Removing `mixed` from a select was safe, since
 dropping the *last* option only makes a stale index fall back to the default;
@@ -282,9 +288,15 @@ apparently-successful deploys.
 
 Note the limit of that confirmation: a green run means GitHub accepted the
 deployment, not that the served page changed. The footer build stamp
-(`SiteFooter.tsx`, baked in by `next.config.mjs`) exists precisely to close
-that gap — it shows the build time in the reader's timezone plus the short
-commit, so the page can answer "am I current?" itself.
+(`BuildStamp.tsx`, baked in by `next.config.mjs`) exists precisely to close
+that gap — it shows the build time plus the short commit, so the page can answer
+"am I current?" itself. It renders UTC during the prerender and the first client
+render and upgrades to the reader's timezone in an effect, which is not a detail:
+formatting in local time during render produces different markup on the build
+machine than in the browser, and that is the hydration bug this paragraph is
+about. `SiteFooter` mounts it on every page of the site; `/m` prints it in the
+settings sheet and `/m/collected` at the foot of the grid, because neither of
+those has a footer.
 
 Debugging what is actually served: `curl -sSI` a file that only the new build
 produces. `age: 0` with `x-cache: MISS` proves the response came from origin
@@ -305,8 +317,9 @@ Portrait-first and composition-aware: tune for 9:19.5 rather than scaling a
 landscape design, keep the clock zone quiet, and push detail and contrast into
 the lower ~40% where iOS does not cover it.
 
-Look at the output. `npm run samples <dir>` rasterises every generator; open the
-PNGs. A generator that renders muddy or empty at some palettes is not done.
+Look at the output. `npm run samples <dir>` rasterises every *registered*
+generator — name ids on the command line for the retired four — and writes PNGs;
+open them. A generator that renders muddy or empty at some palettes is not done.
 
 ---
 
@@ -433,9 +446,11 @@ story. A tiling is uniform by construction, so any factor keyed on height draws
 a horizontal band across a regular grid — a wider feather makes the band softer,
 not absent. The parameter survived three rounds of tuning because each round
 improved the arithmetic; it did not survive the question of whether the
-mechanism could produce the result. `quietFactor` stays, and the other three
-generators still use it: their density genuinely varies across the canvas, so
-thinning the top reads as composition rather than as a stripe.
+mechanism could produce the result. `quietFactor` stays, and its callers are
+flow-dots, phyllotaxis and ridgelines: their density genuinely varies across the
+canvas, so thinning the top reads as composition rather than as a stripe. All
+three are in `retired`, though, so **no pattern in the app uses it today** —
+true of the code and easy to read as more than it is.
 
 The trap either side of that was measurement. A per-row brightness profile of a
 tiling is dominated by the tiling's own periodic stripes, so its worst row-to-row
@@ -599,6 +614,11 @@ The reusable part: when one kind of mark gets a fix about how big an area is pai
 
 **A control can mean a different amount in different modes, and one range cannot serve both.** Truchet's divisions draw n concentric rings on quarter arcs, where twelve is the point of raising it, and 2n-1 parallel chords on diagonals, where twelve is twenty-three lines through one cell and the tiling reads as grey. The same slider, the same number, two unrelated amounts of ink.
 
+> *The tile-set select this entry was written about is gone: arcs and diagonals
+> are two registry entries and nothing declares `limits` any more. The machinery
+> survives and its tests do too — see "Truchet, as settled" — so the lesson is
+> for the next mode switch rather than a description of anything shipping.*
+
 `Generator.limits` states a ceiling that depends on another param's value, and it is on the generator rather than on the spec for the reason string art's picture-and-detail lookup gives: a spec describes itself, and one parameter's range depending on another's is a fact about the pattern they both belong to.
 
 Two things about it are easy to get wrong, and both were tested by breaking them:
@@ -611,7 +631,7 @@ The cost, stated rather than discovered: a link that asked for twelve divisions 
 
 **A dead control is survivable until you bind it to a gesture.** `weight` did nothing at all on truchet's triangles for as long as the generator existed. They are filled and it sets a stroke width, so there was nothing for it to apply itself to — and rather than being treated as a bug it was written down twice as a known limitation, in this file and in the parameter's own description. That is what made it last: a slider that is inert on one of three settings is easy to look past, and documenting it felt like honesty rather than deferral.
 
-What ended it was promoting the three primaries. `weight` is truchet's horizontal drag now, so a dead control became a dead *gesture* — a third of the way a person drives the pattern doing nothing on a third of its tile sets — and it was reported within the week. The general form: promoting a control raises the cost of every compromise already in it, so the moment you decide which three carry a pattern, re-examine what those three actually do at every setting of the others. The file's own rule says a control that is inert in some mode is a smell; this is the one it was written about, left standing.
+What ended it was promoting the primaries. `weight` was truchet's horizontal drag at the time, so a dead control became a dead *gesture* — a third of the way a person drives the pattern doing nothing on a third of its tile sets — and it was reported within the week. It is not the horizontal drag any more: `density` took the slot once `weight`'s range turned out to be eaten by the division count, which the entry below records, and there are two scrubbed primaries rather than three because tap belongs to the registry. The general form: promoting a control raises the cost of every compromise already in it, so the moment you decide which three carry a pattern, re-examine what those three actually do at every setting of the others. The file's own rule says a control that is inert in some mode is a smell; this is the one it was written about, left standing.
 
 The fix is worth recording too, because the obvious reading was wrong. "Make the mark thinner" for a filled triangle means the band fills less of its pitch — but only if it is anchored at its corner-side edge. Centre it on itself instead and an undivided tile stops being a triangle and becomes a strip across the middle of the cell, joined to none of its neighbours, and the two are the *same expression* at full fill so nothing but a test about corner counts can tell them apart.
 
@@ -814,14 +834,21 @@ see mid-drag wrapping. It can; the injected bug was not the bug. When a bug
 injection fails to fail, check that you injected the thing you meant before
 concluding anything about the test.
 
-> **The triangles are gone.** Everything from here to the end of the diamond
-> entries is about a truchet tile set that was removed when arcs and diagonals
-> became separate patterns. The code is not in the repo. The entries stay
-> because every one of them is a lesson about something else — where colour is
-> sampled, what a budget may be spent on, what a constraint leaves free, which
-> instrument can see a fault — and because the diamond derivation is the
-> clearest worked example in this file of a picture being determined by
-> structure rather than by the seed.
+> **The triangles are gone.** Several of the entries below are about a truchet
+> tile set that was removed when arcs and diagonals became separate patterns,
+> and that code is not in the repo. They stay because every one of them is a
+> lesson about something else — where colour is sampled, what a budget may be
+> spent on, what a constraint leaves free, which instrument can see a fault —
+> and because the diamond derivation is the clearest worked example in this file
+> of a picture being determined by structure rather than by the seed.
+>
+> Read the scope narrowly. This marker used to claim everything down to the end
+> of the diamond entries, which was wrong in both directions: three entries
+> inside that span describe code that is very much shipping — the gear glyph's
+> two fills, the weight ceiling that explains a live constant, and the
+> label-based Playwright locators — and the `weight`-on-triangles entry sits
+> *above* the marker. The triangle-only entries are the ones that name
+> triangles or diamonds; the rest are general.
 
 **Filling the empty half of a truchet triangle fixes the measurement and
 destroys the pattern.** A triangle fills half its cell and leaves the other half
@@ -1362,11 +1389,16 @@ result. Each was arrived at by breaking it first.
   needed, so every arc the count asks for fits. The stroke thins to the gap
   rather than the gap accommodating the stroke.
 - **Sweep flag 0** on every arc, so each is centred on its corner.
-- **Colour comes from a noise field** in normalised canvas coordinates
-  (`COLOR_FIELD` cycles across the image), sampled **per piece of an arc** —
-  per tile gives every arc in a cell one step of the ramp and the cell boundary
-  shows as an edge, and per whole arc is still a flat unit up to 18.5% of the
-  canvas wide, which steps in colour where two arcs meet. Arcs are cut on the
+- **Colour is a ramp along a chosen axis with a noise field mixed into it.**
+  `colorAxis` picks the direction — vertical, horizontal or diagonal — and
+  `colorSpread` decides how much of the mix is the drifting field. It defaults
+  to 0.25, where the field reads as a wobble on the ramp rather than the thing
+  drawing the picture; at the 0.6 it shipped at, it was reported as blobby. The
+  field is in normalised canvas coordinates (`COLOR_FIELD` cycles across the
+  image) and is sampled **per piece of an arc** — per tile gives every arc in a
+  cell one step of the ramp and the cell boundary shows as an edge, and per
+  whole arc is still a flat unit up to 22% of the canvas wide, which steps in
+  colour where two arcs meet. Arcs are cut on the
   same 6% rule the chords follow, from a table of literals rather than
   trigonometry. The chords themselves are no longer cut -- see the entry below
   on the seam this leaves on the arcs, which is open. The ramp is always at full resolution; `colorBlend` was a
@@ -1411,8 +1443,9 @@ result. Each was arrived at by breaking it first.
   about 23 columns a chord is already short enough to want a single piece,
   which is exactly where the render is heaviest.
 
-Controls, on both: density, weight, colorSpread, arcCount (labelled Divisions;
-max 12 on arcs, 6 on diagonals), and arcSpacing (spread) on the arcs alone.
+Controls, on both: density, weight, colorSpread, colorAxis, arcCount (labelled
+Divisions; max 12 on arcs, 6 on diagonals), and arcSpacing (spread) on the arcs
+alone.
 The two the picture is driven by — horizontal for density, vertical for
 arcCount — are promoted into the panel with their gesture written beside them;
 the rest live behind the gear on the preview, as name and slider with no
@@ -1485,6 +1518,52 @@ from this build environment. Do not quietly upgrade a guess to a fact.
 ---
 
 ## Current state
+
+**Six routes, in two groups.** `/` the gallery, `/p/<id>` the editor,
+`/collected` and `/setup` live under `app/(site)/`, which is where the header,
+the footer and the skip link are. `/m` and `/m/collected` live outside it and
+have no chrome at all: on those two the render is the screen.
+
+The chrome moved into a route group precisely so `/m` could exist without it,
+and both phone routes share their component with a site one rather than forking
+— `/m` is `<Editor bare />` and `/m/collected` is `<Collected bare />`. A second
+copy of either would be a second set of gesture wiring to drift. The split is a
+route rather than a flag for the same reason `?from=m` was retired: reading the
+query during render is a hydration hazard the component then has to work around,
+and a route says the same thing without asking anyone to remember a parameter.
+
+Four things about those two are easy to rediscover the hard way:
+
+- **`/m` prerenders against `generators[0]` and reads the real pattern from
+  `?g=` after mount.** The static export bakes the opening picture into the
+  HTML, so disagreeing with it during the first render is a text hydration
+  mismatch — the same class as the build-stamp bug.
+- **`useDeviceScreen` (`lib/device-screen.ts`) returns null until its effect
+  runs**, for that reason, and reads `screen` rather than the viewport because
+  Safari's address bar slides around and would re-render the pattern at a new
+  aspect on every scroll. Off a phone it falls back to 390x845 rather than
+  taking a landscape desktop literally. The collection's tiles use it too: a
+  saved wallpaper shown at any other aspect is a picture of a different phone.
+- **Neither inherits a `main` landmark or a skip link**, so each grows its own.
+  `/m/collected` shipped without one; `settled()` scopes to `main img`, so every
+  test on that route was quietly falling into its timeout path.
+- **The collection renders its tiles in the worker, on demand.** The inline
+  first render exists for the hydration match and there is nothing to match on
+  a page whose pictures come out of localStorage, so `PatternImage` takes a
+  `deferred` flag and an IntersectionObserver holds each tile until it is
+  nearly on screen. Measured on sixty contours: 2,469ms of blocked main thread
+  before, 0ms after.
+
+**A value captured at mount is a promise that the route cannot change under
+it**, and that promise expires the moment another client route links in. The
+editor took its URL base during the first render on exactly that reasoning,
+which was true while `/m` could only be reached by a full load; on a soft
+navigation React renders the new tree before the router pushes history, so
+arriving at `/m` from `/m/collected` wrote `/m/collected/?g=…` when the 220ms
+debounce fired. Measured at four points after the click: right at +60ms, wrong
+at +400ms. It reads the base inside the debounce now. This is the same family
+as the entry above about promoting a gesture to the registry — state that was
+safe while a thing could not change under it.
 
 Four patterns in the app: `truchet-arcs`, `truchet-diagonals`, `chevron-blocks`,
 `contours`. Four more are written, tested and **not registered** — `flow-dots`,
@@ -1572,21 +1651,22 @@ is a bright wallpaper whatever the palette says its background is, so its
 blocks are anchored a fixed lightness distance from the paper rather than
 painted at accent strength.
 
-Two of the six now compose uniformly across the canvas rather than holding the
-clock zone back, and for different reasons. Truchet never could: a tiling is
-uniform by construction and any factor keyed on height draws a band across it.
-Contours could and no longer does — its `relief` param flattened the field
-toward the top so that fewer heights were crossed up there, which worked, and
-was removed on request because the range above its default did little. The
-consequence is plain in an A/B and worth knowing before anyone calls it a bug:
-the top third now carries the same contour density as the bottom.
+**Three of the four patterns in the app now compose uniformly across the canvas**
+rather than holding the clock zone back, and for different reasons. Both truchets
+never could: a tiling is uniform by construction and any factor keyed on height
+draws a band across it. Contours could and no longer does — its `relief` param
+flattened the field toward the top so that fewer heights were crossed up there,
+which worked, and was removed on request because the range above its default did
+little. The consequence is plain in an A/B and worth knowing before anyone calls
+it a bug: the top third now carries the same contour density as the bottom.
 
-So the repo now holds the clock zone back three different ways and, in contours,
-not at all. `quietFactor` dims what is drawn, which is right where density
-varies and wrong on a uniform tiling. The other two are structural — they change
-how much there is to draw up there rather than how it is painted — and that is
-the family contours' `relief` belonged to: chevron-blocks' `skyline` is the
-surviving example, growing its stacks toward the bottom and flattening them
+So chevron-blocks is the only one that holds it back at all, and the repo has
+two mechanisms rather than three. `quietFactor` dims what is drawn, which is
+right where density varies and wrong on a uniform tiling — and every one of its
+callers is retired, so nothing in the app reaches it. The other is structural:
+it changes how much there is to draw up there rather than how it is painted, and
+that is the family contours' `relief` belonged to. chevron-blocks' `skyline` is
+what is left of it, growing its stacks toward the bottom and flattening them
 toward the top. If contours ever wants its quiet top back, that is the shape of
 the answer, and reinstating its old `relief` beats inventing something new.
 Mind the collision when reading either file: chevron-blocks has a param of its

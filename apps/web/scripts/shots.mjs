@@ -12,8 +12,11 @@ mkdirSync(out, { recursive: true });
 
 const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM ?? '/opt/pw-browsers/chromium' });
 
-async function shoot(name, path, width, height, prep) {
+async function shoot(name, path, width, height, prep, seed) {
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
+  // Some screens are only interesting with something saved in them, and the
+  // collection is empty on a fresh context by construction.
+  if (seed) await ctx.addInitScript((d) => window.localStorage.setItem('patternwall.collected.v1', JSON.stringify(d)), seed);
   const page = await ctx.newPage();
   page.on('console', (m) => { if (m.type() === 'error') console.error('console:', m.text()); });
   page.on('pageerror', (e) => console.error('pageerror:', e.message));
@@ -60,5 +63,44 @@ await shoot('export-desktop', '/p/contours', W, 1100, async (p) => {
 });
 await shoot('setup-desktop', '/setup', W, 950);
 await shoot('collected-empty', '/collected', W, 800);
+
+/*
+ * The two phone routes, which this script did not cover.
+ *
+ * Both of the phone layout faults in CLAUDE.md were found by rasterising a
+ * built page at 390px and looking at it -- "neither is visible in a test, both
+ * are obvious in a screenshot" -- and the one tool for that photographed
+ * thirteen views, none of them these. Every bug reported on the collection
+ * since it was built has been a looking bug.
+ */
+const PAL = {
+  id: 'obsidian',
+  name: 'Obsidian',
+  background: '#0b0b0d',
+  ink: '#f4f2ec',
+  accents: ['#e0a458', '#c2552e'],
+  mode: 'dark',
+  tags: [],
+};
+const SAVED = ['chevron-blocks', 'contours', 'truchet-arcs', 'truchet-diagonals'].flatMap((id, n) =>
+  [0, 1].map((k) => ({ id: `shot-${id}-${k}`, generatorId: id, seed: `shot-${n}${k}`, params: {}, savedAt: Date.now() - n * 8.64e7, palette: PAL })),
+);
+
+await shoot('phone-view', '/m', M, 844);
+await shoot('phone-view-settings', '/m', M, 844, async (p) => {
+  await p.getByTestId('preview-settings').click();
+});
+await shoot('collected-phone', '/m/collected', M, 844, undefined, SAVED);
+await shoot('collected-phone-select', '/m/collected', M, 844, async (p) => {
+  await p.getByTestId('select-start').click();
+  await p.getByRole('button', { name: /shot-00$/ }).click();
+}, SAVED);
+await shoot('collected-phone-export', '/m/collected', M, 844, async (p) => {
+  await p.getByTestId('select-start').click();
+  await p.getByRole('button', { name: /shot-00$/ }).click();
+  await p.getByTestId('export-selected').click();
+}, SAVED);
+// The collection on a desktop window, which is where it is most different.
+await shoot('collected-desktop', '/collected', W, 950, undefined, SAVED);
 
 await browser.close();

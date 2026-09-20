@@ -267,16 +267,15 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
     // rather than per shape.
     //
     // Marks are bucketed by colour and each bucket emitted as one group, so
-    // the number of buckets is also the colour resolution. At zero blend there
-    // is one bucket per accent and the tiling reads as flat areas of exactly
-    // the colours in the palette; raising it interpolates intermediate steps
-    // along the ramp until the transitions stop being visible as edges. The
-    // ramp is sampled in OKLab, so a mid-point between two accents is the
-    // colour the eye expects rather than the one the hex arithmetic gives.
-    // The ramp is always at full resolution. `colorBlend` was a control, and
-    // what stood here computed a band count from it -- with the control gone
-    // and the local pinned to 1 the arithmetic reduced to this constant, while
-    // still reading as something a parameter moved.
+    // the number of buckets is also the colour resolution. Forty-eight of them,
+    // always, sampled in OKLab so a mid-point between two accents is the colour
+    // the eye expects rather than the one the hex arithmetic gives.
+    //
+    // It used to be a control. What stood here explained, in the present tense,
+    // what zero blend and full blend each looked like -- and then retracted it
+    // two sentences later, because the slider was removed and the arithmetic
+    // reduced to this constant. Half a comment about a design that no longer
+    // exists is the trap this file has its own note about, twelve lines down.
     const bands = 48;
     const bandColors = accentRamp(palette, bands);
     const strokeBuckets: string[][] = Array.from({ length: bands }, () => []);

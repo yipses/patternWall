@@ -69,7 +69,7 @@ export function nonBackgroundFraction(pixels: Buffer): number {
  *
  * The image param is the one parameter whose value is a whole picture, and a
  * test that only ever exercises the empty default would not touch the codec,
- * the solver's bilinear read of it, or the share link's ability to carry ten
+ * the blur and the thresholds that read it, or the share link's ability to carry ten
  * thousand characters in one field. A smooth blob is enough to be a picture and is
  * reproducible without a fixture file.
  */
