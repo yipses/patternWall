@@ -74,10 +74,16 @@ test.describe('the collection', () => {
     await expect(tile(page, 'bravo')).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByTestId('selection-bar')).toContainText('2 selected');
 
-    // The export is the selection, not the collection. This is the whole point
-    // of the mode: CollectionExport zips whatever items it is handed.
+    // The export is the selection, not the collection, and the settings are a
+    // level inside the sheet rather than a disclosure under the grid.
     await page.getByTestId('export-selected').click();
-    await expect(page.getByTestId('export-collection')).toHaveText(/Export 2 as a zip/);
+    await expect(page.getByTestId('export-run')).toHaveText('Export 2');
+    await expect(page.getByTestId('export-summary')).toBeVisible();
+
+    await page.getByTestId('export-summary').click();
+    await expect(page.getByLabel('Device')).toBeVisible();
+    await page.getByTestId('export-back').click();
+    await expect(page.getByTestId('export-run')).toBeVisible();
   });
 
   test('select all, then none', async ({ page }) => {
@@ -150,6 +156,58 @@ test.describe('the collection', () => {
     await page.getByTestId('confirm-cancel').click();
     await expect(page.getByRole('listitem')).toHaveCount(3);
     await expect(page.getByTestId('selection-bar')).toContainText('2 selected');
+  });
+
+  test('the selection goes to the platform share sheet when there is one', async ({ page }) => {
+    // Headless Chromium has no share target, so the branch is exercised by
+    // standing one up. This is the path that matters on iOS: it offers
+    // "Save N Images" and they land in Photos, which is the only place a
+    // wallpaper can be set from. A zip in Files is a dead end there.
+    await page.addInitScript(() => {
+      const w = window as unknown as { __shared?: number };
+      Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+      Object.defineProperty(navigator, 'share', {
+        value: (data: { files?: File[] }) => {
+          w.__shared = data.files?.length ?? 0;
+          return Promise.resolve();
+        },
+        configurable: true,
+      });
+    });
+    await page.goto('/m/collected');
+    await page.getByTestId('select-start').click();
+    await tile(page, 'alpha').click();
+    await tile(page, 'charlie').click();
+    await page.getByTestId('export-selected').click();
+
+    // Small, so the suite stays quick.
+    await page.getByTestId('export-summary').click();
+    await page.getByLabel('Device').selectOption('custom');
+    await page.getByLabel('Width').fill('120');
+    await page.getByLabel('Height').fill('260');
+    await page.getByTestId('export-back').click();
+
+    await page.getByTestId('export-run').click();
+    await expect(page.getByText('handed to your device')).toBeVisible({ timeout: 60_000 });
+    expect(await page.evaluate(() => (window as unknown as { __shared?: number }).__shared)).toBe(2);
+  });
+
+  test('one wallpaper is never a zip', async ({ page }) => {
+    await page.goto('/m/collected');
+    await page.getByTestId('select-start').click();
+    await tile(page, 'alpha').click();
+    await page.getByTestId('export-selected').click();
+    await page.getByTestId('export-summary').click();
+    await page.getByLabel('Device').selectOption('custom');
+    await page.getByLabel('Width').fill('120');
+    await page.getByLabel('Height').fill('260');
+    await page.getByTestId('export-back').click();
+
+    const downloadPromise = page.waitForEvent('download', { timeout: 60_000 });
+    await page.getByTestId('export-run').click();
+    const download = await downloadPromise;
+    // A single PNG, not an archive somebody has to unpack for no reason.
+    expect(download.suggestedFilename()).toMatch(/\.png$/);
   });
 
   test('leaving select mode is on the bar, not in a header that scrolls away', async ({ page }) => {

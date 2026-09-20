@@ -272,8 +272,7 @@
 
 /* The bar and the sheet are fixed, so the page needs room under its last row
    for them and for the home indicator. */
-.bar,
-.sheet {
+.bar {
   position: fixed;
   left: 0;
   right: 0;
@@ -310,26 +309,6 @@
 .danger {
   color: var(--danger);
   border-color: var(--danger);
-}
-
-.sheet {
-  max-height: 82vh;
-  overflow: auto;
-  padding: 10px var(--gutter);
-  padding-bottom: calc(16px + env(safe-area-inset-bottom));
-}
-
-.sheetHead {
-  display: flex;
-  justify-content: flex-end;
-}
-
-/* The export section draws its own rule above itself, which is right where it
-   follows a grid and wrong where it is the first thing in a sheet. */
-.sheet > :global(section) {
-  margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
 }
 
 .snack {
@@ -441,7 +420,7 @@
 /* The bar and the sheet follow the column rather than the window, so the phone
    view stays one coherent object inside a desktop one. */
 .page[data-phone='true'] .bar,
-.page[data-phone='true'] .sheet {
+.page[data-phone='true'] :global(.pw-sheet) {
   left: 50%;
   right: auto;
   width: min(430px, 100%);

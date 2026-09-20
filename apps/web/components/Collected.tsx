@@ -6,6 +6,7 @@ import { encodeConfig, getGenerator } from '@patternwall/core';
 import { BuildStamp } from './BuildStamp';
 import { PatternImage } from './PatternImage';
 import { CollectionExport } from './CollectionExport';
+import { ExportSheet } from './ExportSheet';
 import { Button, uiStyles as ui } from './ui';
 import { FALLBACK_SCREEN, useDeviceScreen } from '../lib/device-screen';
 import { loadCollected, removeManyCollected, writeCollected, type CollectedItem } from '../lib/storage';
@@ -363,16 +364,7 @@ export function Collected({ bare = false }: { bare?: boolean }) {
         </div>
       ) : null}
 
-      {selecting && exportOpen ? (
-        <div className={styles.sheet} role="dialog" aria-label="Export the selection">
-          <div className={styles.sheetHead}>
-            <Button size="small" variant="ghost" onClick={() => setExportOpen(false)} data-testid="sheet-close">
-              Close
-            </Button>
-          </div>
-          <CollectionExport items={pickedItems} scope="selection" />
-        </div>
-      ) : null}
+      {selecting && exportOpen ? <ExportSheet items={pickedItems} onClose={() => setExportOpen(false)} /> : null}
 
       {selecting && !exportOpen && confirming ? (
         /* The confirm takes the bar over rather than opening a dialog on top

@@ -1,0 +1,105 @@
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  max-height: 82vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg-raised);
+  border-top: 1px solid var(--line-strong);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+.grabber {
+  width: 36px;
+  height: 4px;
+  margin: 8px auto 4px;
+  border-radius: 2px;
+  background: var(--line-strong);
+}
+
+/* Sticky so the way out stays reachable while the settings level scrolls. */
+.head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px var(--gutter) 10px;
+  background: var(--bg-raised);
+}
+
+.headTitle {
+  margin-left: auto;
+  font-family: var(--font-serif);
+  font-size: 15px;
+}
+
+.body {
+  padding: 0 var(--gutter) 12px;
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  text-align: left;
+  cursor: pointer;
+}
+
+.summaryText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.summaryTop {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summarySub {
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.advanced {
+  margin-top: 14px;
+}
+
+.chev {
+  color: var(--text-faint);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.go {
+  width: 100%;
+  min-height: 46px;
+}
+
+.count {
+  margin: 0 0 8px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-dim);
+}

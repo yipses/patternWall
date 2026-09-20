@@ -73,9 +73,20 @@ export function useExportSettings(): ExportSettingsController {
 export function ExportSettingsFields({
   settings: s,
   onDetectFailed,
+  only,
 }: {
   settings: ExportSettingsController;
   onDetectFailed: (message: string) => void;
+  /**
+   * Render one half of the panel.
+   *
+   * The desktop page shows the lot in a column, which is right there. On a
+   * phone sheet it is a wall of text with the one control anybody touches at
+   * the top, so the size question and everything else are shown separately --
+   * `'size'` is the device and its custom fields, `'rest'` is bleed, depth,
+   * palette size and the Home Screen variant.
+   */
+  only?: 'size' | 'rest';
 }) {
   const id = useId();
   const grouped = useMemo(() => {
@@ -86,6 +97,8 @@ export function ExportSettingsFields({
 
   return (
     <>
+      {only === 'rest' ? null : (
+      <>
       <div className={ui.field}>
         <label className={ui.label} htmlFor={`${id}-device`}>
           Device
@@ -165,7 +178,11 @@ export function ExportSettingsFields({
           Detect my screen
         </Button>
       </div>
+      </>
+      )}
 
+      {only === 'size' ? null : (
+      <>
       <div className={ui.field} style={{ marginTop: 18 }}>
         <div className={ui.labelRow}>
           <span className={ui.label}>Include 8% bleed</span>
@@ -230,6 +247,8 @@ export function ExportSettingsFields({
           pushes lightness apart and chroma up to put it back.
         </p>
       </div>
+      </>
+      )}
     </>
   );
 }
