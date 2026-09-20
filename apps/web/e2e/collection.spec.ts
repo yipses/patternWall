@@ -173,6 +173,11 @@ test.describe('the collection', () => {
         },
         configurable: true,
       });
+      // And a coarse pointer, because that is what decides it. A share target
+      // alone is not a phone.
+      const real = window.matchMedia.bind(window);
+      window.matchMedia = (q: string) =>
+        q.includes('pointer: coarse') ? ({ ...real(q), matches: true } as MediaQueryList) : real(q);
     });
     await page.goto('/m/collected');
     await page.getByTestId('select-start').click();
@@ -190,6 +195,45 @@ test.describe('the collection', () => {
     await page.getByTestId('export-run').click();
     await expect(page.getByText('handed to your device')).toBeVisible({ timeout: 60_000 });
     expect(await page.evaluate(() => (window as unknown as { __shared?: number }).__shared)).toBe(2);
+
+    // And there is a way past the platform's sheet that is not trying again.
+    const downloadPromise = page.waitForEvent('download', { timeout: 60_000 });
+    await page.getByTestId('export-save-instead').click();
+    expect((await downloadPromise).suggestedFilename()).toMatch(/\.zip$/);
+  });
+
+  test('a desktop downloads rather than sharing, even where it could share', async ({ page }) => {
+    // `canShare` is not the question. macOS Safari answers yes and then offers
+    // Messages, Mail, AirDrop and Copy — no Photos, no Save to Files, because
+    // those are not share targets on a Mac. Sharing there loses the one thing a
+    // desktop is good at, and that is what shipped before this.
+    await page.addInitScript(() => {
+      const w = window as unknown as { __shared?: number };
+      Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+      Object.defineProperty(navigator, 'share', {
+        value: (data: { files?: File[] }) => {
+          w.__shared = data.files?.length ?? 0;
+          return Promise.resolve();
+        },
+        configurable: true,
+      });
+    });
+    await page.goto('/m/collected');
+    await page.getByTestId('select-start').click();
+    await tile(page, 'alpha').click();
+    await tile(page, 'charlie').click();
+    await page.getByTestId('export-selected').click();
+    await page.getByTestId('export-summary').click();
+    await page.getByLabel('Device').selectOption('custom');
+    await page.getByLabel('Width').fill('120');
+    await page.getByLabel('Height').fill('260');
+    await page.getByTestId('export-back').click();
+
+    const downloadPromise = page.waitForEvent('download', { timeout: 60_000 });
+    await page.getByTestId('export-run').click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/\.zip$/);
+    expect(await page.evaluate(() => (window as unknown as { __shared?: number }).__shared)).toBeUndefined();
   });
 
   test('one wallpaper is never a zip', async ({ page }) => {

@@ -63,25 +63,54 @@ export async function renderCollection(
 }
 
 /**
- * Hand the files to the platform if it will take them, and fall back to a
- * download if it will not.
+ * Whether handing the files to the platform beats downloading them.
  *
- * `navigator.share` with files is what makes this usable on a phone: iOS offers
- * "Save N Images" and they land in Photos, which is where a wallpaper has to be
- * to be set as one. A zip in Files is a dead end there — nothing on the device
- * will open it and put the pictures anywhere useful.
+ * `canShare` is not the question. macOS Safari answers yes and then offers
+ * Messages, Mail, AirDrop and Copy — no Photos, no Save to Files, because
+ * those are not share targets on a Mac. So a desktop that shared instead of
+ * downloading lost the one thing it was good at, and that is what shipped
+ * before this: the files went into a sheet with nowhere useful to put them.
  *
- * One file is never a zip, on any platform. Zipping a single PNG is an
- * archive somebody has to unpack for no reason.
+ * A coarse pointer is the honest test. On a phone the share sheet is the only
+ * route into Photos, which is the only place a wallpaper can be set from; on
+ * anything with a mouse the file system is right there and a download lands in
+ * it. Not a user-agent sniff — what differs is the platform's idea of where a
+ * file goes, and that tracks the input device closely enough.
+ */
+function shareIsBetterHere(files: File[]): boolean {
+  const nav = typeof navigator === 'undefined' ? null : navigator;
+  if (!nav?.canShare?.({ files })) return false;
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(pointer: coarse)').matches;
+}
+
+/**
+ * Hand the files to the platform where that is the better route, and download
+ * them where it is not.
+ *
+ * On a phone `navigator.share` offers "Save N Images" and they land in Photos,
+ * which is where a wallpaper has to be to be set as one. A zip in Files is a
+ * dead end there — nothing on the device will open it and put the pictures
+ * anywhere useful. On a desktop the reverse is true, which `shareIsBetterHere`
+ * is about.
+ *
+ * `force` overrides the choice, for the "save them instead" the sheet offers
+ * once a share is done: the platform's sheet is not always the right answer
+ * and there has to be a way past it that is not trying again.
+ *
+ * One file is never a zip, on any platform. Zipping a single PNG is an archive
+ * somebody has to unpack for no reason.
  */
 export async function deliverWallpapers(
   files: RenderedWallpaper[],
   zip: (files: RenderedWallpaper[]) => Promise<void>,
   download: (file: RenderedWallpaper) => void,
+  force?: 'share' | 'download',
 ): Promise<'shared' | 'downloaded' | 'zipped'> {
   const shareable = files.map((f) => new File([f.blob], f.name, { type: 'image/png' }));
   const nav = typeof navigator === 'undefined' ? null : navigator;
-  if (nav?.canShare?.({ files: shareable })) {
+  const share = force === 'download' ? false : force === 'share' ? !!nav?.canShare?.({ files: shareable }) : shareIsBetterHere(shareable);
+  if (share && nav) {
     try {
       await nav.share({ files: shareable, title: 'PatternWall' });
       return 'shared';

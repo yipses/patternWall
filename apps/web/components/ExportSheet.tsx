@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import JSZip from 'jszip';
-import { Button, Notice, Progress, uiStyles as ui } from './ui';
+import { Button, Notice, Progress } from './ui';
 import { ExportSettingsFields, useExportSettings } from './ExportSettings';
 import { DEVICE_PRESETS } from '../lib/devices';
 import { downloadBlob, formatBytes, safeFilename } from '../lib/export-png';
@@ -32,6 +32,7 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [advanced, setAdvanced] = useState(false);
+  const [rendered, setRendered] = useState<RenderedWallpaper[] | null>(null);
   const cancelRef = useRef(false);
 
   const deviceName = s.custom ? 'Custom size' : (DEVICE_PRESETS.find((d) => d.id === s.presetId)?.label ?? 'Custom size');
@@ -44,6 +45,21 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
     const out = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
     downloadBlob(out, `${safeFilename(['patternwall', 'collection', `${files.length}`])}.zip`);
     setNote(`${files.length} wallpapers zipped — ${formatBytes(out.size)}. Import them into a Photos album called PatternWall and see Automate.`);
+  };
+
+  const deliver = async (files: RenderedWallpaper[], force?: 'share' | 'download'): Promise<void> => {
+    const how = await deliverWallpapers(
+      files,
+      zipUp,
+      (f) => {
+        downloadBlob(f.blob, f.name);
+        setNote(`Saved ${f.name} — ${formatBytes(f.blob.size)}.`);
+      },
+      force,
+    );
+    if (how === 'shared') {
+      setNote(`${files.length} wallpaper${files.length === 1 ? '' : 's'} handed to your device. Save them to Photos to set one.`);
+    }
   };
 
   const run = async (): Promise<void> => {
@@ -62,11 +78,8 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
         setNote('Export cancelled. Nothing was saved.');
         return;
       }
-      const how = await deliverWallpapers(files, zipUp, (f) => {
-        downloadBlob(f.blob, f.name);
-        setNote(`Saved ${f.name} — ${formatBytes(f.blob.size)}.`);
-      });
-      if (how === 'shared') setNote(`${files.length} wallpaper${files.length === 1 ? '' : 's'} handed to your device. Save them to Photos to set one.`);
+      setRendered(files);
+      await deliver(files);
       setStage('done');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The export failed part way through. Try PNG-24, or a smaller size.');
@@ -157,9 +170,20 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
         </div>
       ) : null}
 
-      {stage === 'done' && !note ? (
+      {stage === 'done' ? (
         <div className={styles.body}>
-          <p className={ui.help}>Finished.</p>
+          {/* The platform's sheet is not always the right answer -- on a Mac it
+              offers Messages and AirDrop and no way to put a file anywhere --
+              so there is always a route past it that is not trying again. The
+              files are already rendered; this only changes where they go. */}
+          <Button
+            size="small"
+            variant="ghost"
+            onClick={() => void (rendered ? deliver(rendered, 'download') : undefined)}
+            data-testid="export-save-instead"
+          >
+            Save {rendered && rendered.length === 1 ? 'the file' : 'the files'} instead
+          </Button>
         </div>
       ) : null}
 

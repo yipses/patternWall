@@ -16,6 +16,30 @@
 .page[data-phone='true'] {
   max-width: 430px;
   padding-top: calc(10px + env(safe-area-inset-top));
+  /*
+   * Tall enough to have a bottom even when the grid is short.
+   *
+   * The build stamp is the last thing on the page and it belongs at the end of
+   * the screen, not four rows above it — with two saved wallpapers it sat in
+   * the middle of a field of black, which reads as a caption on the pictures
+   * rather than as a footer. `100dvh` rather than `100vh` because Safari's
+   * toolbars move and `vh` does not.
+   */
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.page[data-phone='true'] .inner {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.page[data-phone='true'] .stamp {
+  margin-top: auto;
+  padding-top: 24px;
 }
 
 /*
@@ -429,11 +453,17 @@
   border-right: 1px solid var(--line-strong);
 }
 
-/* The rail follows the column, like the bar and the sheet do. */
+/*
+ * The rail follows the column, like the bar and the sheet do -- but only once
+ * there is a window wider than the column to follow it in.
+ *
+ * Pinning it to the column's right edge unconditionally put it 6px off the
+ * screen on a 390px phone, because the column is 430 and the viewport is not.
+ * `max` takes whichever is further in: the gutter on a phone, the column edge
+ * on a desktop. 201px is half the column less the gutter.
+ */
 .page[data-phone='true'] .rail {
-  right: auto;
-  left: 50%;
-  margin-left: calc(430px / 2 - 54px);
+  right: max(calc(14px + env(safe-area-inset-right)), calc(50% - 201px));
 }
 
 .stamp {
