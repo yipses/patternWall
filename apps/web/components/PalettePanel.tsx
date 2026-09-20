@@ -478,7 +478,13 @@ export function PalettePanel({ palette, onChange }: { palette: Palette; onChange
               accept="image/*"
               aria-label="Choose an image to extract a palette from"
               onChange={(e) => {
-                void onFile(e.target.files?.[0]);
+                const file = e.target.files?.[0];
+                // Clear the input straight away so choosing the same file twice
+                // still fires a change event -- picking the original photo again
+                // to get its extraction back did nothing at all, silently.
+                // `ImageField` has done this since it was written.
+                e.target.value = '';
+                void onFile(file);
               }}
             />
           </div>

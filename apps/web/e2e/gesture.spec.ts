@@ -615,7 +615,9 @@ test.describe('scrub travel', () => {
 
     const after = await numberOf(page, 'Detail');
     expect(after, 'a third of the surface should cover more than one step of four').toBeGreaterThan(min + 1);
-    expect(after, 'and should not slam it to the end either').toBeLessThanOrEqual(max);
+    // `toBeLessThanOrEqual(max)` could not fail: `quantise` clamps to max, so
+    // the value the message is worried about is the value that satisfied it.
+    expect(after, 'and should not slam it to the end either').toBeLessThan(max);
   });
 
   test('the eleven-step control is untouched: half a sweep is still half its range', async ({ page }) => {

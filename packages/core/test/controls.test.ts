@@ -356,9 +356,12 @@ describe('scrub stride', () => {
     // a step. A stride of one is the same lattice `scrubTo` always used.
     const s = spec(1, 12, 1);
     expect(scrubStride(s, 520)).toBe(1);
-    for (const f of [0.1, 0.25, 0.5, 0.73, 0.9]) {
-      expect(scrubTo(s, s.min, f, 1)).toBe(scrubTo(s, s.min, f));
-    }
+    // Pinned values, not `scrubTo(s, min, f, 1)` against `scrubTo(s, min, f)`
+    // -- `stride` defaults to 1, so that was the identical call into a pure
+    // function twice, which is the `x === x` trap this file has an entry about.
+    // These are the lattice a stride of one produces; a change to it fails here
+    // rather than only in the tests that pass a stride greater than one.
+    expect([0.1, 0.25, 0.5, 0.73, 0.9].map((f) => scrubTo(s, s.min, f))).toEqual([2, 4, 7, 9, 11]);
   });
 
   it('snaps to the spec\'s own lattice, so a scrubbed value is one a slider can hold', () => {

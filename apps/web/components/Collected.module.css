@@ -384,7 +384,6 @@
     display: grid;
     grid-template-columns: 1fr auto;
     grid-template-areas:
-      'back back'
       'title actions'
       'sub sub';
     align-items: baseline;
@@ -392,13 +391,8 @@
     margin-bottom: 14px;
   }
 
-  /* Named areas rather than auto-placement: the back link is only there when
-     the page was opened from `/m`, and auto-placement would put the actions in
-     a different cell depending on whether it is. */
-  .back {
-    grid-area: back;
-  }
-
+  /* Named areas rather than auto-placement, so the actions land beside the
+     title rather than wherever the flow happens to put them. */
   .title {
     grid-area: title;
   }

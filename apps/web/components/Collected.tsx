@@ -52,6 +52,7 @@ export function Collected({ bare = false }: { bare?: boolean }) {
   const [exportOpen, setExportOpen] = useState(false);
   const [undo, setUndo] = useState<{ before: CollectedItem[]; count: number } | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [storageFailed, setStorageFailed] = useState(false);
 
   /**
    * A tile is the shape of the screen it was saved for.
@@ -81,6 +82,16 @@ export function Collected({ bare = false }: { bare?: boolean }) {
   const list = items ?? [];
   const pickedSet = new Set(picked);
   const pickedItems = list.filter((i) => pickedSet.has(i.id));
+  /*
+   * How many of the selection can actually be drawn.
+   *
+   * Every tile is selectable in select mode, including the stand-in for an item
+   * whose pattern is not in this build — which is right, because selecting it
+   * is how you delete it. Exporting it is not: a selection of only those gave
+   * "Export 0", an empty zip, and a note saying nought wallpapers were zipped.
+   * Same shape as the "Export all 3" on a zip holding two.
+   */
+  const pickedDrawable = pickedItems.filter((i) => getGenerator(i.generatorId)).length;
 
   const toggle = (id: string) => {
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -155,8 +166,9 @@ export function Collected({ bare = false }: { bare?: boolean }) {
 
   const deletePicked = () => {
     const before = list;
-    const next = removeManyCollected(picked);
+    const { ok, items: next } = removeManyCollected(picked);
     setItems(next);
+    if (!ok) setStorageFailed(true);
     setUndo({ before, count: picked.length });
     setPicked([]);
     setExportOpen(false);
@@ -166,15 +178,28 @@ export function Collected({ bare = false }: { bare?: boolean }) {
 
   const undoDelete = () => {
     if (!undo) return;
-    writeCollected(undo.before);
+    if (!writeCollected(undo.before)) setStorageFailed(true);
     setItems(undo.before);
     setUndo(null);
   };
 
+  /*
+   * `main` on the bare route, the way `/m` does it.
+   *
+   * Both phone routes live outside the `(site)` group, so neither inherits
+   * `SiteChrome`'s skip link and landmark. `Editor` grows its own and this did
+   * not, which left a screen that is a wall of unlabelled pictures with
+   * nothing to jump to. It is also load-bearing for the suite: `settled()`
+   * scopes to `main img`, so every test on this route was falling into its
+   * 400ms catch path instead of waiting for a render.
+   */
+  const Root = bare ? 'main' : 'div';
+
   return (
-    <div
+    <Root
       className={styles.page}
       data-phone={bare ? 'true' : undefined}
+      {...(bare ? { id: 'main' } : {})}
       style={{ ['--pw-tile' as string]: `${screen.w} / ${screen.h}` }}
     >
       {/* The width the phone rules measure against. See the note in the
@@ -418,11 +443,20 @@ export function Collected({ bare = false }: { bare?: boolean }) {
           <Button
             size="small"
             variant="primary"
-            disabled={picked.length === 0}
+            disabled={pickedDrawable === 0}
             onClick={() => setExportOpen(true)}
             data-testid="export-selected"
           >
             Export
+          </Button>
+        </div>
+      ) : null}
+
+      {storageFailed ? (
+        <div className={styles.snack} role="status">
+          <span>This browser would not let anything be stored, so that change will not survive a reload.</span>
+          <Button size="small" onClick={() => setStorageFailed(false)}>
+            OK
           </Button>
         </div>
       ) : null}
@@ -435,6 +469,6 @@ export function Collected({ bare = false }: { bare?: boolean }) {
           </Button>
         </div>
       ) : null}
-    </div>
+    </Root>
   );
 }

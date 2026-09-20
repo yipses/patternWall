@@ -236,6 +236,49 @@ test.describe('the collection', () => {
     expect(await page.evaluate(() => (window as unknown as { __shared?: number }).__shared)).toBeUndefined();
   });
 
+  test('a delete that cannot be stored says so instead of pretending', async ({ page }) => {
+    // Private mode and a full quota both land here. Without this the delete
+    // looked like it worked, the items came back on the next load, and the undo
+    // that would have covered it had already expired.
+    await page.addInitScript(() => {
+      const real = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key: string, value: string) {
+        if (key === 'patternwall.collected.v1' && (window as unknown as { __block?: boolean }).__block) {
+          throw new DOMException('quota', 'QuotaExceededError');
+        }
+        return real.call(this, key, value);
+      };
+    });
+    await page.goto('/collected');
+    await page.evaluate(() => {
+      (window as unknown as { __block?: boolean }).__block = true;
+    });
+    await page.getByTestId('select-start').click();
+    await tile(page, 'bravo').click();
+    await page.getByTestId('delete-selected').click();
+    await expect(page.getByText('would not let anything be stored')).toBeVisible();
+  });
+
+  test('a selection of patterns this build cannot draw does not offer an export', async ({ page }) => {
+    // Every tile is selectable in select mode, stand-ins included, because
+    // selecting one is how you delete it. Exporting one is not: this gave
+    // "Export 0", an empty zip, and a note saying nought wallpapers were
+    // zipped.
+    await page.addInitScript((p) => {
+      window.localStorage.setItem(
+        'patternwall.collected.v1',
+        JSON.stringify([{ id: 'gone', generatorId: 'no-such-pattern', seed: 'orphan', params: {}, savedAt: 2, palette: p }]),
+      );
+    }, PALETTE);
+    await page.goto('/collected');
+    await page.getByTestId('select-start').click();
+    await page.getByRole('button', { name: /seed orphan$/ }).click();
+    await expect(page.getByTestId('selection-bar')).toContainText('1 selected');
+    await expect(page.getByTestId('export-selected')).toBeDisabled();
+    // And it is still deletable, which is the reason it is selectable at all.
+    await expect(page.getByTestId('delete-selected')).toBeEnabled();
+  });
+
   test('one wallpaper is never a zip', async ({ page }) => {
     await page.goto('/m/collected');
     await page.getByTestId('select-start').click();

@@ -109,15 +109,20 @@ export function saveCollected(config: PatternConfig): { ok: boolean; items: Coll
   return { ok: write(KEY_COLLECTED, next), items: next };
 }
 
-export function removeCollected(id: string): CollectedItem[] {
-  return removeManyCollected([id]);
-}
-
-export function removeManyCollected(ids: string[]): CollectedItem[] {
+/**
+ * Both of these report whether the write landed, the way `saveCollected` does.
+ *
+ * This file exists so that a blocked or full localStorage degrades to "nothing
+ * is saved" rather than to a thrown exception, and the editor already surfaces
+ * that for a save. Removing dropped the boolean on the floor, so in private
+ * mode a delete looked like it worked and the items were back on the next load
+ * — and an undo looked like it worked and the items were gone on the next
+ * load, after the undo had already expired.
+ */
+export function removeManyCollected(ids: string[]): { ok: boolean; items: CollectedItem[] } {
   const drop = new Set(ids);
   const next = loadCollected().filter((i) => !drop.has(i.id));
-  write(KEY_COLLECTED, next);
-  return next;
+  return { ok: write(KEY_COLLECTED, next), items: next };
 }
 
 /**

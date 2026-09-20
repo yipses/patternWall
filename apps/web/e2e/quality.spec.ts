@@ -117,7 +117,7 @@ test.describe('layout and accessibility', () => {
     }
   });
 
-  test('every page has a title, a description and one h1', async ({ page }) => {
+  test('every page has a title, a description, one h1 and a main landmark', async ({ page }) => {
     for (const path of PAGES) {
       await page.goto(path);
       await expect(page).toHaveTitle(/\S/);
@@ -125,6 +125,12 @@ test.describe('layout and accessibility', () => {
       expect(description, `${path} description`).toBeTruthy();
       expect((description ?? '').length).toBeGreaterThan(40);
       await expect(page.getByRole('heading', { level: 1 }), `${path} h1`).toHaveCount(1);
+      // The landmark was counted nowhere, and `/m/collected` shipped without
+      // one: the two phone routes are outside the `(site)` group so neither
+      // inherits the chrome's, and only `Editor` had grown its own. It is also
+      // what `settled()` scopes to, so a route without one never waits for a
+      // render at all.
+      await expect(page.locator('main'), `${path} main`).toHaveCount(1);
     }
   });
 

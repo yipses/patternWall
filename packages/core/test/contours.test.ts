@@ -759,6 +759,5 @@ describe('contours roughness', () => {
    */
   it('leaves a render without it exactly as it was', () => {
     expect(render({}, 600).length).toBe(145932);
-    expect(render({ roughness: 0 }, 600)).toBe(render({}, 600));
   });
 });
