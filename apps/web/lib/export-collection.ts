@@ -106,7 +106,7 @@ export async function deliverWallpapers(
   zip: (files: RenderedWallpaper[]) => Promise<void>,
   download: (file: RenderedWallpaper) => void,
   force?: 'share' | 'download',
-): Promise<'shared' | 'downloaded' | 'zipped'> {
+): Promise<'shared' | 'dismissed' | 'downloaded' | 'zipped'> {
   const shareable = files.map((f) => new File([f.blob], f.name, { type: 'image/png' }));
   const nav = typeof navigator === 'undefined' ? null : navigator;
   const share = force === 'download' ? false : force === 'share' ? !!nav?.canShare?.({ files: shareable }) : shareIsBetterHere(shareable);
@@ -115,9 +115,19 @@ export async function deliverWallpapers(
       await nav.share({ files: shareable, title: 'PatternWall' });
       return 'shared';
     } catch (err) {
-      // A cancelled share is a decision, not a failure, and must not fall
-      // through to a download the person just declined.
-      if (err instanceof DOMException && err.name === 'AbortError') return 'shared';
+      /*
+       * A dismissed share is a decision, not a failure — and not a success
+       * either, which is what this used to report.
+       *
+       * `navigator.share` resolving means the platform took the files. It
+       * rejects with `AbortError` when the sheet is dismissed, and nothing
+       * was saved. Calling that 'shared' and then printing "Save them to
+       * Photos to set one" is the app asserting something it does not know,
+       * which is the thing CLAUDE.md's note about not upgrading a guess to a
+       * fact is about. It must not fall through to a download the person just
+       * declined either, so it is its own outcome.
+       */
+      if (err instanceof DOMException && err.name === 'AbortError') return 'dismissed';
       // Anything else — a share target that refused, a transient platform
       // error — is worth falling back for rather than reporting as broken.
     }

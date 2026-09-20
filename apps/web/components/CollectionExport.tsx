@@ -2,12 +2,10 @@
 
 import { useRef, useState } from 'react';
 import JSZip from 'jszip';
-import { getGenerator } from '@patternwall/core';
 import { Button, Notice, Progress, uiStyles as ui } from './ui';
 import { ExportSettingsFields, useExportSettings } from './ExportSettings';
-import { downloadBlob, formatBytes, renderPngBlob, safeFilename, yieldToBrowser } from '../lib/export-png';
-import { boostForHomeScreen } from '../lib/harmony';
-import { renderSpec } from '../lib/render';
+import { downloadBlob, formatBytes, safeFilename } from '../lib/export-png';
+import { exportableItems, renderCollection } from '../lib/export-collection';
 import type { CollectedItem } from '../lib/storage';
 import styles from './ExportPanel.module.css';
 
@@ -28,10 +26,7 @@ export function CollectionExport({ items }: { items: CollectedItem[] }) {
   const [open, setOpen] = useState(false);
   const cancelRef = useRef(false);
 
-  // Only what can actually be drawn. Counting items whose generator is missing
-  // from this build put an "Export all 3" on a zip that would contain two.
-  const exportable = items.filter((i) => getGenerator(i.generatorId));
-  const total = exportable.length;
+  const total = exportableItems(items).length;
 
   const onExport = async () => {
     setRunning(true);
@@ -40,29 +35,16 @@ export function CollectionExport({ items }: { items: CollectedItem[] }) {
     setError(null);
     cancelRef.current = false;
     try {
+      // The same loop the phone's export sheet runs. It was a second copy of
+      // it -- same palette boost, same numbering, same yield -- on the two
+      // surfaces most likely to drift apart, so a change to progress,
+      // cancellation or file naming reached one of them and not the other.
+      const files = await renderCollection(items, s, {
+        onProgress: (n) => setProgress(n / Math.max(1, total)),
+        cancelled: () => cancelRef.current,
+      });
       const zip = new JSZip();
-      // Filenames are numbered in collection order so the album has a stable,
-      // readable sequence rather than whatever order Photos decides on import.
-      const width = String(total).length;
-      for (const [i, item] of exportable.entries()) {
-        if (cancelRef.current) break;
-        const palette = s.homeVariant ? boostForHomeScreen(item.palette) : item.palette;
-        const svg = renderSpec({
-          generatorId: item.generatorId,
-          seed: item.seed,
-          params: item.params,
-          palette,
-          width: s.outWidth,
-          height: s.outHeight,
-          bleed: s.bleed,
-        });
-        const blob = await renderPngBlob(svg, s.outWidth, s.outHeight, { depth: s.depth, colors: s.colors });
-        const index = String(i + 1).padStart(width, '0');
-        zip.file(`${safeFilename([index, 'patternwall', item.generatorId, item.seed])}.png`, blob);
-        setProgress((i + 1) / total);
-        // Hand the frame back so scrolling and the thumbnails stay live.
-        await yieldToBrowser();
-      }
+      for (const f of files) zip.file(f.name, f.blob);
       if (cancelRef.current) {
         setNote('Export cancelled. Nothing was downloaded.');
         return;

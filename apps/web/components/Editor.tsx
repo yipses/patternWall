@@ -187,6 +187,12 @@ export function Editor({ generatorId: initialId, bare = false }: { generatorId: 
     setPalette(decoded.config.palette);
     commitNow({ params: decoded.config.params, palette: decoded.config.palette, seed: decoded.config.seed });
     setNotes(decoded.notes);
+    // Mount only, and it has to be: this reads the address bar into the
+    // editor's state, so re-running it would hand back the values in the URL
+    // over whatever has been changed since. `generator.id` is state now, and
+    // an effect that named it was exactly the bug CLAUDE.md records under
+    // "Promoting a gesture to the registry moves three bugs with it".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // What is already kept, so the heart can say so. Refreshed per pattern

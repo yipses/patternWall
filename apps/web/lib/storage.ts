@@ -10,6 +10,7 @@ import { coerceParams, defaultPalette, getGenerator, normalizePalette, type Pale
 
 const KEY_COLLECTED = 'patternwall.collected.v1';
 const KEY_PALETTES = 'patternwall.palettes.v1';
+const KEY_EXPORT = 'patternwall.export.v1';
 
 export interface CollectedItem {
   id: string;
@@ -18,6 +19,46 @@ export interface CollectedItem {
   params: Record<string, number | string | boolean>;
   palette: Palette;
   savedAt: number;
+}
+
+export interface StoredExportSettings {
+  presetId?: string;
+  custom?: { width: number; height: number } | null;
+  withBleed?: boolean;
+  depth?: string;
+  colors?: number;
+  homeVariant?: boolean;
+}
+
+/**
+ * What the export was last set to.
+ *
+ * Kept because the alternative is answering the same four questions every
+ * time: the summary row is then right on the second export and the settings
+ * level never has to be opened again. Read after mount, never during render —
+ * this page is prerendered and a first render that depends on localStorage
+ * disagrees with the baked HTML.
+ */
+export function loadExportSettings(): StoredExportSettings | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(KEY_EXPORT);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as StoredExportSettings) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveExportSettings(s: StoredExportSettings): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    window.localStorage.setItem(KEY_EXPORT, JSON.stringify(s));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function read<T>(key: string, fallback: T): T {

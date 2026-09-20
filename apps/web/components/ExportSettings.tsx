@@ -1,9 +1,10 @@
 'use client';
 
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { DEFAULT_BLEED } from '@patternwall/core';
 import { Button, Switch, uiStyles as ui } from './ui';
 import { DEFAULT_DEVICE, DEVICE_PRESETS, detectScreen } from '../lib/devices';
+import { loadExportSettings, saveExportSettings } from '../lib/storage';
 import type { PngDepth } from '../lib/export-png';
 // One stylesheet for both consumers: the editor's single-file export and the
 // collection's batch. Duplicating it would let the two drift apart visually.
@@ -41,6 +42,45 @@ export function useExportSettings(): ExportSettingsController {
   const [depth, setDepth] = useState<PngDepth>('png8');
   const [colors, setColors] = useState(64);
   const [homeVariant, setHomeVariant] = useState(false);
+
+  /**
+   * Restore what was chosen last time, and otherwise detect the screen.
+   *
+   * Both after mount rather than in the initial state, because this component
+   * is prerendered and a first render that reads localStorage or the screen
+   * disagrees with the baked HTML.
+   *
+   * Detecting is the default rather than a button. "Detect my screen" asked
+   * somebody to perform a step the browser can do for nothing, at the one
+   * moment it matters; the button stays for when the guess is wrong. It only
+   * fires on a portrait screen — a desktop's is landscape, and taking it
+   * literally would default the export to a very wide wallpaper.
+   */
+  const ready = useRef(false);
+  useEffect(() => {
+    const saved = loadExportSettings();
+    if (saved) {
+      if (typeof saved.presetId === 'string') setPresetId(saved.presetId);
+      if (saved.custom === null || (saved.custom && typeof saved.custom.width === 'number')) setCustom(saved.custom ?? null);
+      if (typeof saved.withBleed === 'boolean') setWithBleed(saved.withBleed);
+      if (saved.depth === 'png8' || saved.depth === 'png24') setDepth(saved.depth);
+      if (typeof saved.colors === 'number') setColors(saved.colors);
+      if (typeof saved.homeVariant === 'boolean') setHomeVariant(saved.homeVariant);
+    } else if (typeof window !== 'undefined' && window.screen && window.screen.height > window.screen.width) {
+      const screen = detectScreen();
+      if (screen) {
+        const match = DEVICE_PRESETS.find((d) => d.width === screen.width && d.height === screen.height);
+        if (match) setPresetId(match.id);
+        else setCustom(screen);
+      }
+    }
+    ready.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!ready.current) return;
+    saveExportSettings({ presetId, custom, withBleed, depth, colors, homeVariant });
+  }, [presetId, custom, withBleed, depth, colors, homeVariant]);
 
   const base = useMemo(() => {
     if (custom) return custom;

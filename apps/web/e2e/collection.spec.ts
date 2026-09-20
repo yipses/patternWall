@@ -193,13 +193,62 @@ test.describe('the collection', () => {
     await page.getByTestId('export-back').click();
 
     await page.getByTestId('export-run').click();
-    await expect(page.getByText('handed to your device')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText('2 wallpapers exported')).toBeVisible({ timeout: 60_000 });
     expect(await page.evaluate(() => (window as unknown as { __shared?: number }).__shared)).toBe(2);
+    // The escape crosses to the commit slot once there is nothing to discard.
+    await expect(page.getByTestId('export-done')).toBeVisible();
+    await expect(page.getByTestId('export-cancel')).toHaveCount(0);
 
     // And there is a way past the platform's sheet that is not trying again.
     const downloadPromise = page.waitForEvent('download', { timeout: 60_000 });
     await page.getByTestId('export-save-instead').click();
     expect((await downloadPromise).suggestedFilename()).toMatch(/\.zip$/);
+  });
+
+  test('a dismissed share is not reported as a save', async ({ page }) => {
+    // `navigator.share` rejects with AbortError when the sheet is dismissed and
+    // nothing was kept. Treating that as success and printing "Save them to
+    // Photos to set one" is the app asserting something it does not know.
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+      Object.defineProperty(navigator, 'share', {
+        value: () => Promise.reject(new DOMException('cancelled', 'AbortError')),
+        configurable: true,
+      });
+      const real = window.matchMedia.bind(window);
+      window.matchMedia = (q: string) =>
+        q.includes('pointer: coarse') ? ({ ...real(q), matches: true } as MediaQueryList) : real(q);
+    });
+    await page.goto('/m/collected');
+    await page.getByTestId('select-start').click();
+    await tile(page, 'alpha').click();
+    await page.getByTestId('export-selected').click();
+    await page.getByTestId('export-summary').click();
+    await page.getByLabel('Device').selectOption('custom');
+    await page.getByLabel('Width').fill('120');
+    await page.getByLabel('Height').fill('260');
+    await page.getByTestId('export-back').click();
+    await page.getByTestId('export-run').click();
+
+    await expect(page.getByText('Not saved')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText('wallpaper exported')).toHaveCount(0);
+    // And the way on from there is to try again, not a dead end.
+    await expect(page.getByTestId('export-share-again')).toBeVisible();
+  });
+
+  test('the export sheet is a dialog: escape leaves it, and so does the scrim', async ({ page }) => {
+    await page.goto('/m/collected');
+    await page.getByTestId('select-start').click();
+    await tile(page, 'alpha').click();
+
+    await page.getByTestId('export-selected').click();
+    await expect(page.getByTestId('export-sheet')).toHaveAttribute('aria-modal', 'true');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('export-sheet')).toHaveCount(0);
+
+    await page.getByTestId('export-selected').click();
+    await page.getByTestId('export-scrim').click();
+    await expect(page.getByTestId('export-sheet')).toHaveCount(0);
   });
 
   test('a desktop downloads rather than sharing, even where it could share', async ({ page }) => {
@@ -349,6 +398,28 @@ test.describe('the collection', () => {
     const download = await downloadPromise;
     // A single PNG, not an archive somebody has to unpack for no reason.
     expect(download.suggestedFilename()).toMatch(/\.png$/);
+  });
+
+  test('focus follows the mode rather than being dropped on the page', async ({ page }) => {
+    // Each of these unmounts the control that triggered it, so a keyboard user
+    // was left on `body` and had to Tab from the top of the document to reach
+    // the mode they had just entered.
+    await page.goto('/m/collected');
+    await page.getByTestId('select-start').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('select-done')).toBeFocused();
+
+    await tile(page, 'alpha').click();
+    await page.getByTestId('export-selected').click();
+    // The sheet takes focus itself, rather than announcing a dialog and leaving
+    // the user in the grid behind it.
+    await expect(page.getByTestId('export-sheet')).toBeFocused();
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('export-selected')).toBeFocused();
+
+    await page.getByTestId('select-done').click();
+    await expect(page.getByTestId('select-start')).toBeFocused();
   });
 
   test('leaving select mode is on the bar, not in a header that scrolls away', async ({ page }) => {

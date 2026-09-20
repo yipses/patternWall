@@ -111,6 +111,11 @@ export function PatternImage({
     } catch (err) {
       return { url: null, error: err instanceof Error ? err.message : 'This pattern could not be drawn.' };
     }
+    // Mount-only on purpose, and the whole point of it: this value has to be
+    // the one the prerendered HTML was built with, so re-running it on a later
+    // `spec` is exactly the hydration mismatch it exists to avoid. `deferred`
+    // names which path this component takes and does not change for its life.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [result, setResult] = useState(initial);
@@ -168,8 +173,12 @@ export function PatternImage({
       // must not be allowed to land.
       live = false;
     };
-    // `channel` is deliberately not a dependency: it identifies the stream,
-    // not the picture, and re-running on it would redraw for nothing.
+    // `key` is the spec's *content*, so depending on `spec` instead would
+    // redraw on every parent render — the object is a fresh literal each time,
+    // which is the measurement in the note at the top of this file. `channel`
+    // identifies the stream rather than the picture, so re-running on it would
+    // redraw for nothing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   if (result.error) {

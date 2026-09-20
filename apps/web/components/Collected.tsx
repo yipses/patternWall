@@ -205,6 +205,33 @@ export function Collected({ bare = false }: { bare?: boolean }) {
     e.preventDefault();
   };
 
+  /**
+   * Put focus where the mode went.
+   *
+   * Every one of these actions unmounts the control that triggered it —
+   * `select-start` removes the rail, `select-done` removes the bar, opening the
+   * export hides the bar — so a keyboard or switch user was dropped on `body`
+   * and had to Tab from the top of the document to reach the mode they had just
+   * entered. The sheet contains its own focus; this is the other three.
+   */
+  const selectStartRef = useRef<HTMLButtonElement | null>(null);
+  const selectDoneRef = useRef<HTMLButtonElement | null>(null);
+  const exportOpenRef = useRef<HTMLButtonElement | null>(null);
+  const wasSelecting = useRef(false);
+  const wasExporting = useRef(false);
+
+  useEffect(() => {
+    if (selecting && !wasSelecting.current) selectDoneRef.current?.focus();
+    else if (!selecting && wasSelecting.current) selectStartRef.current?.focus();
+    wasSelecting.current = selecting;
+  }, [selecting]);
+
+  useEffect(() => {
+    // Only on the way back. The sheet takes focus itself on the way in.
+    if (!exportOpen && wasExporting.current) exportOpenRef.current?.focus();
+    wasExporting.current = exportOpen;
+  }, [exportOpen]);
+
   const endSelect = () => {
     setSelecting(false);
     setPicked([]);
@@ -286,7 +313,7 @@ export function Collected({ bare = false }: { bare?: boolean }) {
                  all, clear, delete, export, leave -- is in the bar, which is
                  the one surface that does not scroll away after a row. */
               <div className={styles.actions}>
-                <Button size="small" variant="ghost" onClick={() => setSelecting(true)} data-testid="select-start">
+                <Button size="small" variant="ghost" ref={selectStartRef} onClick={() => setSelecting(true)} data-testid="select-start">
                   Select
                 </Button>
               </div>
@@ -454,6 +481,7 @@ export function Collected({ bare = false }: { bare?: boolean }) {
                 type="button"
                 className={styles.round}
                 aria-label="Select wallpapers"
+                ref={selectStartRef}
                 onClick={() => setSelecting(true)}
                 data-testid="select-start"
               >
@@ -493,7 +521,7 @@ export function Collected({ bare = false }: { bare?: boolean }) {
 
       {selecting && !exportOpen && !confirming ? (
         <div className={styles.bar} data-testid="selection-bar">
-          <Button size="small" variant="ghost" onClick={endSelect} data-testid="select-done">
+          <Button size="small" variant="ghost" ref={selectDoneRef} onClick={endSelect} data-testid="select-done">
             Done
           </Button>
           {/* One slot doing both jobs. At zero it offers the only thing worth
@@ -512,6 +540,7 @@ export function Collected({ bare = false }: { bare?: boolean }) {
           <Button
             size="small"
             variant="primary"
+            ref={exportOpenRef}
             disabled={pickedDrawable === 0}
             onClick={() => setExportOpen(true)}
             data-testid="export-selected"

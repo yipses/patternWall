@@ -1,5 +1,6 @@
 .sheet {
   position: fixed;
+  outline: none;
   left: 0;
   right: 0;
   bottom: 0;
@@ -9,34 +10,67 @@
   overscroll-behavior: contain;
   background: var(--bg-raised);
   border-top: 1px solid var(--line-strong);
-  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
   padding-bottom: calc(16px + env(safe-area-inset-bottom));
 }
 
-.grabber {
-  width: 36px;
-  height: 4px;
-  margin: 8px auto 4px;
-  border-radius: 2px;
-  background: var(--line-strong);
+/*
+ * Behind the sheet, and the second way out of it.
+ *
+ * 0.42 rather than a blur: the grid behind is generative wallpaper at every
+ * lightness the palettes reach, and a blur that leaves a light-paper tiling
+ * legible leaves it competing with the sheet.
+ */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.42);
+  animation: scrimIn 200ms ease;
+}
+
+@keyframes scrimIn {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim {
+    animation: none;
+  }
 }
 
 /* Sticky so the way out stays reachable while the settings level scrolls. */
+/* 56px, three slots, title centred. It was right-aligned, which on every
+   Apple surface reads as a label for the button beside it. */
 .head {
   position: sticky;
   top: 0;
   z-index: 1;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 10px;
-  padding: 4px var(--gutter) 10px;
+  min-height: 56px;
+  padding: 4px var(--gutter);
   background: var(--bg-raised);
 }
 
+.slot {
+  display: flex;
+  min-width: 0;
+}
+
+.slotEnd {
+  justify-content: flex-end;
+}
+
 .headTitle {
-  margin-left: auto;
   font-family: var(--font-serif);
-  font-size: 15px;
+  font-size: 18px;
+  white-space: nowrap;
 }
 
 .body {
@@ -100,6 +134,48 @@
 .count {
   margin: 0 0 8px;
   font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* What the export made, at a glance. Six is as many as fit in a row at phone
+   width; the count beneath says how many there really are. */
+.strip {
+  display: flex;
+  gap: 6px;
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.stripThumb {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: var(--pw-tile, 9 / 19.5);
+  max-height: 96px;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+}
+
+.outcomeHead {
+  margin: 0 0 3px;
+  font-family: var(--font-serif);
+  font-size: 17px;
+}
+
+.outcomeSub {
+  margin: 0 0 14px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+/* A result carried back to the summary -- cancelled, or a share that failed
+   before anything was rendered. */
+.outcome {
+  margin: 0 0 12px;
   font-size: 13px;
   color: var(--text-dim);
 }

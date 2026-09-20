@@ -1,9 +1,17 @@
 'use client';
 
-import { useId, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { useId, type ButtonHTMLAttributes, type ReactNode, type Ref } from 'react';
 import styles from './ui.module.css';
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  /**
+   * Forwarded to the underlying element, as a plain prop.
+   *
+   * React 19 passes `ref` through to a function component like any other prop,
+   * so there is no `forwardRef` here — but `ButtonHTMLAttributes` does not
+   * declare it, so it has to be named to be typed.
+   */
+  ref?: Ref<HTMLButtonElement>;
   variant?: 'default' | 'primary' | 'ghost';
   size?: 'default' | 'small';
   loading?: boolean;
