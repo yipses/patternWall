@@ -346,24 +346,6 @@ export function Editor({ generatorId: initialId, bare = false }: { generatorId: 
     [generator.id, committed],
   );
 
-  /**
-   * Where this document lives, less the pattern on the end.
-   *
-   * Captured once from the pathname the page was served at, so it carries
-   * whatever base path the deploy is under — a project site serves from
-   * `/<repo>/` and Next bakes that in at build time, which a hand-written path
-   * would miss. Read at mount rather than per render because it cannot change
-   * without a navigation, and a tap rewrites only the last segment.
-   */
-  const baseRef = useRef<string | null>(null);
-  if (baseRef.current === null && typeof window !== 'undefined') {
-    // `/m` carries the pattern in `?g=` rather than in the path, so there is
-    // no last segment to strip and the path stays exactly where it is. The
-    // editor's own route ends in `p/<id>/`, which a tap rewrites.
-    baseRef.current = bare
-      ? window.location.pathname
-      : window.location.pathname.replace(/p\/[^/]*\/?$/, '');
-  }
 
   // The URL is the document. Replace rather than push so the back button still
   // means "the page I came from", not "the last slider I touched" — and not
@@ -373,7 +355,27 @@ export function Editor({ generatorId: initialId, bare = false }: { generatorId: 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const id = window.setTimeout(() => {
-      const path = bare ? (baseRef.current ?? '') : `${baseRef.current ?? ''}p/${generator.id}/`;
+      /*
+       * The base is read here, not captured at mount.
+       *
+       * It used to be taken during the first render, on the argument that it
+       * cannot change without a navigation. That was true while `/m` could
+       * only be reached by loading it — and stopped being true the moment
+       * another client route linked to it. On a soft navigation React renders
+       * the new tree *before* the router pushes history, so the capture read
+       * the page you were leaving: arriving at `/m` from `/m/collected` wrote
+       * `/m/collected/?g=…` 220ms later, an address bar that named the wrong
+       * page and reloaded into the collection. Measured: correct at +60ms,
+       * wrong at +400ms.
+       *
+       * Reading it inside the debounce cannot go stale — by the time this
+       * fires, the navigation that mounted this component is long finished.
+       * It carries whatever base path the deploy is under, which a
+       * hand-written path would miss, and `/m` has no last segment to strip
+       * because it names its pattern in `?g=` rather than in the path.
+       */
+      const here = window.location.pathname;
+      const path = bare ? here : `${here.replace(/p\/[^/]*\/?$/, '')}p/${generator.id}/`;
       const full = bare ? `g=${encodeURIComponent(generator.id)}&${query}` : query;
       window.history.replaceState(null, '', `${path}?${full}`);
     }, 220);
@@ -441,12 +443,14 @@ export function Editor({ generatorId: initialId, bare = false }: { generatorId: 
   );
 
   const onCopyLink = async () => {
-    const url = `${window.location.origin}${baseRef.current ?? ''}p/${generator.id}/?${query}`;
+    // Same base, read the same way, for the same reason. See the URL effect.
+    const here = `${window.location.pathname.replace(/p\/[^/]*\/?$/, '')}p/${generator.id}/?${query}`;
+    const url = `${window.location.origin}${here}`;
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
     } catch {
-      window.history.replaceState(null, '', `${baseRef.current ?? ''}p/${generator.id}/?${query}`);
+      window.history.replaceState(null, '', here);
       setNotes((n) => [...n, 'This browser blocked the clipboard. The address bar now holds the exact link — copy it from there.']);
     }
   };
