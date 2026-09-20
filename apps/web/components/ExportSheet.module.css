@@ -1,6 +1,8 @@
 .sheet {
   position: fixed;
   outline: none;
+  /* Composed with the drag rather than overwritten by it. See use-sheet-drag. */
+  transform: translateY(var(--pw-drag-y, 0px));
   left: 0;
   right: 0;
   bottom: 0;

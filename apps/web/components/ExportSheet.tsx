@@ -5,7 +5,7 @@ import JSZip from 'jszip';
 import { Button, Notice, Progress } from './ui';
 import { DeviceList, ExportSettingsFields, useExportSettings } from './ExportSettings';
 import { PatternImage } from './PatternImage';
-import { DEVICE_PRESETS } from '../lib/devices';
+import { DEFAULT_DEVICE, DEVICE_PRESETS } from '../lib/devices';
 import { downloadBlob, formatBytes, safeFilename } from '../lib/export-png';
 import { deliverWallpapers, exportableItems, renderCollection, type RenderedWallpaper } from '../lib/export-collection';
 import { useSheetDrag } from '../lib/use-sheet-drag';
@@ -44,7 +44,19 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
 
   const drawable = exportableItems(items);
   const total = drawable.length;
-  const deviceName = s.custom ? 'This screen' : (DEVICE_PRESETS.find((d) => d.id === s.presetId)?.label ?? 'Custom size');
+  /*
+   * What the size is, said accurately.
+   *
+   * "This screen" only when the detection put it there; a size somebody typed
+   * is a custom size, which is what the list one level down calls it. And a
+   * `presetId` that no longer exists falls back to the preset whose dimensions
+   * are actually being used, rather than claiming to be custom when it is not.
+   */
+  const deviceName = s.custom
+    ? s.customIsScreen
+      ? 'This screen'
+      : 'Custom size'
+    : (DEVICE_PRESETS.find((d) => d.id === s.presetId)?.label ?? DEFAULT_DEVICE.label);
 
   /*
    * Stable, so the key handler below can depend on it honestly rather than
@@ -87,6 +99,20 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
       if (e.key !== 'Tab') return;
       const root = sheetRef.current;
       if (!root) return;
+      /*
+       * Back inside first.
+       *
+       * The trap only compared against the first and last focusable, which
+       * holds while focus is already in the sheet and does nothing at all when
+       * it is not -- and every stage change unmounts the control that had it.
+       * Pressing Export dropped focus to `body`, and the next Tab walked into
+       * the collection behind the dialog, which was fully operable.
+       */
+      if (!root.contains(document.activeElement)) {
+        e.preventDefault();
+        root.focus();
+        return;
+      }
       const focusable = [...root.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(
         (el) => !el.hasAttribute('disabled'),
       );
@@ -104,6 +130,12 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [dismiss, sheetRef]);
+
+  useEffect(() => {
+    const root = sheetRef.current;
+    if (!root) return;
+    if (!root.contains(document.activeElement)) root.focus();
+  }, [stage, sheetRef]);
 
   const zipUp = async (files: RenderedWallpaper[]): Promise<void> => {
     const zip = new JSZip();
@@ -193,6 +225,16 @@ export function ExportSheet({ items, onClose }: { items: CollectedItem[]; onClos
             ) : stage === 'settings' ? (
               <Button size="small" variant="ghost" onClick={() => setStage('summary')} data-testid="export-back">
                 ‹ Export
+              </Button>
+            ) : stage === 'running' ? (
+              /* Stops the render and comes back to the summary, where the line
+                 saying it was cancelled can actually be read. It used to call
+                 `dismiss`, which set the cancel flag and closed the sheet in
+                 the same breath -- so the branch that reports a cancellation
+                 only ever ran against an unmounted component and its copy was
+                 unreachable. Escape, the scrim and a drag still dismiss. */
+              <Button size="small" variant="ghost" onClick={() => (cancelRef.current = true)} data-testid="export-cancel">
+                Cancel
               </Button>
             ) : stage === 'done' ? null : (
               <Button size="small" variant="ghost" onClick={dismiss} data-testid="export-cancel">

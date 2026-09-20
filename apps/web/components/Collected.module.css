@@ -367,7 +367,16 @@
   border: 1px solid var(--line-strong);
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
   font-size: 13.5px;
-  white-space: nowrap;
+  /*
+   * Wraps, and stays inside the gutters.
+   *
+   * `white-space: nowrap` suits the two words the undo says and not the
+   * sentence the storage warning says: measured at 390px that one came out
+   * 595.6px wide at x = -102.8, unreadable from both ends, with its OK button
+   * at x = 441.7 -- outside the viewport and unreachable.
+   */
+  max-width: min(430px, calc(100vw - 28px));
+  text-align: left;
 }
 
 /* Clear of the selection bar when both are up. */
@@ -382,6 +391,14 @@
 @container (max-width: 640px) {
   .page {
     padding: 0 12px 132px;
+  }
+
+  /* The first row starts below the back chevron rather than under it. The
+     chevron is fixed at 14px, so its 40px disc otherwise sat on the top-left
+     tile and took a 40x40 corner of it -- a tap there left the collection
+     instead of opening that wallpaper. */
+  .page[data-phone='true'] .grid {
+    margin-top: 46px;
   }
 
   /* Select sits on the title's line rather than under it. The header is the
@@ -459,7 +476,9 @@
   left: 50%;
   right: auto;
   width: min(430px, 100%);
-  transform: translateX(-50%);
+  /* The drag's offset is carried in a custom property so that centring the
+     column and pulling the sheet down can both be true at once. */
+  transform: translateX(-50%) translateY(var(--pw-drag-y, 0px));
   border-left: 1px solid var(--line-strong);
   border-right: 1px solid var(--line-strong);
 }

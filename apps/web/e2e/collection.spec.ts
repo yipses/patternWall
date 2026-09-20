@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { settled } from './helpers';
 
 /**
  * The collection, driven the way a phone drives it.
@@ -276,6 +277,161 @@ test.describe('the collection', () => {
     await page.mouse.move(grip2.x + grip2.width / 2, grip2.y + grip2.height / 2 + box.height * 0.6, { steps: 12 });
     await page.mouse.up();
     await expect(sheet).toHaveCount(0);
+  });
+
+  test('dragging the sheet moves it down and not sideways', async ({ page }) => {
+    // The phone column centres its fixed furniture with `translateX(-50%)`,
+    // and an inline `transform: translateY(...)` replaced it outright — so the
+    // first pointermove threw the sheet half its own width to the right, half
+    // of it off the screen. Measured 0 → 195 at 390px before the fix.
+    await page.goto('/m/collected');
+    await page.getByTestId('select-start').click();
+    await tile(page, 'alpha').click();
+    await page.getByTestId('export-selected').click();
+
+    const sheet = page.getByTestId('export-sheet');
+    const before = (await sheet.boundingBox())!;
+    const grip = (await page.getByTestId('export-grip').boundingBox())!;
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2 + 30, { steps: 4 });
+    const during = (await sheet.boundingBox())!;
+    await page.mouse.up();
+
+    expect(Math.abs(during.x - before.x), 'the sheet must not move sideways').toBeLessThan(2);
+    expect(during.y).toBeGreaterThan(before.y);
+  });
+
+  test('the settings level shows the advanced controls once, behind Advanced', async ({ page }) => {
+    await page.goto('/m/collected');
+    await page.getByTestId('select-start').click();
+    await tile(page, 'alpha').click();
+    await page.getByTestId('export-selected').click();
+    await page.getByTestId('export-summary').click();
+
+    const sheet = page.getByTestId('export-sheet');
+    // Hidden until asked for, and then exactly one of each. The guard excluded
+    // only one of the two narrowed modes, so this level printed all four and
+    // Advanced printed them again, two sliders bound to one value.
+    expect(await sheet.innerText()).not.toContain('Include 8% bleed');
+    await page.getByTestId('export-advanced').click();
+    const shown = await sheet.innerText();
+    expect(shown.split('Include 8% bleed').length - 1).toBe(1);
+    expect(shown.split('Palette size').length - 1).toBe(1);
+  });
+
+  test('a size typed by hand is not called the screen', async ({ page }) => {
+    await page.goto('/m/collected');
+    await page.getByTestId('select-start').click();
+    await tile(page, 'alpha').click();
+    await page.getByTestId('export-selected').click();
+    await page.getByTestId('export-summary').click();
+    await page.getByTestId('export-device').click();
+    await page.getByRole('radio', { name: /Custom size/ }).click();
+    await page.getByLabel('Width').fill('1234');
+    await page.getByTestId('export-back').click();
+
+    // `custom` is set both by the detection on open and by hand, and the value
+    // cannot tell them apart — so a width somebody had just typed was reported
+    // as "This screen", while the list one level down called it custom.
+    await expect(page.getByTestId('export-summary')).toContainText('Custom size');
+    await expect(page.getByTestId('export-summary')).not.toContainText('This screen');
+  });
+
+  test('cancelling a render returns to the summary and says so', async ({ page }) => {
+    // It used to close the sheet, so the branch that reports a cancellation
+    // only ever ran against an unmounted component and its copy was
+    // unreachable. Escape, the scrim and a drag still dismiss.
+    //
+    // Twelve of the expensive pattern at full resolution, because there has to
+    // be a run long enough to interrupt: with three the export finished
+    // between asking for the Cancel button and pressing it.
+    await page.addInitScript((p) => {
+      const many = [];
+      for (let i = 0; i < 12; i++) {
+        many.push({ id: `c${i}`, generatorId: 'contours', seed: `c${i}`, params: {}, savedAt: i, palette: p });
+      }
+      window.localStorage.setItem('patternwall.collected.v1', JSON.stringify(many));
+    }, PALETTE);
+    await page.goto('/collected');
+    await page.getByTestId('select-start').click();
+    await page.getByTestId('select-toggle-all').click();
+    await page.getByTestId('export-selected').click();
+    await page.getByTestId('export-run').click();
+
+    // Dispatched rather than clicked: the render holds the main thread between
+    // yields and Playwright's actionability check waits for it. The point here
+    // is to interrupt work that is in progress, so a raw event is the tool.
+    await expect(page.getByTestId('export-cancel')).toBeVisible();
+    await page.getByTestId('export-cancel').dispatchEvent('click');
+
+    await expect(page.getByTestId('export-sheet')).toBeVisible();
+    await expect(page.getByText('Export cancelled')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('export-run')).toBeVisible();
+  });
+
+  test('focus stays in the dialog when a stage change takes the control it was on', async ({ page }) => {
+    await page.goto('/m/collected');
+    await page.getByTestId('select-start').click();
+    await tile(page, 'alpha').click();
+    await page.getByTestId('export-selected').click();
+
+    // Pressing Export unmounts the button that had focus. The trap only
+    // compared against the first and last focusable, which does nothing at all
+    // once focus is outside — so Tab walked into the collection behind the
+    // dialog, which was fully operable.
+    const focusInSheet = () =>
+      page.evaluate(() => {
+        const sheet = document.querySelector('[data-testid="export-sheet"]');
+        return !!sheet && sheet.contains(document.activeElement);
+      });
+
+    await page.getByTestId('export-run').click();
+    // Two halves, and only asserting the second let the whole thing pass with
+    // both fixes removed: Tab from `body` happened to land back inside. This
+    // one is the stage effect — focus must not be adrift the moment the
+    // control it was on disappears.
+    expect(await focusInSheet(), 'focus was dropped when the stage changed').toBe(true);
+
+    await page.keyboard.press('Tab');
+    expect(await focusInSheet(), 'focus left the modal').toBe(true);
+  });
+
+  test('the device list is one tab stop and the arrows move between rows', async ({ page }) => {
+    await page.goto('/m/collected');
+    await page.getByTestId('select-start').click();
+    await tile(page, 'alpha').click();
+    await page.getByTestId('export-selected').click();
+    await page.getByTestId('export-summary').click();
+    await page.getByTestId('export-device').click();
+
+    const stops = await page.evaluate(() =>
+      [...document.querySelectorAll('[role="radio"]')].filter((el) => el.getAttribute('tabindex') !== '-1').length,
+    );
+    expect(stops, 'a roving tabindex, not twelve tab stops').toBe(1);
+
+    await page.getByRole('radio').filter({ hasNot: page.locator('[tabindex="-1"]') }).first().focus();
+    const before = await page.evaluate(() => document.activeElement?.textContent);
+    await page.keyboard.press('ArrowDown');
+    const after = await page.evaluate(() => document.activeElement?.textContent);
+    expect(after).not.toBe(before);
+  });
+
+  test('the back chevron returns to the wallpaper it left, not a new one', async ({ page }) => {
+    // `/m` on its own is a different wallpaper: the configuration lives in the
+    // query. Leaving for the collection and coming back handed back a fresh
+    // seed with the edits gone.
+    await page.goto('/m');
+    await page.getByTestId('preview-dice').click();
+    await settled(page);
+    const before = page.url();
+    expect(before).toMatch(/[?&]s=/);
+
+    await page.getByTestId('preview-book').click();
+    await page.getByTestId('collected-back').click();
+    await settled(page);
+    const seed = (u: string) => new URL(u).searchParams.get('s');
+    expect(seed(page.url())).toBe(seed(before));
   });
 
   test('the export sheet is a dialog: escape leaves it, and so does the scrim', async ({ page }) => {

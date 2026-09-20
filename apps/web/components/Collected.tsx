@@ -132,8 +132,25 @@ export function Collected({ bare = false }: { bare?: boolean }) {
   const thumbWidth = 220;
   const thumbHeight = Math.round((thumbWidth * screen.h) / screen.w);
 
+  /**
+   * Where the back chevron goes.
+   *
+   * `/m` on its own is a *different* wallpaper: the configuration you were
+   * looking at lives in that route's query, and leaving for the collection and
+   * coming back handed you a fresh seed with the edits gone. Measured on a
+   * round trip, the seed changed and the rendered `src` with it. The book
+   * carries the query in, and this carries it out.
+   *
+   * Read at mount rather than during render, for the reason `?from=m` was
+   * retired: this page is prerendered and a first render that depends on the
+   * query string disagrees with the baked HTML.
+   */
+  const [backHref, setBackHref] = useState('/m');
+
   useEffect(() => {
     setItems(loadCollected());
+    const q = window.location.search.replace(/^\?/, '');
+    if (q) setBackHref(`/m?${q}`);
   }, []);
 
   useEffect(() => {
@@ -462,7 +479,7 @@ export function Collected({ bare = false }: { bare?: boolean }) {
            * here looks top-left before they look anywhere else. The rail keeps
            * what it is for, which is acting on what is on screen.
            */}
-          <Link className={`${styles.round} ${styles.back}`} href="/m" aria-label="Back to the wallpaper" data-testid="collected-back">
+          <Link className={`${styles.round} ${styles.back}`} href={backHref} aria-label="Back to the wallpaper" data-testid="collected-back">
             <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" focusable="false">
               <path
                 fill="none"
@@ -551,7 +568,7 @@ export function Collected({ bare = false }: { bare?: boolean }) {
       ) : null}
 
       {storageFailed ? (
-        <div className={styles.snack} role="status">
+        <div className={`${styles.snack} ${selecting ? styles.snackHigh : ''}`} role="status">
           <span>This browser would not let anything be stored, so that change will not survive a reload.</span>
           <Button size="small" onClick={() => setStorageFailed(false)}>
             OK

@@ -53,6 +53,7 @@
    rows is the whole layout brief. */
 .sheet {
   position: absolute;
+  transform: translateY(var(--pw-drag-y, 0px));
   z-index: 10;
   left: 3.5%;
   right: calc(3.5% + var(--pw-inset-right, 0px));

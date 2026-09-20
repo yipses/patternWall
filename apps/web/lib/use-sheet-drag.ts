@@ -136,12 +136,24 @@ export function useSheetDrag(onDismiss: () => void): {
   return {
     sheetRef,
     gripProps: { onPointerDown },
+    /*
+     * A custom property, not `transform`.
+     *
+     * Writing `transform: translateY(...)` inline replaces whatever transform
+     * the stylesheet had, and the collection's phone column centres its fixed
+     * furniture with `left: 50%; transform: translateX(-50%)`. So the first
+     * pointermove of every drag threw the sheet half its own width to the
+     * right — measured, x went 0 to 195 at 390px and 235 to 450 at 900 — and
+     * it slid back horizontally on release. The sheets compose this property
+     * into their own transform instead, so neither has to know about the
+     * other.
+     */
     sheetStyle: {
-      transform: offset === 0 ? undefined : `translateY(${offset}px)`,
+      ['--pw-drag-y' as string]: `${offset}px`,
       // Nothing while the finger is down, so the sheet tracks it exactly; the
       // settle afterwards is the iOS sheet curve.
       transition: dragging ? 'none' : 'transform 300ms cubic-bezier(0.32, 0.72, 0, 1)',
-    },
+    } as React.CSSProperties,
     dragging,
   };
 }

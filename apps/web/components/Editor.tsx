@@ -494,7 +494,7 @@ export function Editor({ generatorId: initialId, bare = false }: { generatorId: 
                   // The phone view has its own collection: no header, no
                   // heading, no paragraph, and a tile that opens back into
                   // `/m` rather than into the editor route.
-                  collectedHref={bare ? '/m/collected' : '/collected'}
+                  collectedHref={bare ? `/m/collected?g=${encodeURIComponent(generator.id)}&${query}` : '/collected'}
                   showStamp={bare}
                   onPalette={(p) => {
                     setPalette(p);
