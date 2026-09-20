@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { encodeConfig, getGenerator } from '@patternwall/core';
+import { BuildStamp } from './BuildStamp';
 import { PatternImage } from './PatternImage';
 import { CollectionExport } from './CollectionExport';
 import { Button, uiStyles as ui } from './ui';
@@ -31,20 +32,12 @@ const UNDO_MS = 9000;
  * turns every tile into a checkbox and puts the actions in one bar at the
  * bottom, where there is room for words.
  */
-export function Collected() {
+export function Collected({ bare = false }: { bare?: boolean }) {
   const [items, setItems] = useState<CollectedItem[] | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
   const [exportOpen, setExportOpen] = useState(false);
   const [undo, setUndo] = useState<{ before: CollectedItem[]; count: number } | null>(null);
-  /**
-   * Whether this page was opened from `/m`, which decides where a tile goes
-   * back to. Read at mount and never during render: the static export
-   * prerenders this page, so a first render that depends on the query string
-   * disagrees with the baked HTML -- the hydration-mismatch class recorded in
-   * `next.config.mjs`.
-   */
-  const [fromPhone, setFromPhone] = useState(false);
 
   /**
    * A tile is the shape of the screen it was saved for.
@@ -63,7 +56,6 @@ export function Collected() {
 
   useEffect(() => {
     setItems(loadCollected());
-    setFromPhone(new URLSearchParams(window.location.search).get('from') === 'm');
   }, []);
 
   useEffect(() => {
@@ -106,44 +98,47 @@ export function Collected() {
   return (
     <div
       className={styles.page}
-      data-phone={fromPhone ? 'true' : undefined}
+      data-phone={bare ? 'true' : undefined}
       style={{ ['--pw-tile' as string]: `${screen.w} / ${screen.h}` }}
     >
       {/* The width the phone rules measure against. See the note in the
           stylesheet for why the container is here and not on the page. */}
       <div className={styles.inner}>
-        <div className={styles.head}>
-          {fromPhone ? (
-            <Link className={styles.back} href="/m" data-testid="collected-back">
-              ← Back to the phone view
-            </Link>
-          ) : null}
-          <h1 className={styles.title}>Collected</h1>
-          <p className={styles.sub}>
-            Configurations you saved, kept in this browser&rsquo;s local storage. Nothing here is uploaded anywhere, which also
-            means it does not follow you to another device — copy a link if you want that.
-          </p>
-          {list.length > 0 ? (
-            <div className={styles.actions}>
-              {selecting ? (
-                /* Leaving select mode is in the bar, not here: the header
-                   scrolls away after the first row and a mode you cannot get out
-                   of without scrolling back to the top is a trap. */
-                <Button
-                  size="small"
-                  variant="ghost"
-                  onClick={() => setPicked(picked.length === list.length ? [] : list.map((i) => i.id))}
-                >
-                  {picked.length === list.length ? 'Select none' : 'Select all'}
-                </Button>
-              ) : (
-                <Button size="small" variant="ghost" onClick={() => setSelecting(true)} data-testid="select-start">
-                  Select
-                </Button>
-              )}
-            </div>
-          ) : null}
-        </div>
+        {bare ? (
+          /* No title, no explanation, no labelled buttons. The pictures are the
+             screen and every word is a row of them not shown; what a heading
+             would have said is in the rail, as the two things you can do. The
+             landmark stays for anything reading the page, undrawn. */
+          <h1 className="pw-visually-hidden">Your collection</h1>
+        ) : (
+          <div className={styles.head}>
+            <h1 className={styles.title}>Collected</h1>
+            <p className={styles.sub}>
+              Configurations you saved, kept in this browser&rsquo;s local storage. Nothing here is uploaded anywhere, which
+              also means it does not follow you to another device — copy a link if you want that.
+            </p>
+            {list.length > 0 ? (
+              <div className={styles.actions}>
+                {selecting ? (
+                  /* Leaving select mode is in the bar, not here: the header
+                     scrolls away after the first row and a mode you cannot get
+                     out of without scrolling back to the top is a trap. */
+                  <Button
+                    size="small"
+                    variant="ghost"
+                    onClick={() => setPicked(picked.length === list.length ? [] : list.map((i) => i.id))}
+                  >
+                    {picked.length === list.length ? 'Select none' : 'Select all'}
+                  </Button>
+                ) : (
+                  <Button size="small" variant="ghost" onClick={() => setSelecting(true)} data-testid="select-start">
+                    Select
+                  </Button>
+                )}
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {items === null ? (
           <p className={ui.help}>Reading your collection…</p>
@@ -192,7 +187,7 @@ export function Collected() {
                 // Back where you came from. Opened from `/m` a tile returns to
                 // `/m`, which carries its pattern in `?g=` rather than in the
                 // path; otherwise it opens the full editor route.
-                const href = fromPhone ? `/m?g=${encodeURIComponent(g?.id ?? '')}&${query}` : `/p/${g?.id ?? ''}?${query}`;
+                const href = bare ? `/m?g=${encodeURIComponent(g?.id ?? '')}&${query}` : `/p/${g?.id ?? ''}?${query}`;
 
                 return (
                   <li key={item.id} className={styles.item}>
@@ -234,10 +229,60 @@ export function Collected() {
 
             {/* Everything, below the grid, for when nothing has been picked out.
                 The selection has its own export, in the sheet. */}
-            {selecting ? null : <CollectionExport items={items} />}
+            {bare || selecting ? null : <CollectionExport items={items} />}
+
           </>
         )}
+
+        {/* Below the last row, in the space the fixed rail already reserves.
+            This route has no footer and no settings sheet, and the rule in
+            CLAUDE.md is that every page can answer "am I current?" on its own
+            -- a green deploy is not proof the served page changed. Outside the
+            list rather than after it, because an empty collection is a page
+            too and the question is the same one there. It is the only text on
+            the screen and you have to reach the end to see it, which is about
+            the right price for it. */}
+        {bare ? (
+          <p className={styles.stamp}>
+            <BuildStamp />
+          </p>
+        ) : null}
       </div>
+
+      {bare && !selecting && items !== null ? (
+        <div className={styles.rail} data-testid="collected-rail">
+          {items.length > 0 ? (
+            <button
+              type="button"
+              className={styles.round}
+              aria-label="Select wallpapers"
+              onClick={() => setSelecting(true)}
+              data-testid="select-start"
+            >
+              {/* A circled tick, the same mark the tiles take when picked. */}
+              <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" strokeWidth="1.9" />
+                <path
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M8.4 12.2 11 14.8l4.7-5"
+                />
+              </svg>
+            </button>
+          ) : null}
+          {/* Closing sits at the bottom of the rail, which is exactly where the
+              book was when it was pressed. A sheet over the wallpaper is
+              dismissed, not navigated back from. */}
+          <Link className={styles.round} href="/m" aria-label="Close the collection" data-testid="collected-back">
+            <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" focusable="false">
+              <path fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" d="M6.8 6.8l10.4 10.4M17.2 6.8 6.8 17.2" />
+            </svg>
+          </Link>
+        </div>
+      ) : null}
 
       {selecting && exportOpen ? (
         <div className={styles.sheet} role="dialog" aria-label="Export the selection">

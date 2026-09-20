@@ -15,6 +15,7 @@
  */
 .page[data-phone='true'] {
   max-width: 430px;
+  padding-top: calc(10px + env(safe-area-inset-top));
 }
 
 /*
@@ -138,13 +139,6 @@
   color: var(--text-faint);
 }
 
-.back {
-  display: inline-block;
-  margin-bottom: 14px;
-  font-size: 13.5px;
-  color: var(--text-dim);
-}
-
 .actions {
   display: flex;
   gap: 8px;
@@ -214,6 +208,40 @@
   max-width: 46ch;
   margin: 0 auto 20px;
   font-size: 14px;
+}
+
+/*
+ * The rail, in `/m`'s own vocabulary: 40px circles, 8px apart, in the corner
+ * the book was pressed in. Two buttons and no labels — what a heading would
+ * have said is the two things you can do.
+ */
+.rail {
+  position: fixed;
+  z-index: 40;
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.round {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: rgba(10, 10, 11, 0.72);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.round:hover {
+  color: var(--text);
+  background: rgba(10, 10, 11, 0.88);
 }
 
 /* The bar and the sheet are fixed, so the page needs room under its last row
@@ -380,4 +408,18 @@
   transform: translateX(-50%);
   border-left: 1px solid var(--line-strong);
   border-right: 1px solid var(--line-strong);
+}
+
+/* The rail follows the column, like the bar and the sheet do. */
+.page[data-phone='true'] .rail {
+  right: auto;
+  left: 50%;
+  margin-left: calc(430px / 2 - 54px);
+}
+
+.stamp {
+  margin: 18px 0 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-faint);
 }

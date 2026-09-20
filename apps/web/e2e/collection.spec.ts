@@ -185,21 +185,35 @@ test.describe('the collection', () => {
     });
   });
 
-  test('opened from the phone view, a tile goes back to the phone view', async ({ page }) => {
-    await page.goto('/collected?from=m');
+  test('the phone collection is pictures and a rail, and a tile goes back to /m', async ({ page }) => {
+    await page.goto('/m/collected');
+
+    // No heading, no explanation, no site header: every word is a row of
+    // pictures not shown. What a heading would have said is the rail.
+    // There is a landmark heading and it is not drawn. `pw-visually-hidden`
+    // clips rather than hides, so Playwright reports it visible -- asserting
+    // "not visible" passes only against a heading that is display:none, which
+    // is the one thing it must not be.
+    await expect(page.getByRole('heading', { level: 1 })).toHaveClass(/pw-visually-hidden/);
+    await expect(page.getByText('kept in this browser')).toHaveCount(0);
+    await expect(page.getByRole('navigation')).toHaveCount(0);
+    await expect(page.getByTestId('collected-rail')).toBeVisible();
     await expect(page.getByTestId('collected-back')).toBeVisible();
+
+    // And no export in browse mode: exporting is an operation on a selection.
+    await expect(page.getByTestId('export-collection')).toHaveCount(0);
 
     await page.getByRole('link', { name: /seed bravo$/ }).click();
     await expect(page).toHaveURL(/\/m\/?\?g=truchet-diagonals/);
     await expect(page.locator('img[src^="data:image/svg"]').first()).toBeVisible();
   });
 
-  test('opened from the phone view, it stays a phone in a desktop window', async ({ page }) => {
+  test('the phone collection stays a phone in a desktop window', async ({ page }) => {
     // `/m` is the phone experience whatever the window is -- it draws the
     // picture at the device's shape and lets black take the rest. The
     // collection reached from its book has to match, or a wide window hands
     // back the desktop page, which is what was reported.
-    await page.goto('/collected?from=m');
+    await page.goto('/m/collected');
     const grid = page.getByTestId('collected-grid');
     expect(await grid.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(/\s+/).length)).toBe(3);
     await expect(page.getByText('Obsidian · alpha')).toBeHidden();
@@ -215,8 +229,10 @@ test.describe('the collection', () => {
     await expect(page.getByText('Obsidian · alpha')).toBeVisible();
   });
 
-  test('opened from the site, a tile goes to the editor route', async ({ page }) => {
+  test('the site collection keeps its heading, and a tile goes to the editor route', async ({ page }) => {
     await page.goto('/collected');
+    await expect(page.getByRole('heading', { level: 1, name: 'Collected' })).toBeVisible();
+    await expect(page.getByTestId('collected-rail')).toHaveCount(0);
     await expect(page.getByTestId('collected-back')).toHaveCount(0);
     await page.getByRole('link', { name: /seed bravo$/ }).click();
     await expect(page).toHaveURL(/\/p\/truchet-diagonals/);

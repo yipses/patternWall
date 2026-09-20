@@ -481,10 +481,10 @@ export function Editor({ generatorId: initialId, bare = false }: { generatorId: 
                   onNewSeed={newSeed}
                   collected={collected}
                   onCollect={collect}
-                  // Where the collection sends a tile back to. From `/m` the
-                  // picture is the whole screen, so handing a tile to the
-                  // editor route with no way back is a one-way door.
-                  collectedHref={bare ? '/collected?from=m' : '/collected'}
+                  // The phone view has its own collection: no header, no
+                  // heading, no paragraph, and a tile that opens back into
+                  // `/m` rather than into the editor route.
+                  collectedHref={bare ? '/m/collected' : '/collected'}
                   showStamp={bare}
                   onPalette={(p) => {
                     setPalette(p);
