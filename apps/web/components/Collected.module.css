@@ -261,9 +261,19 @@
 }
 
 /*
- * The rail, in `/m`'s own vocabulary: 40px circles, 8px apart, in the corner
- * the book was pressed in. Two buttons and no labels — what a heading would
- * have said is the two things you can do.
+ * Back is top-left, where every platform puts the way out. It borrows the
+ * rail's circle so the two read as one set of controls rather than two.
+ */
+.back {
+  position: fixed;
+  z-index: 40;
+  left: calc(14px + env(safe-area-inset-left));
+  top: calc(14px + env(safe-area-inset-top));
+}
+
+/*
+ * The rail, in `/m`'s own vocabulary: 40px circles, 8px apart, in the corner a
+ * thumb reaches. It is for acting on what is on screen; leaving is not that.
  */
 .rail {
   position: fixed;
@@ -454,8 +464,8 @@
 }
 
 /*
- * The rail follows the column, like the bar and the sheet do -- but only once
- * there is a window wider than the column to follow it in.
+ * The rail and the back button follow the column, like the bar and the sheet
+ * do -- but only once there is a window wider than the column to follow it in.
  *
  * Pinning it to the column's right edge unconditionally put it 6px off the
  * screen on a 390px phone, because the column is 430 and the viewport is not.
@@ -464,6 +474,10 @@
  */
 .page[data-phone='true'] .rail {
   right: max(calc(14px + env(safe-area-inset-right)), calc(50% - 201px));
+}
+
+.page[data-phone='true'] .back {
+  left: max(calc(14px + env(safe-area-inset-left)), calc(50% - 201px));
 }
 
 .stamp {

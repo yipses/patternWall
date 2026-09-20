@@ -1439,6 +1439,23 @@ which is the order that catches a single-pass implementation.
 
 ## Conventions
 
+**Put any screen design past a UX specialist agent before building it.** Not
+after, and not only when it feels uncertain. This was asked for after the
+collection screen went three rounds — the layout had to be rebuilt, the way out
+of it moved twice, and the export flow was restructured, all on notes that a
+specialist gave in one pass the moment it was finally asked. Brief it with what
+the surface is for, what already exists around it, and the constraints it has
+to live inside; take its answer as advice rather than instruction, say plainly
+where you disagree and why, and put the disagreements to the person along with
+the plan.
+
+The failure that keeps recurring without it is not bad taste, it is reasoning
+from this app outward instead of from the conventions inward. Leaving the
+collection was put at the bottom of a corner rail because that is where the
+button you pressed to get in lives — internally consistent, and wrong, because
+a person looks top-left for the way out before they look anywhere. A specialist
+says that in a sentence; arriving at it by shipping costs a round each time.
+
 Develop on a feature branch; `main` is what deploys. End commit messages with
 the attribution lines the session provides. Do not put model names anywhere in
 the repo — commit messages, code comments, or UI.

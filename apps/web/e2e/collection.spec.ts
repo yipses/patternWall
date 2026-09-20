@@ -367,7 +367,20 @@ test.describe('the collection', () => {
     await expect(page.getByText('kept in this browser')).toHaveCount(0);
     await expect(page.getByRole('navigation')).toHaveCount(0);
     await expect(page.getByTestId('collected-rail')).toBeVisible();
-    await expect(page.getByTestId('collected-back')).toBeVisible();
+
+    // Leaving is top-left, where every platform puts it. It sat at the bottom
+    // of the rail on the argument that the way out should be where the way in
+    // was, which is reasoning about this app against a convention about every
+    // other one.
+    const back = (await page.getByTestId('collected-back').boundingBox())!;
+    const view = page.viewportSize()!;
+    expect(back.x + back.width / 2).toBeLessThan(view.width / 2);
+    expect(back.y + back.height / 2).toBeLessThan(view.height / 2);
+
+    // And the rail is still the other corner, for acting on what is on screen.
+    const rail = (await page.getByTestId('collected-rail').boundingBox())!;
+    expect(rail.x).toBeGreaterThan(view.width / 2);
+    expect(rail.y).toBeGreaterThan(view.height / 2);
 
     // And no export in browse mode: exporting is an operation on a selection.
     await expect(page.getByTestId('export-collection')).toHaveCount(0);

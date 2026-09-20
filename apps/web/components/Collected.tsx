@@ -330,38 +330,55 @@ export function Collected({ bare = false }: { bare?: boolean }) {
       </div>
 
       {bare && !selecting && items !== null ? (
-        <div className={styles.rail} data-testid="collected-rail">
-          {items.length > 0 ? (
-            <button
-              type="button"
-              className={styles.round}
-              aria-label="Select wallpapers"
-              onClick={() => setSelecting(true)}
-              data-testid="select-start"
-            >
-              {/* A circled tick, the same mark the tiles take when picked. */}
-              <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" focusable="false">
-                <circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" strokeWidth="1.9" />
-                <path
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.9"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M8.4 12.2 11 14.8l4.7-5"
-                />
-              </svg>
-            </button>
-          ) : null}
-          {/* Closing sits at the bottom of the rail, which is exactly where the
-              book was when it was pressed. A sheet over the wallpaper is
-              dismissed, not navigated back from. */}
-          <Link className={styles.round} href="/m" aria-label="Close the collection" data-testid="collected-back">
+        <>
+          {/*
+           * Leaving is top-left, which is where every platform puts it.
+           *
+           * It was at the bottom of the rail, on the argument that the way out
+           * should be where the way in was — the book you pressed is in that
+           * corner. That reasoning is about this app and the convention is
+           * about every other one, and the convention wins: a person arriving
+           * here looks top-left before they look anywhere else. The rail keeps
+           * what it is for, which is acting on what is on screen.
+           */}
+          <Link className={`${styles.round} ${styles.back}`} href="/m" aria-label="Back to the wallpaper" data-testid="collected-back">
             <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" focusable="false">
-              <path fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" d="M6.8 6.8l10.4 10.4M17.2 6.8 6.8 17.2" />
+              <path
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.9"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M14.2 5.6 7.8 12l6.4 6.4"
+              />
             </svg>
           </Link>
-        </div>
+
+          {items.length > 0 ? (
+            <div className={styles.rail} data-testid="collected-rail">
+              <button
+                type="button"
+                className={styles.round}
+                aria-label="Select wallpapers"
+                onClick={() => setSelecting(true)}
+                data-testid="select-start"
+              >
+                {/* A circled tick, the same mark the tiles take when picked. */}
+                <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" focusable="false">
+                  <circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" strokeWidth="1.9" />
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.9"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M8.4 12.2 11 14.8l4.7-5"
+                  />
+                </svg>
+              </button>
+            </div>
+          ) : null}
+        </>
       ) : null}
 
       {selecting && exportOpen ? <ExportSheet items={pickedItems} onClose={() => setExportOpen(false)} /> : null}
