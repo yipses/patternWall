@@ -429,6 +429,7 @@ export function Feed() {
           aria-label={latestSaved ? 'Open your liked wallpapers' : 'Open your liked wallpapers (none yet)'}
           data-testid="feed-gallery"
           data-empty={latestSaved ? undefined : 'true'}
+          data-hidden={sheet ? 'true' : undefined}
         >
           {latestSaved && getGenerator(latestSaved.generatorId) ? (
             <PatternImage

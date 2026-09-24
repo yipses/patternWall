@@ -275,7 +275,8 @@
 }
 
 .row[data-hidden='true'],
-.more[data-hidden='true'] {
+.more[data-hidden='true'],
+.gallery[data-hidden='true'] {
   display: none;
 }
 
@@ -317,10 +318,12 @@
 }
 
 /* Dimmed, never hidden: the row must not shift when there is nothing to
-   bring back, or the buttons move under a thumb that learned where they are. */
+   bring back, or the buttons move under a thumb that learned where they are.
+   The glyph dims and the disc does not — a translucent disc over a light
+   wallpaper read as a grey blob rather than as a button that is resting. */
 .verdict:disabled,
 .rewind:disabled {
-  opacity: 0.35;
+  color: rgba(255, 255, 255, 0.28);
   cursor: default;
 }
 
