@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, type ReactNode } from 'react';
 import { GRID_SIZE, effectiveSpec, secondaryParams, type Generator, type Palette, type ParamValue } from '@patternwall/core';
 import Link from 'next/link';
 import { uiStyles as ui } from './ui';
@@ -72,44 +72,7 @@ export function PreviewSettings({
    */
   showStamp?: boolean;
 }) {
-  const rest = secondaryParams(generator);
   const toggle = (sheet: Exclude<Sheet, null>) => () => onOpen(open === sheet ? null : sheet);
-
-  /**
-   * These two edit the picture live, so there is nothing staged to discard and
-   * their escape *is* their completion: a word, top right, reading Done. The
-   * export sheet stages an action instead, which is why its escape is Cancel
-   * on the left with the commit at the bottom — different layouts because they
-   * are different objects, not because they drifted.
-   *
-   * Three ways out of each, the same three everywhere: the word, a downward
-   * drag on the grip, and the scrim.
-   */
-  const close = useCallback(() => onOpen(null), [onOpen]);
-  const drag = useSheetDrag(close);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape') return;
-      e.preventDefault();
-      close();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, close]);
-
-  const grip = (label: string) => (
-    <div className={styles.grip} {...drag.gripProps} data-testid={`preview-${label}-grip`}>
-      <span className={styles.grabber} aria-hidden="true" />
-      <div className={styles.head}>
-        <span className={styles.headTitle}>{label === 'palette' ? 'Palette' : 'Settings'}</span>
-        <button type="button" className={`${ui.btn} ${ui.small}`} data-testid={`preview-${label}-done`} onClick={close}>
-          Done
-        </button>
-      </div>
-    </div>
-  );
 
   return (
     <>
@@ -213,6 +176,110 @@ export function PreviewSettings({
         </button>
       </div>
 
+      <PreviewSheets
+        generator={generator}
+        params={params}
+        palette={palette}
+        open={open}
+        onOpen={onOpen}
+        onChange={onChange}
+        onCommit={onCommit}
+        onPalette={onPalette}
+        showStamp={showStamp}
+      />
+    </>
+  );
+}
+
+/**
+ * The two sheets on their own, without the rail that opens them.
+ *
+ * `/m` opens them from its rail and `/t` from a menu, and both want the same
+ * sheets: the same controls, the same three ways out, the same drag. Split out
+ * rather than copied, because a second copy of the drag and the Escape
+ * handling is a second place for them to drift — which is the reason `/m` and
+ * the site editor already share one component.
+ */
+export function PreviewSheets({
+  generator,
+  params,
+  palette,
+  open,
+  onOpen,
+  onChange,
+  onCommit,
+  onPalette,
+  showStamp = false,
+  every = false,
+  wide = false,
+  titles = { settings: 'Settings', palette: 'Palette' },
+  settingsTop,
+}: {
+  generator: Generator;
+  params: Record<string, ParamValue>;
+  palette: Palette;
+  open: Sheet;
+  onOpen: (sheet: Sheet) => void;
+  onChange: (key: string, value: ParamValue) => void;
+  onCommit: () => void;
+  onPalette: (p: Palette) => void;
+  showStamp?: boolean;
+  /**
+   * Every parameter, rather than all but the two the picture drives.
+   *
+   * On `/m` a horizontal and a vertical drag scrub two parameters, so the sheet
+   * holds the rest. On `/t` those drags are verdicts and colours, so nothing
+   * on the picture drives a parameter and the sheet has to hold them all or
+   * two of them become unreachable.
+   */
+  every?: boolean;
+  /** Full width. `/m` stops short of its rail; `/t` has no rail beside it. */
+  wide?: boolean;
+  /** What the two sheets are called — the words on whatever opened them. */
+  titles?: { settings: string; palette: string };
+  /** Anything that belongs above the controls, such as a Shuffle button. */
+  settingsTop?: ReactNode;
+}) {
+  const rest = every ? generator.params : secondaryParams(generator);
+
+  /**
+   * These two edit the picture live, so there is nothing staged to discard and
+   * their escape *is* their completion: a word, top right, reading Done. The
+   * export sheet stages an action instead, which is why its escape is Cancel
+   * on the left with the commit at the bottom — different layouts because they
+   * are different objects, not because they drifted.
+   *
+   * Three ways out of each, the same three everywhere: the word, a downward
+   * drag on the grip, and the scrim.
+   */
+  const close = useCallback(() => onOpen(null), [onOpen]);
+  const drag = useSheetDrag(close);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      close();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, close]);
+
+  const grip = (label: string) => (
+    <div className={styles.grip} {...drag.gripProps} data-testid={`preview-${label}-grip`}>
+      <span className={styles.grabber} aria-hidden="true" />
+      <div className={styles.head}>
+        <span className={styles.headTitle}>{label === 'palette' ? titles.palette : titles.settings}</span>
+        <button type="button" className={`${ui.btn} ${ui.small}`} data-testid={`preview-${label}-done`} onClick={close}>
+          Done
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
       {open ? (
         /* The rest of the preview is the gesture surface, so with the sheet
            open a press beside it moved to the next pattern — which is the picture
@@ -234,13 +301,14 @@ export function PreviewSettings({
 
       {open === 'settings' ? (
         <div
-          className={styles.sheet}
+          className={`${styles.sheet} ${wide ? styles.wide : ''}`}
           role="group"
-          aria-label={`${generator.name} settings`}
+          aria-label={`${generator.name} ${titles.settings.toLowerCase()}`}
           ref={drag.sheetRef}
           style={drag.sheetStyle}
         >
           {grip('settings')}
+          {settingsTop}
           <div className={styles.rows}>
             {rest.map((declared) => {
               const spec = effectiveSpec(generator, declared, params);
@@ -269,7 +337,7 @@ export function PreviewSettings({
         <div
           className={`${styles.sheet} ${styles.tall}`}
           role="group"
-          aria-label="Palette"
+          aria-label={titles.palette}
           ref={drag.sheetRef}
           style={drag.sheetStyle}
         >

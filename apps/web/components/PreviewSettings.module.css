@@ -159,3 +159,9 @@ a.round {
   color: var(--text-dim);
   text-align: center;
 }
+
+/* `/t` has no rail running down the right edge, so its sheets take the width
+   `/m`'s stop short of. */
+.wide {
+  right: calc(3.5% + var(--pw-inset-right, 0px));
+}
