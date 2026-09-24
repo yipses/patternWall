@@ -1613,6 +1613,12 @@ downward drag, and the scrim. The button is the discoverable and
 keyboard-reachable path and is never the only one. Escape counts as the
 keyboard's version of the word.
 
+**R4a. R4 is about sheets; a menu closes the way menus do.** Tapping outside
+it, choosing an item, or pressing its button again — no word, no drag. The
+tap outside is *used up* by closing and must never reach what is underneath:
+on `/t` the card underneath re-rolls on a tap, so a press that closed the menu
+and also landed on the card would replace the thing being judged.
+
 **R5. One primary action per surface** — full width, at the bottom, above the
 safe-area inset, carrying its count, morphing through its own states rather
 than being replaced by a different layout. A destructive action is never its
@@ -1727,10 +1733,64 @@ from this build environment. Do not quietly upgrade a guess to a fact.
 
 ## Current state
 
-**Six routes, in two groups.** `/` the gallery, `/p/<id>` the editor,
+**Seven routes, in two groups.** `/` the gallery, `/p/<id>` the editor,
 `/collected` and `/setup` live under `app/(site)/`, which is where the header,
-the footer and the skip link are. `/m` and `/m/collected` live outside it and
-have no chrome at all: on those two the render is the screen.
+the footer and the skip link are. `/m`, `/m/collected` and `/t` live outside it
+and have no chrome at all: on those the render is the screen.
+
+**`/t` is the swipe feed, and its whole design leans on one promise: nothing
+seen is lost by accident.** Every card is random, so a card swiped away is gone
+unless something remembers it. Four things keep that promise and each has a
+test that was watched failing:
+
+- **Rewind undoes every change of card, not only a swipe.** A tap re-roll
+  destroys the card on screen as surely as a skip does. Undoing a like also
+  takes the card back out of the collection — but only if that like is what put
+  it there, which is why a like step records `added`. The card on screen at
+  the moment of a rewind had no verdict, so it goes back to the *front of the
+  queue* rather than into the bin: history is a line, not a tree. Palette flicks
+  and slider changes stay out of history, because they are undone by flicking
+  back and by moving the slider, and putting them in would make rewind walk
+  through colours before it reached the card swiped away by mistake.
+- **The feed is persisted, card, queue and history.** Safari's own edge swipe
+  winning over a card swipe, and iOS unloading a background tab, are the two
+  commonest ways this page dies — and without persistence, the browser itself
+  becomes the "gone forever" rewind exists to prevent.
+- **A card that has not drawn cannot be judged.** ✕ and ♥ are disabled and a
+  swipe snaps back until the picture is on screen, including while a tap's new
+  settings are drawing — or the like would keep a wallpaper nobody saw.
+- **A like that fails to save does not move on.** The card stays and says
+  "Couldn't save".
+
+The feed logic is pure and lives in core (`feed.ts`): card drawing, re-roll,
+palette cycling and the history reducer, so the promise above is unit-tested
+rather than only driven through a browser. Randomness comes in through a seeded
+`Rng`; the app seeds it from `Math.random` once, in `use-feed.ts`, which is the
+only place entropy is allowed near a render. Nothing random happens during the
+prerender — the static page is the ground, and the card arrives after mount.
+
+Gestures and where they stop: the card follows the finger only sideways, with
+a tilt; vertical is a flick that changes colours on release while the card stays
+put, because a card moving up reads as being thrown away. The axis lock is the
+lead-based one `/m` settled on. **Touches starting within 24px of either side
+edge never drag the card** — Safari owns both edges, back from the left and
+forward from the right once there is a forward entry — and page script cannot
+win that fight, so it does not start it. A tap is strict (under 10px and 300ms)
+because it is the most accidental gesture on the screen and it replaces the
+card.
+
+The share image is drawn when the "•••" menu opens rather than when Share is
+pressed: Safari only opens the share sheet while the press that asked for it is
+still fresh, and a dense pattern can take longer than that to rasterise, which
+would be a Share that silently does nothing. Sharing does *not* save to the
+collection — that was put to the owner and the answer was not to decide for
+people.
+
+`BROWSE_RANGES` in `feed.ts` is empty on purpose. It is where the pass that
+narrows each parameter to what makes a good *random* card lands, as data; until
+then cards draw over the slider's whole range, and the extremes are both the
+duds and the slow ones — contours at full resolution and sixty levels takes
+about a second to draw.
 
 The chrome moved into a route group precisely so `/m` could exist without it,
 and both phone routes share their component with a site one rather than forking

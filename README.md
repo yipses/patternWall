@@ -86,11 +86,18 @@ apps/web        Next.js App Router, static export, CSS Modules
 | `/setup` | The Apple Shortcuts recipe |
 | `/m` | The phone view: the render fills the device's own screen, no chrome |
 | `/m/collected` | The collection as pictures and nothing else |
+| `/t` | The swipe feed: random wallpapers, judged one at a time |
 
 The first four live under `app/(site)/`, which is where the header, the footer and the skip link
-are. The last two live outside it and have none of that: on those the render *is* the screen. `/m`
+are. The last three live outside it and have none of that: on those the render *is* the screen. `/m`
 is driven by swipe, tap and a rail of icon buttons in the corner rather than by a panel;
 `/m/collected` has no rail, just a chevron and a Select in one header across the top.
+
+`/t` is browsing rather than editing. Swipe right to keep a card and left to pass, tap for new
+settings on the same pattern, flick up or down for its colours. A ✕ · rewind · ♥ row sits at the
+bottom, a "•••" menu (Adjust, Colours, Share Image) bottom-right, and the Gallery top-right as a
+thumbnail of the last card you kept. Kept cards land in the same collection as everything else,
+and opening one there takes you to `/m`, which is where a saved wallpaper gets adjusted.
 
 They are not a second app. `/m` is `<Editor bare />` and `/m/collected` is `<Collected bare />` —
 one component each, two dressings — because a second copy would be a second set of gesture wiring
