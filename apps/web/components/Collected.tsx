@@ -355,9 +355,14 @@ export function Collected({ bare = false }: { bare?: boolean }) {
             {/* Back to where you would press Collect. On the phone route that
                 is the wallpaper you came from, not the site's gallery — the
                 one action on an empty screen should not be the way out of the
-                phone experience. */}
+                phone experience.
+
+                Not worded "Back to the wallpaper", which is the chevron's own
+                label: `getByRole` is a substring match, so the two collided
+                and every locator for either resolved to both. That trap is in
+                CLAUDE.md and it still caught this within the hour. */}
             <Link className={`${ui.btn} ${ui.primary}`} href={bare ? backHref : '/'}>
-              {bare ? 'Back to the wallpaper' : 'Browse the gallery'}
+              {bare ? 'Open a pattern' : 'Browse the gallery'}
             </Link>
           </div>
         ) : (

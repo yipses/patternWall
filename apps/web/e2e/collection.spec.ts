@@ -925,7 +925,9 @@ test.describe('the phone collection at every content length', () => {
     // desktop layout. The copy says to open a pattern and press Collect, and
     // on this route that is the wallpaper you came from.
     await expect(page.getByText('Nothing collected yet.')).toBeVisible();
-    await page.getByRole('link', { name: 'Back to the wallpaper' }).click();
+    // Deliberately not "Back to the wallpaper" -- that is the chevron's label
+    // and `getByRole` matches substrings, so the two would resolve to both.
+    await page.getByRole('link', { name: 'Open a pattern' }).click();
     await expect(page).toHaveURL(/\/m\/?($|\?)/);
   });
 
