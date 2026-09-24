@@ -25,7 +25,7 @@ import { ExportPanel } from './ExportPanel';
 import { Button, Notice, Switch, TabList, Tag, uiStyles as ui } from './ui';
 import { renderProse } from '../lib/prose';
 import { useScrub } from '../lib/use-scrub';
-import { collectionKey, loadCollected, saveCollected } from '../lib/storage';
+import { collectionKey, loadCollected, removeManyCollected, saveCollected } from '../lib/storage';
 import type { RenderSpec } from '../lib/render';
 import { FALLBACK_SCREEN, useDeviceScreen } from '../lib/device-screen';
 import styles from './Editor.module.css';
@@ -76,7 +76,7 @@ export function Editor({ generatorId: initialId, bare = false }: { generatorId: 
   const [panel, setPanel] = useState<PanelKey>('pattern');
 
   const [copied, setCopied] = useState(false);
-  const [collectState, setCollectState] = useState<'idle' | 'saved' | 'already' | 'failed'>('idle');
+  const [collectState, setCollectState] = useState<'idle' | 'saved' | 'removed' | 'failed'>('idle');
   const [collectedCount, setCollectedCount] = useState(0);
   const [collectedIds, setCollectedIds] = useState<string[]>([]);
 
@@ -285,19 +285,23 @@ export function Editor({ generatorId: initialId, bare = false }: { generatorId: 
   const collected = collectedIds.includes(collectedKey);
 
   /**
-   * Keep this one. Shared by the heart on the preview and the Collect button
-   * in the panel, because two copies of a storage write is two places for the
-   * two to disagree about what is already saved.
+   * Keep this one, or stop keeping it. Shared by the heart on the preview and
+   * the Collect button in the panel, because two copies of a storage write is
+   * two places for the two to disagree about what is already saved.
+   *
+   * It only ever added. A filled heart reported "already collected" and left
+   * you with no way back except the collection screen and a delete — which is
+   * a screen away from the mistake, and nobody looks for it there. A control
+   * that shows a state has to be able to leave it: the heart carries
+   * `aria-pressed`, so it was already claiming to be a toggle, and the claim
+   * was false.
    */
-  const collect = useCallback(() => {
-    if (collectedIds.includes(collectedKey)) {
-      setCollectState('already');
-      return;
-    }
-    const result = saveCollected(config);
+  const toggleCollect = useCallback(() => {
+    const already = collectedIds.includes(collectedKey);
+    const result = already ? removeManyCollected([collectedKey]) : saveCollected(config);
     setCollectedCount(result.items.filter((c) => c.generatorId === generator.id).length);
     setCollectedIds(result.items.map((c) => c.id));
-    setCollectState(result.ok ? 'saved' : 'failed');
+    setCollectState(result.ok ? (already ? 'removed' : 'saved') : 'failed');
   }, [collectedIds, collectedKey, config, generator.id]);
 
   /** A fresh seed, from the dice or from the sheet. */
@@ -490,7 +494,7 @@ export function Editor({ generatorId: initialId, bare = false }: { generatorId: 
                   onCommit={() => settle({ params: latestParams.current }, 0)}
                   onNewSeed={newSeed}
                   collected={collected}
-                  onCollect={collect}
+                  onCollect={toggleCollect}
                   // The phone view has its own collection: no header, no
                   // heading, no paragraph, and a tile that opens back into
                   // `/m` rather than into the editor route.
@@ -608,12 +612,19 @@ export function Editor({ generatorId: initialId, bare = false }: { generatorId: 
               <Button onClick={() => void onCopyLink()} success={copied} data-testid="copy-link">
                 {copied ? 'Link copied' : 'Copy link'}
               </Button>
+              {/* A toggle, and it says which state it is in rather than what
+                  the next press does — the heart beside the preview is the
+                  same control and fills for the same reason. `aria-pressed`
+                  is what makes "Collected" a state rather than a label that
+                  contradicts a button you can still press. */}
               <Button
-                onClick={collect}
+                onClick={toggleCollect}
+                aria-pressed={collected}
+                selected={collected}
                 success={collectState === 'saved'}
                 data-testid="collect"
               >
-                {collectState === 'saved' ? 'Collected' : collectState === 'already' ? 'Already collected' : 'Collect'}
+                {collected ? 'Collected' : collectState === 'removed' ? 'Removed' : 'Collect'}
               </Button>
               {collectedCount > 0 ? (
                 <Link className={`${ui.btn} ${ui.small}`} href="/collected">

@@ -462,15 +462,52 @@ test.describe('gesture', () => {
 
       // The same thing the panel's Collect button writes, which is the point of
       // them sharing one action: two writers would be two places for the two to
-      // disagree about what is already kept. Pressing it now has nothing to do,
-      // and says so.
-      await page.getByTestId('collect').click();
-      await expect(page.getByTestId('collect')).toHaveText('Already collected');
+      // disagree about what is already kept. So the panel reads the same state
+      // back without being told.
+      await expect(page.getByTestId('collect')).toHaveText('Collected');
+      await expect(page.getByTestId('collect')).toHaveAttribute('aria-pressed', 'true');
 
       // And it survives the trip, which is what "saved" has to mean.
       await page.reload();
       await settled(page);
       await expect(page.getByTestId('preview-heart')).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    test('the heart lets go again, from either control', async ({ page }) => {
+      /*
+       * It only ever added. A filled heart reported "already collected" and
+       * pressing it again did nothing at all, so undoing a mistap meant
+       * leaving for the collection screen and deleting there — a screen away
+       * from the mistake, which is not where anybody looks for it.
+       *
+       * The heart carries `aria-pressed`, so it was already claiming to be a
+       * toggle; this asserts the claim. Both controls, because they share one
+       * action and the bug was in that action rather than in either button.
+       */
+      await page.goto('/p/truchet-arcs');
+      await settled(page);
+      const heart = page.getByTestId('preview-heart');
+
+      await heart.click();
+      await expect(heart).toHaveAttribute('aria-pressed', 'true');
+      await heart.click();
+      await expect(heart, 'a second press on a full heart did not empty it').toHaveAttribute('aria-pressed', 'false');
+      await expect(page.getByTestId('collect')).toHaveText('Collect');
+
+      // And it really left storage rather than only the button, which is the
+      // half a state-only fix would pass.
+      await page.reload();
+      await settled(page);
+      await expect(page.getByTestId('preview-heart'), 'the wallpaper came back after a reload').toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+
+      // The panel button is the same toggle, not a second one that only adds.
+      await page.getByTestId('collect').click();
+      await expect(heart).toHaveAttribute('aria-pressed', 'true');
+      await page.getByTestId('collect').click();
+      await expect(heart, 'the panel button would not let go').toHaveAttribute('aria-pressed', 'false');
     });
 
     test('the heart does not follow the picture when the picture changes', async ({ page }) => {

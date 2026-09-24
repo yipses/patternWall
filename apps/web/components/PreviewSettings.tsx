@@ -58,6 +58,7 @@ export function PreviewSettings({
   onPalette: (p: Palette) => void;
   /** Whether what is on screen is already kept, which the heart shows. */
   collected: boolean;
+  /** Keeps it, or stops keeping it. The heart is a toggle, not an add. */
   onCollect: () => void;
   /** Where the kept ones live. A real link, so it opens in a tab like one. */
   collectedHref: string;
@@ -132,7 +133,7 @@ export function PreviewSettings({
         <button
           type="button"
           className={collected ? `${styles.round} ${styles.on}` : styles.round}
-          aria-label={collected ? 'Already saved' : 'Save this wallpaper'}
+          aria-label={collected ? 'Remove this wallpaper from your collection' : 'Save this wallpaper'}
           aria-pressed={collected}
           data-testid="preview-heart"
           onClick={onCollect}
