@@ -865,3 +865,127 @@ describe('truchet colour direction', () => {
     expect(down).toBeGreaterThan(across * 0.3);
   });
 });
+
+/**
+ * A turn must not bite ink out of the mark.
+ *
+ * Every mark on the diagonals is one straight segment belonging to one cell,
+ * and two neighbours turning the same corner meet exactly at the cell edge as
+ * two separate paths. SVG has no join to apply across two paths, so the cap is
+ * the corner: a round one reaches w/2 from the shared point where a mitre
+ * reaches w/(2 sin45) = 0.707w, and the gap behind the missing 0.207w opened
+ * into a small dark bead. Every corner sits on the cell lattice, so the beads
+ * were a regular dot screen over the whole picture — reported as patterns
+ * emerging at high grid density, which is exactly what it was.
+ *
+ * The rule this asserts was available before the fix was chosen: a corner has
+ * to reach as far as a mitre would and no further. It is not "the cap is
+ * square" — a chained polyline with a real join would satisfy it too, and that
+ * is the other way this could be built.
+ */
+describe('a truchet diagonal corner reaches as far as a mitre and no further', () => {
+  const W = 430;
+  const H = 932;
+  const SCALE = 4;
+
+  type Corner = { x: number; y: number; bx: number; by: number; w: number };
+
+  /**
+   * The corners in a rendered document, read back out of it.
+   *
+   * Every mark is `M x y L x y` carrying its own stroke width, so two marks
+   * sharing an endpoint and meeting at a right angle there are a corner, and
+   * the outward bisector is the direction away from both arms. Read from the
+   * output rather than recomputed from the grid, because a probe that
+   * reimplements the thing it is probing agrees with its own arithmetic and
+   * not with the picture.
+   */
+  function cornersOf(svg: string): Corner[] {
+    const arms = new Map<string, { x: number; y: number; dx: number; dy: number; w: number }[]>();
+    for (const m of svg.matchAll(/<path d="M([\d.-]+) ([\d.-]+)L([\d.-]+) ([\d.-]+)"[^>]*stroke-width="([\d.]+)"/g)) {
+      const [x1, y1, x2, y2, w] = [+(m[1] as string), +(m[2] as string), +(m[3] as string), +(m[4] as string), +(m[5] as string)];
+      for (const [x, y, ox, oy] of [
+        [x1, y1, x2, y2],
+        [x2, y2, x1, y1],
+      ] as const) {
+        const key = `${x.toFixed(1)},${y.toFixed(1)}`;
+        const list = arms.get(key) ?? [];
+        list.push({ x, y, dx: ox - x, dy: oy - y, w });
+        arms.set(key, list);
+      }
+    }
+    const out: Corner[] = [];
+    for (const list of arms.values()) {
+      if (list.length !== 2) continue;
+      const [a, b] = list as [(typeof list)[0], (typeof list)[0]];
+      const la = Math.hypot(a.dx, a.dy);
+      const lb = Math.hypot(b.dx, b.dy);
+      if (Math.abs((a.dx * b.dx + a.dy * b.dy) / (la * lb)) > 0.05) continue; // not a right angle
+      if (Math.abs(a.w - b.w) > 1e-6) continue; // two widths is not one corner
+      const bx = -(a.dx / la + b.dx / lb);
+      const by = -(a.dy / la + b.dy / lb);
+      const bl = Math.hypot(bx, by);
+      out.push({ x: a.x, y: a.y, bx: bx / bl, by: by / bl, w: a.w });
+    }
+    return out;
+  }
+
+  /*
+   * Two settings where the marks are further apart than the probe reaches, and
+   * deliberately not the crowded end.
+   *
+   * At fourteen columns and six divisions the gap between neighbouring chords
+   * is under the 0.9w this probes, so both readings land in the *next* mark
+   * whatever the corner does — measured there, the broken version scores
+   * *better* than the fixed one (91.0% against 69.6%) and both "overshoot"
+   * 100% of the time. That is a confounded instrument rather than a finding,
+   * and it is why this runs where it separates: 99.1% against 0.0% at eight
+   * columns, 100.0% against 0.0% at twenty.
+   */
+  for (const [density, arcCount] of [
+    [8, 4],
+    [20, 2],
+  ] as const) {
+    it(`fills the corner at ${density} columns and ${arcCount} divisions`, () => {
+      const svg = renderToSvg({
+        generator: diagonals,
+        width: W,
+        height: H,
+        palette: curatedPalettes.find((p) => p.id === 'paper') ?? (curatedPalettes[0] as never),
+        params: { ...defaultParams(diagonals), density, arcCount },
+        seed: 'corner-probe',
+        bleed: 0,
+      });
+
+      const r = rasterize(svg, W * SCALE);
+      const paper = r.pixels[0] as number;
+      const inked = (x: number, y: number): boolean | null => {
+        const ix = Math.round(x * SCALE);
+        const iy = Math.round(y * SCALE);
+        if (ix < 1 || iy < 1 || ix >= r.width - 1 || iy >= r.height - 1) return null;
+        return Math.abs((r.pixels[(iy * r.width + ix) * 4] as number) - paper) > 40;
+      };
+
+      const corners = cornersOf(svg).filter((c) => c.x > 30 && c.y > 30 && c.x < W - 30 && c.y < H - 30);
+      expect(corners.length, 'no corners found to probe — the mark format changed').toBeGreaterThan(50);
+
+      let reaches = 0;
+      let spills = 0;
+      let probed = 0;
+      for (const c of corners) {
+        // A round cap stops at 0.5w and a mitre reaches 0.707w, so 0.6w is
+        // paper on the one and ink on the other. 0.9w is past the mitre and
+        // must stay paper, which is what a runaway miter limit would fail.
+        const near = inked(c.x + c.bx * 0.6 * c.w, c.y + c.by * 0.6 * c.w);
+        const far = inked(c.x + c.bx * 0.9 * c.w, c.y + c.by * 0.9 * c.w);
+        if (near === null || far === null) continue;
+        probed++;
+        if (near) reaches++;
+        if (far) spills++;
+      }
+
+      expect(reaches / probed, 'corners are being bitten back — the gap opens into a bead at every turn').toBeGreaterThan(0.95);
+      expect(spills / probed, 'the corner overshoots the mitre point').toBeLessThan(0.02);
+    });
+  }
+});

@@ -1359,6 +1359,56 @@ and the picture's alt text still carries all three for anything reading the
 page. Nothing is lost; it moves from the screen to the accessibility tree,
 which is where it was more useful anyway.
 
+**When two marks are separate paths, the cap *is* the join — and a defect the
+size of one corner becomes a pattern because the corners sit on a lattice.**
+Truchet's diagonals draw one straight segment per cell, so two neighbours
+turning the same corner meet at the cell edge as two separate `<path>`
+elements. SVG applies a join within a path and nothing between paths, so
+whatever the cap draws is the corner. A round cap reaches w/2 from the shared
+point where a mitre reaches w/(2 sin45) = 0.707w, so every outward turn was
+bitten back by 0.207w and the gap behind it opened into a small dark bead.
+
+The fix is one attribute and the derivation is the part worth keeping: a square
+cap extends w/2 *along* each segment, and at 90 degrees the two extensions
+cover precisely the mitre point. Measured against a real mitre-joined polyline
+at 4x, **zero differing pixels**, where the round cap differs by 222 of 14,310
+— 1.55% of one corner. Every turn on this tiling is 90 degrees or 180, and on a
+straight continuation the square cap is inside the neighbour's own body, so
+there is no case where it overshoots. The arcs keep the round cap and are
+byte-identical across 120 configs: their marks meet tangentially rather than at
+a corner, so there is no mitre to reach and a square cap would leave a flat
+overhang on the outside of a curve.
+
+**The reusable lesson is about visibility, not about caps.** 1.55% of one
+corner is nothing; what made it the first thing anybody saw is that every
+corner is on the cell lattice, so the beads are a regular dot screen laid over
+the picture, and raising the division count multiplies them. The eye finds
+periodic structure at a contrast far below what it finds anything else at. So
+the question to ask about a per-mark artefact is not how big it is but whether
+its position is decided by the grid: if it is, it will read as a pattern
+eventually, and "eventually" is whenever somebody turns the density up.
+
+It was reported as "at higher grid density you start seeing patterns emerge, I
+think it's due to how sharp the corners are". The corners were the cause and
+they were *round*, not sharp — the diagnosis was inverted and the localisation
+was exact. Worth remembering when reading a report: somebody looking at a
+picture is reliable about **where** and guessing about **why**, and the where
+is the half that saves the time.
+
+Two instrument failures on the way, which makes this file about seven for seven.
+The first comparison of round against mitre cropped to a box around the vertex
+— and the box's lower edge cut through the very region the two shapes differ
+in, so it read 0.11% where the truth is 1.55%, small enough to have been
+dismissed as antialiasing. The second is worse and is why the regression test
+is scoped: the probe walks outward from each corner and asks whether there is
+ink at 0.6w and none at 0.9w, and at fourteen columns with six divisions the
+neighbouring mark is closer than 0.9w, so both readings land in it. Measured
+there, **the broken version scores better than the fixed one** — 91.0% against
+69.6%, with both "overshooting" 100% of the time. The test runs at eight
+columns and at twenty, where it reads 99.1% and 100.0% against 0.0% for the
+bug. A probe with a reach needs the thing it is probing to be further away than
+that reach.
+
 **A container query cannot style the container, or anything above it — and a
 rule that does is silently dead.** The collection's phone gutter and its bottom
 padding were written as `.page { padding: 0 12px 132px }` inside
@@ -1418,6 +1468,11 @@ result. Each was arrived at by breaking it first.
   needed, so every arc the count asks for fits. The stroke thins to the gap
   rather than the gap accommodating the stroke.
 - **Sweep flag 0** on every arc, so each is centred on its corner.
+- **The diagonals cap square and the arcs cap round**, and the reason is that a
+  cap is the only join available between two separate paths. See the bug note
+  on corners reaching the mitre point; the short version is that a square cap
+  at a 90 degree turn is the mitre exactly, and the arcs meet tangentially so
+  they do not want one.
 - **Colour is a ramp along a chosen axis with a noise field mixed into it.**
   `colorAxis` picks the direction — vertical, horizontal or diagonal — and
   `colorSpread` decides how much of the mix is the drifting field. It defaults
