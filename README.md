@@ -88,8 +88,9 @@ apps/web        Next.js App Router, static export, CSS Modules
 | `/m/collected` | The collection as pictures and nothing else |
 
 The first four live under `app/(site)/`, which is where the header, the footer and the skip link
-are. The last two live outside it and have none of that: on those the render *is* the screen, and
-it is driven by swipe, tap and a rail of icon buttons in the corner rather than by a panel.
+are. The last two live outside it and have none of that: on those the render *is* the screen. `/m`
+is driven by swipe, tap and a rail of icon buttons in the corner rather than by a panel;
+`/m/collected` has no rail, just a chevron and a Select in one header across the top.
 
 They are not a second app. `/m` is `<Editor bare />` and `/m/collected` is `<Collected bare />` —
 one component each, two dressings — because a second copy would be a second set of gesture wiring

@@ -90,6 +90,18 @@ await shoot('phone-view', '/m', M, 844);
 await shoot('phone-view-settings', '/m', M, 844, async (p) => {
   await p.getByTestId('preview-settings').click();
 });
+/*
+ * Three content states, not one.
+ *
+ * The eight-item fixture fills the grid, and a grid that fills the screen
+ * hides every fault that only appears when it does not. The build stamp sat
+ * 24px above the corner button on a two-item collection for as long as this
+ * script photographed eight, and the shot everybody looked at was the
+ * comfortable one. A content-driven screen gets photographed empty, sparse and
+ * full, and the sparse one is the shot to look at first.
+ */
+await shoot('collected-phone-empty', '/m/collected', M, 844, undefined, []);
+await shoot('collected-phone-sparse', '/m/collected', M, 844, undefined, SAVED.slice(0, 2));
 await shoot('collected-phone', '/m/collected', M, 844, undefined, SAVED);
 await shoot('collected-phone-select', '/m/collected', M, 844, async (p) => {
   await p.getByTestId('select-start').click();

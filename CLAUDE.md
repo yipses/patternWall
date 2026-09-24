@@ -295,8 +295,11 @@ render and upgrades to the reader's timezone in an effect, which is not a detail
 formatting in local time during render produces different markup on the build
 machine than in the browser, and that is the hydration bug this paragraph is
 about. `SiteFooter` mounts it on every page of the site; `/m` prints it in the
-settings sheet and `/m/collected` at the foot of the grid, because neither of
-those has a footer.
+settings sheet and `/m/collected` in the bottom-left corner while browsing,
+because neither of those has a footer. On the collection it is *fixed* rather
+than last in the flow, and it comes off the screen entirely once the selection
+bar is up — see the bug note about chrome written as content for why, and the
+UX section for the rule.
 
 Debugging what is actually served: `curl -sSI` a file that only the new build
 produces. `age: 0` with `x-cache: MISS` proves the response came from origin
@@ -1356,6 +1359,32 @@ and the picture's alt text still carries all three for anything reading the
 page. Nothing is lost; it moves from the screen to the accessibility tree,
 which is where it was more useful anyway.
 
+**A container query cannot style the container, or anything above it — and a
+rule that does is silently dead.** The collection's phone gutter and its bottom
+padding were written as `.page { padding: 0 12px 132px }` inside
+`@container (max-width: 640px)`, and `container-type` is on `.inner`, which is
+`.page`'s *child*. A container query matches descendants of the container, so
+that rule has never applied once: the phone collection has been running on the
+desktop 20px gutter and 80px bottom padding since it was built, while the
+stylesheet said otherwise to everyone who read it. The container is on the
+inner wrapper deliberately — `container-type` implies layout containment, which
+would make `.page` the containing block for the fixed bar — so the fix is to
+key the rule on something else. Reserving room for a bar is really about the
+*mode*, not the width, so it is `.page[data-selecting='true']` now and applies
+on both routes.
+
+The reusable part is that this is invisible: no error, no warning, and a number
+in the file that looks authoritative. When a rule inside a container query
+names an element, check that the element is inside the container.
+
+**A transformed ancestor is the containing block for a `position: fixed`
+descendant.** Found while injecting a bug rather than by shipping one, and
+worth a line because it will bite: the phone header carries
+`transform: translateX(-50%)` so it follows the 430px column in a desktop
+window, and anything fixed inside it therefore positions against the header's
+box rather than against the viewport. A `bottom: 16px` on a child moved it 16px
+down, not to the bottom of the screen.
+
 **A fixture that rewrites itself on every navigation disarms every assertion
 about persistence.** Playwright's `addInitScript` runs on each navigation, not
 once per test, so the obvious way to seed localStorage reinstates the fixture
@@ -1494,11 +1523,35 @@ the export sheet and the gear look different: one stages and one edits live.
 The export sheet's escape crosses to the right at its last stage, because once
 the files exist there is nothing left to discard.
 
-**R3. The bottom-right rail is for entering things, never for leaving them.**
-Book, heart, droplet, dice, gear, the collection's tick — all openers. The
-moment a rail button would mean close, back or done, it belongs in a header.
-This is the rule the corner close broke, and it covers every surface not yet
-built.
+**R3. The editor's rail is for entering things, never for leaving them.** Book,
+heart, droplet, dice, gear — all openers. The moment a rail button would mean
+close, back or done, it belongs in a header. This is the rule the corner close
+broke.
+
+It used to read "the bottom-right rail", and the collection's Select was put in
+that corner on the strength of it, as a circled tick. That is a rule about
+*what may go in the editor's rail* being used to license a lone button in a
+corner on a screen that has no rail — and one button is not a rail. It is the
+same failure the note below this list names: reasoning outward from this app
+instead of inward from the conventions. A rule that describes one surface does
+not place controls on another; if you are citing R3 to justify a position
+rather than to rule one out, you are using it backwards.
+
+**R3a. A mode on a screen is entered and left from the same slot.** Select mode
+is neither a screen nor a sheet, so R1 does not reach it. It was entered from
+the bottom-right corner and left from the bottom-left of the action bar, which
+asks a person to hold two places in their head for one switch. One slot
+toggles Select and Done — Photos, Files and Notes all do this — and the bar
+below carries only the actions. Where the header is not fixed and scrolls away
+after the first row, as on the site route, the exit goes in the bar instead:
+the rule is *leave from somewhere that is still on screen*, and the two routes
+answer it differently because their headers behave differently.
+
+**R3b. Mode entry has no conventional glyph, so it is a word.** A circled tick
+means confirm, done, succeeded everywhere else on the platform, so using it to
+*enter* a mode inverts it — which is R7 read properly. The word also survives
+being small and translucent over somebody else's photograph, which an
+unfamiliar glyph does not.
 
 **R4. Every mode is dismissible three ways**: the word in the header, a
 downward drag, and the scrim. The button is the discoverable and
@@ -1507,7 +1560,17 @@ keyboard's version of the word.
 
 **R5. One primary action per surface** — full width, at the bottom, above the
 safe-area inset, carrying its count, morphing through its own states rather
-than being replaced by a different layout.
+than being replaced by a different layout. A destructive action is never its
+equal-weight neighbour: the collection's Delete and Export sat side by side as
+peers a thumb apart until the bar was split into a quiet secondary row and one
+full-width primary under it.
+
+**R5a. A control is a control and a readout is a readout.** The collection's
+bar had one element that was a "Select all" button when nothing was picked and
+a "2 selected" label when something was. A thing that is sometimes pressable
+and sometimes not is exactly what R7 exists to prevent, and it hid a second
+fault: reading only the empty case, it went on offering "Select all" with
+everything already selected.
 
 **R6. One dismiss target per surface.** No `×` inside a sheet that already has
 an escape. A message that needs dismissing on its own is a toast and belongs
@@ -1535,6 +1598,42 @@ the surface is for, what already exists around it, and the constraints it has
 to live inside; take its answer as advice rather than instruction, say plainly
 where you disagree and why, and put the disagreements to the person along with
 the plan.
+
+**Brief it with the content states, or it can only review one.** A screen is
+not a design; a design is a screen in every state its content can put it in.
+Two reviews and an independent build sweep all looked at the collection and
+none of them saw the build stamp sitting above the corner button, because the
+fixture everybody was shown had eight saved wallpapers — enough to fill the
+grid, so the stamp was below the fold. Nobody was careless. They were given one
+state and could only review one state, and the fixture had been chosen because
+eight looks good.
+
+So fixtures are chosen adversarially rather than representatively. A
+content-driven screen is reviewed at five states, at 390px, at the top and the
+bottom of scroll, with every mode both on and off: **empty**; **one item**;
+**content shorter than the viewport**, which is the one that caught us, because
+everything anchored to the end of the content floats up into dead space there
+and nowhere else; **one item past a full viewport**, where scroll-under, safe
+areas and sticky behaviour first appear; and **many**. `npm run shots` covers
+the first, third and fifth on `/m/collected` for exactly this reason. A brief
+that does not name the states is a brief for one state.
+
+**And the general form, which is a fault by classification before anyone looks
+at a picture: no element may be positioned by content length and read against
+furniture fixed to the viewport.** Before review, every element is one or the
+other. Content scrolls and has no guaranteed relationship to anything fixed.
+Chrome is anchored to the viewport and owns its corner. Anything that ends up
+in the gap between the last content and a fixed control is chrome that was
+implemented as content. The build stamp was chrome written as content, and the
+regression test is not "far enough from the button" — a number somebody would
+have to keep re-picking — but that its box does not move when the content
+does. Chrome that moves with content is content, whatever it was meant to be.
+
+The corollary is why this one specifically escaped every human pass:
+**anything deliberately de-emphasised gets no review attention, so it has to be
+checked structurally rather than visually.** The stamp was dim, small and last
+by design — three properties that guarantee an eye slides off it. The only way
+to catch a quiet element is to ask what it is, not to look at it.
 
 The failure that keeps recurring without it is not bad taste, it is reasoning
 from this app outward instead of from the conventions inward. Leaving the
@@ -1598,6 +1697,14 @@ Four things about those two are easy to rediscover the hard way:
   aspect on every scroll. Off a phone it falls back to 390x845 rather than
   taking a landscape desktop literally. The collection's tiles use it too: a
   saved wallpaper shown at any other aspect is a picture of a different phone.
+- **The collection's chrome is two fixed layers and nothing else.** A header
+  across the top — chevron left, the mode's title centred, Select/Done right,
+  all on one centre line — and the build stamp in the bottom-left. Both follow
+  the 430px column in a desktop window the way the bar does. Two gradient
+  scrims, top and bottom, carry the contrast: a band would interrupt the grid,
+  which is the one thing the screen is for, and every tile is a wallpaper
+  somebody chose, so a pale one will scroll under the chrome sooner or later.
+  There is no bottom-right rail on this route any more.
 - **Neither inherits a `main` landmark or a skip link**, so each grows its own.
   `/m/collected` shipped without one; `settled()` scopes to `main img`, so every
   test on that route was quietly falling into its timeout path.
