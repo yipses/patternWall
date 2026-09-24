@@ -5,6 +5,22 @@
 }
 
 /*
+ * Room under the last row for the selection bar.
+ *
+ * This lived in the `@container (max-width: 640px)` block below, as
+ * `padding: 0 12px 132px`, and it has never once applied: a container query
+ * styles the container's *descendants*, and the container is `.inner`, which
+ * is `.page`'s child. So the phone collection has been running on the desktop
+ * gutter and the desktop bottom padding since it was built, and the rule that
+ * says otherwise read as if it were in force. Keyed on the mode instead, which
+ * is what it is actually about -- there is no bar in browse mode and nothing
+ * to reserve room for.
+ */
+.page[data-selecting='true'] {
+  padding-bottom: 168px;
+}
+
+/*
  * Opened from `/m`, the collection is a phone screen whatever the window is.
  *
  * `/m` renders the picture at the device's own shape and lets black take up
@@ -37,9 +53,32 @@
   flex-direction: column;
 }
 
+/*
+ * Anchored to the screen, in the one corner nothing else wants.
+ *
+ * It used to sit at the end of the flow, pushed down by `margin-top: auto`.
+ * That is right when the grid is long and wrong when it is not: with two
+ * wallpapers saved, the end of the flow landed 24px above the button in the
+ * bottom-right corner, and a dim line of text directly above a control reads
+ * as its caption. Measured at 390px, stamp 723-764 and button 788-828.
+ *
+ * The general fault is worth naming because it is not about this element: it
+ * was positioned by how much content there is, and read against furniture
+ * fixed to the viewport. Nothing can be both. It is chrome, so it is anchored
+ * like chrome -- and it is not a control, so it takes no background, no border
+ * and no pointer events. The bottom-right corner is now empty in browse mode,
+ * so there is no second floating thing for it to pair with.
+ */
 .page[data-phone='true'] .stamp {
-  margin-top: auto;
-  padding-top: 24px;
+  position: fixed;
+  z-index: 41;
+  bottom: calc(11px + env(safe-area-inset-bottom));
+  left: calc(16px + env(safe-area-inset-left));
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  font-size: 10.5px;
+  pointer-events: none;
 }
 
 /*
@@ -268,28 +307,123 @@
 }
 
 /*
- * Back is top-left, where every platform puts the way out. It borrows the
- * rail's circle so the two read as one set of controls rather than two.
+ * One header layer, not two stickers in two corners.
+ *
+ * Retreat is a chevron on the left and the action is a word on the right,
+ * which is the native navigation bar and not an asymmetry to apologise for: a
+ * worded back control names its destination, and the editor has no noun a
+ * person already holds. Both sit at one top inset, on one vertical centre, in
+ * one material, because two controls at the same height read as one set and
+ * two at different heights read as two unrelated things.
+ *
+ * Three slots rather than `space-between`, so the middle is centred on the
+ * screen rather than on whatever the two ends left over.
+ *
+ * `pointer-events` are off on the bar and back on for the controls
+ * themselves. The bar spans the full width and the grid scrolls under it, so
+ * without that its empty middle would swallow taps meant for a wallpaper.
  */
-.back {
+.header {
   position: fixed;
-  z-index: 40;
-  left: calc(14px + env(safe-area-inset-left));
-  top: calc(14px + env(safe-area-inset-top));
+  z-index: 41;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: calc(14px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) 0
+    calc(14px + env(safe-area-inset-left));
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.headSlot {
+  display: flex;
+  min-width: 0;
+}
+
+.headEnd {
+  justify-content: flex-end;
+}
+
+.headSlot > * {
+  pointer-events: auto;
+}
+
+/* What the mode is, where the eye already is. Browse mode has no title: the
+   pictures say what the screen is and a word would be a row of them not
+   shown. */
+.headTitle {
+  font-size: 13.5px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /*
- * The rail, in `/m`'s own vocabulary: 40px circles, 8px apart, in the corner a
- * thumb reaches. It is for acting on what is on screen; leaving is not that.
+ * Mode entry has no conventional glyph, so the word wins.
+ *
+ * It was a circled tick in the bottom-right, placed there on the rule that
+ * says that corner is for entering things -- which is a rule about the
+ * editor's five-button rail, and one button is not a rail. A circled tick
+ * means confirm, done, succeeded everywhere else on the platform, so using it
+ * to *enter* a mode inverts it; that is the no-decorative-affordances rule
+ * read properly. Photos, Files, Mail and Notes all say Select.
+ *
+ * Same fill, border and height as the chevron's circle, so the two are one
+ * header rather than a circle and a pill.
  */
-.rail {
+.capsule {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: rgba(10, 10, 11, 0.72);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.capsule:hover {
+  background: rgba(10, 10, 11, 0.88);
+}
+
+/*
+ * Two gradients that guarantee the chrome survives the pictures.
+ *
+ * Every tile is a wallpaper somebody chose, so a pale one will scroll under
+ * the header and under the build stamp sooner or later, and neither has a
+ * background to sit on. A band across the top would interrupt the grid, which
+ * is the one thing this screen is for; a gradient fading to nothing is
+ * invisible over the near-black ground and only appears where it is needed.
+ * Contrast over imagery nobody controls is not negotiable.
+ */
+.scrimTop,
+.scrimBottom {
   position: fixed;
-  z-index: 40;
-  right: calc(14px + env(safe-area-inset-right));
-  bottom: calc(16px + env(safe-area-inset-bottom));
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  z-index: 39;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+
+.scrimTop {
+  top: 0;
+  height: 96px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0));
+}
+
+.scrimBottom {
+  bottom: 0;
+  height: 76px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0));
 }
 
 .round {
@@ -311,36 +445,57 @@
   background: rgba(10, 10, 11, 0.88);
 }
 
-/* The bar and the sheet are fixed, so the page needs room under its last row
-   for them and for the home indicator. */
+/*
+ * The bar and the sheet are fixed, so the page needs room under its last row
+ * for them and for the home indicator.
+ *
+ * Two tiers rather than one row of peers. Delete and Export were side by side
+ * at equal weight a thumb apart, which puts an irreversible-feeling action
+ * next to the one everybody presses; and the house rule is one primary action,
+ * full width, at the bottom. Export is why the app exists and Delete is
+ * housekeeping, so Export is the full-width button and Delete is a quiet
+ * trailing word on the row above it.
+ */
 .bar {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   background: var(--bg-raised);
   border-top: 1px solid var(--line-strong);
-  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  padding: 10px var(--gutter) calc(12px + env(safe-area-inset-bottom));
 }
 
-.bar {
+.barRow {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px var(--gutter);
-  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  gap: 12px;
 }
 
+/*
+ * A readout, not a control.
+ *
+ * This slot used to be one element that was "Select all" when nothing was
+ * picked and "2 selected" when something was -- a thing that is sometimes a
+ * button and sometimes a label, which is exactly the affordance honesty the
+ * no-decorative-affordances rule exists to enforce. They are two elements now:
+ * a button that is always a button, and a count that is never one. On the
+ * phone the count is the header title instead, where the eye already is.
+ */
 .barCount {
-  margin-right: auto;
-  padding: 6px 2px;
-  border: 0;
-  background: none;
-  font: inherit;
+  margin-left: auto;
   font-size: 13.5px;
   color: var(--text-dim);
-  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.barPrimary {
+  width: 100%;
+  justify-content: center;
 }
 
 .barConfirm {
@@ -350,6 +505,27 @@
 .danger {
   color: var(--danger);
   border-color: var(--danger);
+}
+
+/*
+ * Trailing on its row, quiet until you are on it.
+ *
+ * `.danger` gives the confirm stage's full-width button its outline, which is
+ * right there and wrong here: on the selection row a bordered red box beside a
+ * borderless word is the heavier of the two, and the heavier one should be
+ * Export. Red text carries the warning by itself.
+ */
+.barRow > .danger {
+  margin-left: auto;
+  border-color: transparent;
+}
+
+.barRow > .danger:hover:not(:disabled) {
+  border-color: var(--danger);
+}
+
+.barCount + .danger {
+  margin-left: 12px;
 }
 
 .snack {
@@ -379,9 +555,17 @@
   text-align: left;
 }
 
-/* Clear of the selection bar when both are up. */
+/*
+ * Clear of the selection bar when both are up.
+ *
+ * 80px was right for a one-row bar and is not right for a two-tier one: the
+ * bar measures 101px at 390px, so the toast would have sat inside it. There is
+ * no way to derive this in CSS, so the number is measured and a test asserts
+ * the two boxes do not meet -- which is the only thing stopping it rotting the
+ * next time a row joins the bar.
+ */
 .snackHigh {
-  bottom: calc(80px + env(safe-area-inset-bottom));
+  bottom: calc(115px + env(safe-area-inset-bottom));
 }
 
 /* Three columns on a phone. Two would give a 375px-tall tile and show barely
@@ -389,15 +573,12 @@
    can recognise and four rows you can scan. Below about 330px three is too
    thin to read, so it drops to two. */
 @container (max-width: 640px) {
-  .page {
-    padding: 0 12px 132px;
-  }
-
   /* The first row starts below the back chevron rather than under it. The
      chevron is fixed at 14px, so its 40px disc otherwise sat on the top-left
      tile and took a 40x40 corner of it -- a tap there left the collection
      instead of opening that wallpaper. */
-  .page[data-phone='true'] .grid {
+  .page[data-phone='true'] .grid,
+  .page[data-phone='true'] .empty {
     margin-top: 46px;
   }
 
@@ -484,20 +665,26 @@
 }
 
 /*
- * The rail and the back button follow the column, like the bar and the sheet
- * do -- but only once there is a window wider than the column to follow it in.
+ * The header and both scrims follow the column, like the bar and the sheet do.
  *
- * Pinning it to the column's right edge unconditionally put it 6px off the
- * screen on a 390px phone, because the column is 430 and the viewport is not.
- * `max` takes whichever is further in: the gutter on a phone, the column edge
- * on a desktop. 201px is half the column less the gutter.
+ * Centred and capped rather than pinned to a gutter: an earlier version pinned
+ * the corner buttons to the column's right edge unconditionally and put them
+ * 6px off the screen on a 390px phone, because the column is 430 and the
+ * viewport is not. Sizing them the way the bar is sized cannot have that
+ * problem -- `min(430px, 100%)` is the narrower of the two by construction.
  */
-.page[data-phone='true'] .rail {
-  right: max(calc(14px + env(safe-area-inset-right)), calc(50% - 201px));
+.page[data-phone='true'] .header,
+.page[data-phone='true'] .scrimTop,
+.page[data-phone='true'] .scrimBottom {
+  left: 50%;
+  right: auto;
+  width: min(430px, 100%);
+  transform: translateX(-50%);
 }
 
-.page[data-phone='true'] .back {
-  left: max(calc(14px + env(safe-area-inset-left)), calc(50% - 201px));
+/* 199px is half the column less the stamp's own inset. */
+.page[data-phone='true'] .stamp {
+  left: max(calc(16px + env(safe-area-inset-left)), calc(50% - 199px));
 }
 
 .stamp {

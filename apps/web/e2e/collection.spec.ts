@@ -99,8 +99,12 @@ test.describe('the collection', () => {
     // is something to clear.
     await page.getByTestId('select-toggle-all').click();
     await expect(page.getByTestId('selection-bar')).toContainText('3 selected');
+    // And once everything is picked the offer changes. It used to go on
+    // reading "Select all" with everything already selected, because the
+    // toggle read the empty case only.
+    await expect(page.getByTestId('select-toggle-all')).toHaveText('Deselect all');
     await page.getByTestId('select-toggle-all').click();
-    await expect(page.getByTestId('selection-bar')).toContainText('Select all');
+    await expect(page.getByTestId('select-toggle-all')).toHaveText('Select all');
   });
 
   test('a long press enters select mode with that tile picked, and does not open it', async ({ page }) => {
@@ -115,7 +119,10 @@ test.describe('the collection', () => {
     await page.waitForTimeout(700);
     await page.mouse.up();
 
-    await expect(page.getByTestId('selection-bar')).toContainText('1 selected');
+    // The count is the header title on this route -- the eye is already up
+    // there, and a slot that is sometimes a button and sometimes a readout is
+    // the thing that was split apart to make room for it.
+    await expect(page.getByTestId('collected-title')).toHaveText('1 selected');
     await expect(page.getByRole('button', { name: /seed bravo$/ })).toHaveAttribute('aria-pressed', 'true');
     // And the link the press started on did not navigate.
     await expect(page).toHaveURL(/\/m\/collected/);
@@ -740,7 +747,7 @@ test.describe('the collection', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveClass(/pw-visually-hidden/);
     await expect(page.getByText('kept in this browser')).toHaveCount(0);
     await expect(page.getByRole('navigation')).toHaveCount(0);
-    await expect(page.getByTestId('collected-rail')).toBeVisible();
+    await expect(page.getByTestId('collected-header')).toBeVisible();
 
     // Leaving is top-left, where every platform puts it. It sat at the bottom
     // of the rail on the argument that the way out should be where the way in
@@ -751,10 +758,32 @@ test.describe('the collection', () => {
     expect(back.x + back.width / 2).toBeLessThan(view.width / 2);
     expect(back.y + back.height / 2).toBeLessThan(view.height / 2);
 
-    // And the rail is still the other corner, for acting on what is on screen.
-    const rail = (await page.getByTestId('collected-rail').boundingBox())!;
-    expect(rail.x).toBeGreaterThan(view.width / 2);
-    expect(rail.y).toBeGreaterThan(view.height / 2);
+    /*
+     * And the mode switch is a word in the other top corner.
+     *
+     * It was a circled tick in the *bottom* right, on the rule that says that
+     * corner is for entering things -- which is a rule about the editor's
+     * five-button rail, and one button is not a rail. A circled tick means
+     * confirm or done everywhere else, so using it to enter a mode inverts it.
+     *
+     * The vertical bound is what makes this a test about a header rather than
+     * about a corner: the two controls share a centre line, so they read as
+     * one set of controls rather than as two stickers.
+     */
+    const start = (await page.getByTestId('select-start').boundingBox())!;
+    expect(start.x).toBeGreaterThan(view.width / 2);
+    expect(start.y + start.height / 2).toBeLessThan(view.height / 2);
+    expect(Math.abs(start.y + start.height / 2 - (back.y + back.height / 2))).toBeLessThan(1);
+    await expect(page.getByTestId('select-start')).toHaveText('Select');
+
+    // And it is one slot, not two places: Done arrives where Select was.
+    await page.getByTestId('select-start').click();
+    const done = (await page.getByTestId('select-done').boundingBox())!;
+    expect(done.x + done.width).toBeCloseTo(start.x + start.width, 0);
+    expect(done.y).toBeCloseTo(start.y, 0);
+    await expect(page.getByTestId('collected-back')).toHaveCount(0);
+    await page.getByTestId('select-done').click();
+    await expect(page.getByTestId('select-start')).toBeVisible();
 
     // And no export in browse mode: exporting is an operation on a selection.
     await expect(page.getByTestId('export-collection')).toHaveCount(0);
@@ -801,15 +830,155 @@ test.describe('the collection', () => {
     // And the address really is the page: reloading it stays on the wallpaper.
     await page.reload();
     await expect(page.getByTestId('preview-book')).toBeVisible();
-    await expect(page.getByTestId('collected-rail')).toHaveCount(0);
+    await expect(page.getByTestId('collected-header')).toHaveCount(0);
   });
 
   test('the site collection keeps its heading, and a tile goes to the editor route', async ({ page }) => {
     await page.goto('/collected');
     await expect(page.getByRole('heading', { level: 1, name: 'Collected' })).toBeVisible();
-    await expect(page.getByTestId('collected-rail')).toHaveCount(0);
+    await expect(page.getByTestId('collected-header')).toHaveCount(0);
     await expect(page.getByTestId('collected-back')).toHaveCount(0);
     await page.getByRole('link', { name: /seed bravo$/ }).click();
     await expect(page).toHaveURL(/\/p\/truchet-diagonals/);
+  });
+});
+
+/**
+ * Chrome is chrome at every content length.
+ *
+ * The fault this is written from: the build stamp was the last thing in the
+ * flow, pushed to the end by `margin-top: auto`. With a full grid that is the
+ * bottom of a long page and nobody ever sees it next to anything; with two
+ * wallpapers saved it landed 24px above the button in the bottom-right corner,
+ * and a dim line of text directly above a control reads as its caption. It was
+ * reported as exactly that.
+ *
+ * The general form is worth more than the instance, and it is what these
+ * assert: an element may be positioned by how much content there is, or it may
+ * be read against furniture fixed to the viewport, and not both. So the test
+ * is not "the stamp is far enough from the button" -- a number somebody would
+ * have to keep re-picking -- it is that the stamp does not move when the
+ * content does. Chrome that moves with content is content, whatever it was
+ * meant to be.
+ *
+ * Deliberately outside the describe above, which seeds three of everything.
+ * Three fills one row, and one row is the state that hid this.
+ */
+const seedCount = async (page: Page, n: number) => {
+  await page.addInitScript(
+    ({ n, p }) => {
+      window.localStorage.setItem(
+        'patternwall.collected.v1',
+        JSON.stringify(
+          Array.from({ length: n }, (_, k) => ({
+            id: `c${k}`,
+            generatorId: ['truchet-arcs', 'contours', 'chevron-blocks'][k % 3],
+            seed: `c${k}`,
+            params: {},
+            savedAt: k + 1,
+            palette: p,
+          })),
+        ),
+      );
+    },
+    { n, p: PALETTE },
+  );
+};
+
+test.describe('the phone collection at every content length', () => {
+  // A real phone, because the fault is a relationship between the end of the
+  // content and the bottom of the screen and there is no fault on a tall one.
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('the build stamp sits in the same place whatever is saved', async ({ page }) => {
+    const boxes: { x: number; y: number }[] = [];
+
+    // Empty, one item, one row short of the viewport, and more than a screen.
+    // The middle two are where anything anchored to the end of the content
+    // floats up into dead space, and they are the states the eight-item
+    // screenshot fixture never showed anyone.
+    for (const n of [0, 1, 2, 8]) {
+      await seedCount(page, n);
+      await page.goto('/m/collected');
+      await expect(page.getByTestId('build-stamp')).toBeVisible();
+      const box = (await page.getByTestId('build-stamp').boundingBox())!;
+      boxes.push({ x: Math.round(box.x), y: Math.round(box.y) });
+    }
+
+    // The assertion the fault fails, and the first one, so that a failure says
+    // what is actually wrong. Measured against the old code at 390x844:
+    // y = 723 with none, one or two saved, and y = 790 with eight.
+    expect(boxes).toEqual([boxes[0], boxes[0], boxes[0], boxes[0]]);
+
+    // And it is where chrome goes on this screen: the bottom-left corner,
+    // which is the one corner nothing else wants.
+    expect(boxes[0]!.x).toBeLessThan(195);
+    expect(boxes[0]!.y).toBeGreaterThan(844 - 60);
+  });
+
+  test('an empty collection points back into the phone, not out of it', async ({ page }) => {
+    await seedCount(page, 0);
+    await page.goto('/m/collected');
+
+    // The one action on an empty screen should not be the way out of the phone
+    // experience: `/` is the site gallery, with a header, a footer and a
+    // desktop layout. The copy says to open a pattern and press Collect, and
+    // on this route that is the wallpaper you came from.
+    await expect(page.getByText('Nothing collected yet.')).toBeVisible();
+    await page.getByRole('link', { name: 'Back to the wallpaper' }).click();
+    await expect(page).toHaveURL(/\/m\/?($|\?)/);
+  });
+
+  test('the empty state starts below the chevron, not under it', async ({ page }) => {
+    await seedCount(page, 0);
+    await page.goto('/m/collected');
+    // The grid is held clear of the fixed chevron and the card was not, so it
+    // ran under it -- the same class as everything else in this describe.
+    const card = (await page.getByText('Nothing collected yet.').locator('..').boundingBox())!;
+    const back = (await page.getByTestId('collected-back').boundingBox())!;
+    expect(card.y).toBeGreaterThan(back.y + back.height);
+  });
+
+  test('the undo toast clears the selection bar', async ({ page }) => {
+    // The toast is lifted by a hard-coded distance, which was calibrated when
+    // the bar was one row of buttons. Adding the second tier made the bar
+    // 101px tall and the toast was being lifted 80px, so it sat inside it.
+    // Nothing in CSS can derive this, so the arithmetic lives here.
+    await seedCount(page, 4);
+    await page.goto('/m/collected');
+    await page.getByTestId('select-start').click();
+    await page.getByRole('button', { name: /seed c0$/ }).click();
+    await page.getByTestId('delete-selected').click();
+
+    const toast = (await page.getByTestId('undo-delete').locator('..').boundingBox())!;
+    const bar = (await page.getByTestId('selection-bar').boundingBox())!;
+    expect(toast.y + toast.height, 'the undo toast overlaps the selection bar').toBeLessThan(bar.y);
+  });
+
+  test('nothing quiet is left sitting on top of a control', async ({ page }) => {
+    // The stamp is dim, small and last by design -- three properties that
+    // guarantee an eye skips it -- so it gets checked by arithmetic rather
+    // than by looking. Two saved wallpapers, which is the state it went wrong
+    // in.
+    await seedCount(page, 2);
+    await page.goto('/m/collected');
+
+    const stamp = (await page.getByTestId('build-stamp').boundingBox())!;
+    for (const id of ['collected-header', 'collected-back', 'select-start']) {
+      const other = (await page.getByTestId(id).boundingBox())!;
+      const overlaps =
+        stamp.x < other.x + other.width &&
+        other.x < stamp.x + stamp.width &&
+        stamp.y < other.y + other.height &&
+        other.y < stamp.y + stamp.height;
+      expect(overlaps, `${id} overlaps the build stamp`).toBe(false);
+      // Nor close enough above or below one to read as its label.
+      const gap = Math.max(other.y - (stamp.y + stamp.height), stamp.y - (other.y + other.height));
+      expect(gap, `${id} is only ${Math.round(gap)}px from the build stamp`).toBeGreaterThan(80);
+    }
+
+    // And it is off the screen entirely once a bar owns that edge.
+    await page.getByTestId('select-start').click();
+    await expect(page.getByTestId('build-stamp')).toHaveCount(0);
   });
 });

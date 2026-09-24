@@ -172,6 +172,10 @@ export function Collected({ bare = false }: { bare?: boolean }) {
    * Same shape as the "Export all 3" on a zip holding two.
    */
   const pickedDrawable = pickedItems.filter((i) => getGenerator(i.generatorId)).length;
+  /* Everything, rather than merely something: the toggle used to read the
+     empty case only, so "Select all" stayed on offer once everything already
+     was. */
+  const allPicked = list.length > 0 && picked.length === list.length;
 
   const toggle = (id: string) => {
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -179,9 +183,8 @@ export function Collected({ bare = false }: { bare?: boolean }) {
 
   /**
    * Long-press to enter select mode, which is the gesture a phone already
-   * teaches. The rail's tick is the discoverable path and this is the fast one;
-   * a labelled Select button was neither, and it was anchored to a heading that
-   * no longer exists.
+   * teaches. The header's Select is the discoverable path and this is the fast
+   * one.
    *
    * A tile is a link, so the press that becomes a selection has to stop the
    * navigation that would otherwise follow it. `suppress` survives exactly one
@@ -226,10 +229,11 @@ export function Collected({ bare = false }: { bare?: boolean }) {
    * Put focus where the mode went.
    *
    * Every one of these actions unmounts the control that triggered it —
-   * `select-start` removes the rail, `select-done` removes the bar, opening the
-   * export hides the bar — so a keyboard or switch user was dropped on `body`
-   * and had to Tab from the top of the document to reach the mode they had just
-   * entered. The sheet contains its own focus; this is the other three.
+   * Select becomes Done in the header slot, Done becomes Select, and opening
+   * the export hides the bar — so a keyboard or switch user was dropped on
+   * `body` and had to Tab from the top of the document to reach the mode they
+   * had just entered. The sheet contains its own focus; this is the other
+   * three.
    */
   const selectStartRef = useRef<HTMLButtonElement | null>(null);
   const selectDoneRef = useRef<HTMLButtonElement | null>(null);
@@ -306,6 +310,7 @@ export function Collected({ bare = false }: { bare?: boolean }) {
     <Root
       className={styles.page}
       data-phone={bare ? 'true' : undefined}
+      data-selecting={selecting ? 'true' : undefined}
       {...(bare ? { id: 'main' } : {})}
       style={{ ['--pw-tile' as string]: `${screen.w} / ${screen.h}` }}
     >
@@ -347,8 +352,12 @@ export function Collected({ bare = false }: { bare?: boolean }) {
               Open a pattern, get it to a state you like, and press <strong>Collect</strong>. It will show up here with its seed
               and palette intact, ready to re-open or export again.
             </p>
-            <Link className={`${ui.btn} ${ui.primary}`} href="/">
-              Browse the gallery
+            {/* Back to where you would press Collect. On the phone route that
+                is the wallpaper you came from, not the site's gallery — the
+                one action on an empty screen should not be the way out of the
+                phone experience. */}
+            <Link className={`${ui.btn} ${ui.primary}`} href={bare ? backHref : '/'}>
+              {bare ? 'Back to the wallpaper' : 'Browse the gallery'}
             </Link>
           </div>
         ) : (
@@ -452,71 +461,96 @@ export function Collected({ bare = false }: { bare?: boolean }) {
           </>
         )}
 
-        {/* Below the last row, in the space the fixed rail already reserves.
-            This route has no footer and no settings sheet, and the rule in
+        {/* Fixed in the bottom-left corner, and only while browsing. This
+            route has no footer and no settings sheet, and the rule in
             CLAUDE.md is that every page can answer "am I current?" on its own
-            -- a green deploy is not proof the served page changed. Outside the
-            list rather than after it, because an empty collection is a page
-            too and the question is the same one there. It is the only text on
-            the screen and you have to reach the end to see it, which is about
-            the right price for it. */}
-        {bare ? (
+            -- a green deploy is not proof the served page changed. It comes
+            off the screen the moment a bar is raised, because the bar owns
+            that edge and two things at the bottom of a screen are one thing
+            too many. See the stylesheet for why it is no longer the last item
+            in the flow. */}
+        {bare && !selecting ? (
           <p className={styles.stamp}>
             <BuildStamp />
           </p>
         ) : null}
       </div>
 
-      {bare && !selecting && items !== null ? (
+      {/*
+       * The phone header: retreat, what the mode is, and the mode switch.
+       *
+       * Hidden while the export sheet is up, the way the bar is: the sheet is
+       * the surface then, and it carries its own way out.
+       */}
+      {bare && items !== null && !exportOpen ? (
         <>
-          {/*
-           * Leaving is top-left, which is where every platform puts it.
-           *
-           * It was at the bottom of the rail, on the argument that the way out
-           * should be where the way in was — the book you pressed is in that
-           * corner. That reasoning is about this app and the convention is
-           * about every other one, and the convention wins: a person arriving
-           * here looks top-left before they look anywhere else. The rail keeps
-           * what it is for, which is acting on what is on screen.
-           */}
-          <Link className={`${styles.round} ${styles.back}`} href={backHref} aria-label="Back to the wallpaper" data-testid="collected-back">
-            <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" focusable="false">
-              <path
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.9"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M14.2 5.6 7.8 12l6.4 6.4"
-              />
-            </svg>
-          </Link>
+          <div className={styles.scrimTop} aria-hidden="true" />
+          {!selecting ? <div className={styles.scrimBottom} aria-hidden="true" /> : null}
+          <div className={styles.header} data-testid="collected-header">
+            <span className={styles.headSlot}>
+              {/*
+               * Leaving is top-left, which is where every platform puts it,
+               * and it is gone in select mode -- the way out of a mode is the
+               * mode switch, not the way off the screen.
+               */}
+              {!selecting ? (
+                <Link
+                  className={styles.round}
+                  href={backHref}
+                  aria-label="Back to the wallpaper"
+                  data-testid="collected-back"
+                >
+                  <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" focusable="false">
+                    <path
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.9"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M14.2 5.6 7.8 12l6.4 6.4"
+                    />
+                  </svg>
+                </Link>
+              ) : null}
+            </span>
 
-          {items.length > 0 ? (
-            <div className={styles.rail} data-testid="collected-rail">
-              <button
-                type="button"
-                className={styles.round}
-                aria-label="Select wallpapers"
-                ref={selectStartRef}
-                onClick={() => setSelecting(true)}
-                data-testid="select-start"
-              >
-                {/* A circled tick, the same mark the tiles take when picked. */}
-                <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true" focusable="false">
-                  <circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" strokeWidth="1.9" />
-                  <path
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.9"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M8.4 12.2 11 14.8l4.7-5"
-                  />
-                </svg>
-              </button>
-            </div>
-          ) : null}
+            <span className={styles.headTitle} data-testid="collected-title">
+              {selecting ? (picked.length === 0 ? 'Select wallpapers' : `${picked.length} selected`) : ''}
+            </span>
+
+            <span className={`${styles.headSlot} ${styles.headEnd}`}>
+              {/*
+               * One slot, toggling Select and Done.
+               *
+               * Select mode is neither a screen nor a sheet -- it is a mode on
+               * a screen, and a mode is entered and left from the same place.
+               * It was entered from the bottom-right corner and left from the
+               * bottom-left of the bar, which asks a person to remember two
+               * places for one switch.
+               */}
+              {selecting ? (
+                <button
+                  type="button"
+                  className={styles.capsule}
+                  ref={selectDoneRef}
+                  onClick={endSelect}
+                  data-testid="select-done"
+                >
+                  Done
+                </button>
+              ) : items.length > 0 ? (
+                <button
+                  type="button"
+                  className={styles.capsule}
+                  ref={selectStartRef}
+                  onClick={() => setSelecting(true)}
+                  data-testid="select-start"
+                >
+                  Select
+                </button>
+              ) : null}
+            </span>
+          </div>
         </>
       ) : null}
 
@@ -524,45 +558,85 @@ export function Collected({ bare = false }: { bare?: boolean }) {
 
       {selecting && !exportOpen && confirming ? (
         /* The confirm takes the bar over rather than opening a dialog on top
-           of it. The count is in the verb, so there is nothing to read twice. */
+           of it, and keeps the bar's shape: the count is in the verb, so there
+           is nothing to read twice, and the destructive button is the
+           full-width one because it is the only thing this stage is for. */
         <div className={`${styles.bar} ${styles.barConfirm}`} data-testid="confirm-bar">
-          <Button size="small" variant="ghost" onClick={() => setConfirming(false)} data-testid="confirm-cancel">
-            Cancel
-          </Button>
-          <span className={styles.barCount} />
-          <Button size="small" className={styles.danger} onClick={deletePicked} data-testid="confirm-delete">
+          <div className={styles.barRow}>
+            <Button size="small" variant="ghost" onClick={() => setConfirming(false)} data-testid="confirm-cancel">
+              Cancel
+            </Button>
+          </div>
+          <Button
+            className={`${styles.barPrimary} ${styles.danger}`}
+            onClick={deletePicked}
+            data-testid="confirm-delete"
+          >
             Delete {picked.length} wallpapers
           </Button>
         </div>
       ) : null}
 
       {selecting && !exportOpen && !confirming ? (
+        /*
+         * Two tiers. Select all and Delete are the secondary row; Export is
+         * the primary and takes the width, because it is the reason anything
+         * is being selected. Done is not here any more -- it is the header,
+         * in the slot that opened the mode.
+         */
         <div className={styles.bar} data-testid="selection-bar">
-          <Button size="small" variant="ghost" ref={selectDoneRef} onClick={endSelect} data-testid="select-done">
-            Done
-          </Button>
-          {/* One slot doing both jobs. At zero it offers the only thing worth
-              offering; with a selection it says what you have and clears it. */}
-          <button
-            type="button"
-            className={styles.barCount}
-            onClick={() => setPicked(picked.length === 0 ? list.map((i) => i.id) : [])}
-            data-testid="select-toggle-all"
-          >
-            {picked.length === 0 ? 'Select all' : `${picked.length} selected`}
-          </button>
-          <Button size="small" variant="ghost" disabled={picked.length === 0} onClick={askDelete} data-testid="delete-selected">
-            Delete
-          </Button>
+          <div className={styles.barRow}>
+            {/*
+             * The way out of the mode, on the route whose header is not fixed.
+             *
+             * On the phone it is the header, in the slot that opened the mode.
+             * The site route's header scrolls away after the first row, so a
+             * Done up there would be gone by the time anyone wanted it, and
+             * the bar is the one surface that stays. Same rule -- leave from
+             * somewhere that is still on screen -- with two answers because
+             * the two headers behave differently.
+             */}
+            {bare ? null : (
+              <Button size="small" variant="ghost" ref={selectDoneRef} onClick={endSelect} data-testid="select-done">
+                Done
+              </Button>
+            )}
+            <Button
+              size="small"
+              variant="ghost"
+              onClick={() => setPicked(allPicked ? [] : list.map((i) => i.id))}
+              data-testid="select-toggle-all"
+            >
+              {allPicked ? 'Deselect all' : 'Select all'}
+            </Button>
+            {/* On the phone the count is the header title. Here there is no
+                phone header to carry it, and the page's own heading is the
+                route's, so the bar says it. */}
+            {bare ? null : (
+              <span className={styles.barCount} data-testid="selection-count">
+                {picked.length} selected
+              </span>
+            )}
+            <Button
+              size="small"
+              variant="ghost"
+              className={styles.danger}
+              disabled={picked.length === 0}
+              onClick={askDelete}
+              data-testid="delete-selected"
+            >
+              Delete
+            </Button>
+          </div>
           <Button
-            size="small"
             variant="primary"
+            className={styles.barPrimary}
             ref={exportOpenRef}
             disabled={pickedDrawable === 0}
             onClick={() => setExportOpen(true)}
             data-testid="export-selected"
           >
-            Export
+            {pickedDrawable === 0 ? 'Export' : `Export ${pickedDrawable}`}
           </Button>
         </div>
       ) : null}
