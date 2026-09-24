@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { settled } from './helpers';
 
-const PAGES = ['/', '/collected', '/m/collected', '/setup', '/p/chevron-blocks', '/p/truchet-arcs', '/m'];
+const PAGES = ['/', '/collected', '/m/collected', '/setup', '/p/chevron-blocks', '/p/truchet-arcs', '/m', '/t'];
 
 test.describe('layout and accessibility', () => {
   for (const width of [375, 768, 1440, 2560]) {
@@ -188,11 +188,16 @@ test.describe('layout and accessibility', () => {
     // The stamp exists so a reader can tell whether they are looking at the
     // version that was just published. A green deploy is not proof the site
     // changed, so the page has to be able to answer that itself.
-    for (const path of ['/', '/collected', '/m/collected', '/setup', '/p/truchet-arcs', '/m']) {
+    for (const path of ['/', '/collected', '/m/collected', '/setup', '/p/truchet-arcs', '/m', '/t']) {
       await page.goto(path);
       // `/m` is the preview filling the screen and has no footer, so its stamp
       // lives behind the gear. Still a stamp, still answerable on the device.
       if (path === '/m') await page.getByTestId('preview-settings').click();
+      // `/t` has no footer either, and its stamp lives in the Adjust sheet.
+      if (path === '/t') {
+        await page.getByTestId('feed-more').click();
+        await page.getByTestId('feed-adjust').click();
+      }
       const stamp = page.getByTestId('build-stamp');
       await expect(stamp).toBeVisible();
       const iso = await stamp.locator('time').getAttribute('datetime');

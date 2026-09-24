@@ -1,0 +1,452 @@
+/*
+ * The whole viewport, and nothing scrolls.
+ *
+ * `touch-action: none` because every gesture on this page is a control and
+ * none of them is a scroll; `overscroll-behavior: none` because a downward
+ * flick that reached Safari's pull-to-refresh would redraw a random card, which
+ * is the one thing this page promises never happens by accident.
+ */
+.stage {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #000;
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/*
+ * The phone's own shape, as large as fits — sized exactly as /m sizes its
+ * picture, so a wallpaper judged here is the one you get. Every control is
+ * positioned against this box rather than the window, so in a wide desktop
+ * window they sit on the picture instead of out in the black.
+ */
+.deck {
+  --pw-inset-right: env(safe-area-inset-right, 0px);
+  --pw-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --like: 0;
+  --nope: 0;
+  position: relative;
+  height: 100dvh;
+  max-width: 100dvw;
+  max-height: 100dvh;
+}
+
+.card {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 18px;
+  will-change: transform;
+}
+
+.top {
+  touch-action: none;
+  cursor: grab;
+}
+
+.top:active {
+  cursor: grabbing;
+}
+
+.picture {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+/* A new take on the same card fades in over the old one, which stays up
+   until the new one is drawn — so a tap never shows a blank. */
+.fadeIn {
+  animation: fade-in 200ms ease-out both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* A card coming back: from the left after a skip, out of the Gallery after a
+   like — the way it went. */
+.enter-left {
+  animation: enter-left 260ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+@keyframes enter-left {
+  from {
+    transform: translateX(-110%) rotate(-10deg);
+  }
+}
+
+.enter-grow {
+  animation: enter-grow 260ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+@keyframes enter-grow {
+  from {
+    transform: scale(0.86);
+    opacity: 0;
+  }
+}
+
+/* The first-run hint that the card moves: one lean each way, then still. */
+.nudge {
+  animation: nudge 900ms ease-in-out both;
+}
+
+@keyframes nudge {
+  25% {
+    transform: translateX(-9%) rotate(-3deg);
+  }
+  62% {
+    transform: translateX(9%) rotate(3deg);
+  }
+}
+
+.spinner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.7);
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/*
+ * The verdict, on the card, growing with the drag and full at the point it
+ * commits. Safari on iOS has no vibration, so the commit point has to be
+ * something you can see.
+ */
+.badge {
+  position: absolute;
+  top: 9%;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 3px solid currentColor;
+  background: rgba(10, 10, 11, 0.55);
+  pointer-events: none;
+}
+
+.badgeLike {
+  left: 7%;
+  color: #6fd08c;
+  opacity: var(--like);
+  transform: scale(calc(0.6 + 0.4 * var(--like))) rotate(-12deg);
+}
+
+.badgeNope {
+  right: 7%;
+  color: #ef6f6f;
+  opacity: var(--nope);
+  transform: scale(calc(0.6 + 0.4 * var(--nope))) rotate(12deg);
+}
+
+.ripple {
+  position: absolute;
+  z-index: 3;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  pointer-events: none;
+  animation: ripple 520ms ease-out both;
+}
+
+@keyframes ripple {
+  from {
+    transform: scale(0.3);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* Floating chrome shares one material: the translucent dark disc /m uses. */
+.round {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  background: rgba(10, 10, 11, 0.72);
+  color: var(--text);
+  cursor: pointer;
+}
+
+/*
+ * Which palette you are on, where the eye already is. It says the name and the
+ * position, so a flick that went the wrong way is obvious and one back fixes
+ * it.
+ */
+.pill {
+  position: absolute;
+  z-index: 6;
+  top: calc(20px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: rgba(10, 10, 11, 0.84);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: fade-in 140ms ease-out both;
+}
+
+/*
+ * The Gallery, top-right: a 36px picture of the last thing you liked, with a
+ * 44px target around it. No count badge — a badge reads as "needs attention",
+ * which a saved wallpaper does not.
+ */
+.gallery {
+  position: absolute;
+  z-index: 6;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + var(--pw-inset-right));
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  text-decoration: none;
+}
+
+.gallery::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.gallery[data-empty='true']::before {
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(10, 10, 11, 0.55);
+}
+
+.galleryImg {
+  position: absolute;
+  inset: 4px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+/* Centred, well clear of the home indicator and Safari's toolbar. */
+.row {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  bottom: calc(24px + var(--pw-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.row[data-hidden='true'],
+.more[data-hidden='true'] {
+  display: none;
+}
+
+.verdict,
+.rewind,
+.more {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: rgba(10, 10, 11, 0.78);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease, color 120ms ease;
+}
+
+.verdict {
+  width: 56px;
+  height: 56px;
+}
+
+.nope {
+  color: #ef6f6f;
+  transform: scale(calc(1 + 0.18 * var(--nope)));
+}
+
+.yes {
+  color: #6fd08c;
+  transform: scale(calc(1 + 0.18 * var(--like)));
+}
+
+/* Smaller, between the two, with a 44px target around the 40px disc. */
+.rewind {
+  width: 40px;
+  height: 40px;
+  margin: 2px;
+  color: var(--text-dim);
+}
+
+/* Dimmed, never hidden: the row must not shift when there is nothing to
+   bring back, or the buttons move under a thumb that learned where they are. */
+.verdict:disabled,
+.rewind:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.more {
+  position: absolute;
+  z-index: 7;
+  right: calc(14px + var(--pw-inset-right));
+  bottom: calc(30px + var(--pw-inset-bottom));
+  width: 44px;
+  height: 44px;
+}
+
+.more[aria-expanded='true'] {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+/* Over the card while the menu is up, and it takes the press: tapping outside
+   a menu closes it and must never also re-roll the card underneath. */
+.menuScrim {
+  position: absolute;
+  z-index: 7;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.32);
+  animation: fade-in 120ms ease-out both;
+}
+
+/* Opens upward from the button, words first and icons trailing — the iOS
+   pull-down menu, not a fan of unlabelled circles. */
+.menu {
+  position: absolute;
+  z-index: 8;
+  right: calc(14px + var(--pw-inset-right));
+  bottom: calc(84px + var(--pw-inset-bottom));
+  min-width: 212px;
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid var(--line-strong);
+  background: rgba(22, 22, 24, 0.97);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+  animation: menu-in 140ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  transform-origin: bottom right;
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.item + .item {
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 9px 9px;
+}
+
+.item:hover:not(:disabled),
+.item:focus-visible {
+  background: rgba(255, 255, 255, 0.07);
+  outline: none;
+}
+
+.item:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.shuffle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  margin: 0 0 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.tip,
+.toast {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  bottom: calc(104px + var(--pw-inset-bottom));
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: rgba(10, 10, 11, 0.9);
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
+  animation: fade-in 180ms ease-out both;
+}
+
+.toast {
+  bottom: calc(160px + var(--pw-inset-bottom));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none !important;
+  }
+}

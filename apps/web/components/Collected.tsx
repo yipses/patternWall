@@ -149,6 +149,13 @@ export function Collected({ bare = false }: { bare?: boolean }) {
 
   useEffect(() => {
     setItems(loadCollected());
+    // Opened from the swipe feed, the way back is the feed: it keeps its own
+    // card and history in storage, so no query has to carry them.
+    const query = new URLSearchParams(window.location.search);
+    if (query.get('from') === 't') {
+      setBackHref('/t');
+      return;
+    }
     const q = window.location.search.replace(/^\?/, '');
     if (q) setBackHref(`/m?${q}`);
   }, []);
@@ -349,8 +356,16 @@ export function Collected({ bare = false }: { bare?: boolean }) {
           <div className={styles.empty}>
             <div className={styles.emptyTitle}>Nothing collected yet.</div>
             <p className={styles.emptyBody}>
-              Open a pattern, get it to a state you like, and press <strong>Collect</strong>. It will show up here with its seed
-              and palette intact, ready to re-open or export again.
+              {/* The feed has no Collect button to point at: there it is a
+                  swipe. Naming the wrong control is worse than naming none. */}
+              {bare && backHref === '/t' ? (
+                'Wallpapers you like appear here.'
+              ) : (
+                <>
+                  Open a pattern, get it to a state you like, and press <strong>Collect</strong>. It will show up here with its
+                  seed and palette intact, ready to re-open or export again.
+                </>
+              )}
             </p>
             {/* Back to where you would press Collect. On the phone route that
                 is the wallpaper you came from, not the site's gallery — the
@@ -362,7 +377,7 @@ export function Collected({ bare = false }: { bare?: boolean }) {
                 and every locator for either resolved to both. That trap is in
                 CLAUDE.md and it still caught this within the hour. */}
             <Link className={`${ui.btn} ${ui.primary}`} href={bare ? backHref : '/'}>
-              {bare ? 'Open a pattern' : 'Browse the gallery'}
+              {!bare ? 'Browse the gallery' : backHref === '/t' ? 'Browse wallpapers' : 'Open a pattern'}
             </Link>
           </div>
         ) : (
