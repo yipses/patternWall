@@ -5,6 +5,7 @@ import {
   createRng,
   curatedPalettes,
   cyclePalette,
+  paletteAt,
   feedOpen,
   feedReplace,
   feedReroll,
@@ -132,6 +133,38 @@ describe('a palette flick', () => {
     const custom = { ...card, palette: { ...curatedPalettes[0]!, id: 'custom-xyz' } };
     expect(cyclePalette(custom, 1).palette.id).toBe(curatedPalettes[0]!.id);
     expect(cyclePalette(custom, -1).palette.id).toBe(curatedPalettes[curatedPalettes.length - 1]!.id);
+  });
+});
+
+describe('a palette scrub', () => {
+  /*
+   * A vertical drag walks the list continuously, each step measured from the
+   * palette the drag began on. The guard is the one a person feels: dragging
+   * back to where you started puts back the colours you started with.
+   */
+  const card = { ...randomCard(createRng(4), generators), palette: curatedPalettes[5]! };
+  const n = curatedPalettes.length;
+
+  it('lands where stepping one at a time would, in both directions and past the ends', () => {
+    for (const offset of [1, 3, -2, n - 1, n + 4, -(n + 7), 3 * n]) {
+      let stepped = card;
+      for (let i = 0; i < Math.abs(offset); i++) stepped = cyclePalette(stepped, offset > 0 ? 1 : -1);
+      expect(paletteAt(card, offset).palette.id, `offset ${offset}`).toBe(stepped.palette.id);
+    }
+  });
+
+  it('moves the colours on every step, not once per drag', () => {
+    const seen = new Set<string>();
+    for (let k = 0; k < n; k++) seen.add(paletteAt(card, k).palette.id);
+    expect(seen.size).toBe(n);
+  });
+
+  it('comes back to nothing changed at zero, even on an edited palette', () => {
+    expect(paletteAt(card, 0)).toBe(card);
+    const custom = { ...card, palette: { ...curatedPalettes[0]!, id: 'custom-xyz' } };
+    expect(paletteAt(custom, 0).palette.id).toBe('custom-xyz');
+    expect(paletteAt(custom, 2).palette.id).toBe(curatedPalettes[1]!.id);
+    expect(paletteAt(custom, -2).palette.id).toBe(curatedPalettes[n - 2]!.id);
   });
 });
 

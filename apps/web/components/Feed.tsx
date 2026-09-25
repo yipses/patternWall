@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FEED_AHEAD, curatedPalettes, generators, getGenerator, type FeedCard } from '@patternwall/core';
+import { FEED_AHEAD, curatedPalettes, generators, getGenerator, paletteAt, type FeedCard } from '@patternwall/core';
 import { PatternImage } from './PatternImage';
 import { PreviewSheets, type Sheet } from './PreviewSettings';
 import { FALLBACK_SCREEN, useDeviceScreen } from '../lib/device-screen';
@@ -17,7 +17,7 @@ import styles from './Feed.module.css';
 /** How long each exit takes. Reduced motion shortens every one to a fade. */
 const FLY_MS = { like: 340, skip: 280, back: 220, reduced: 140 };
 
-/** How long the palette name stays up after a flick. */
+/** How long the palette name stays up after the colours last changed. */
 const PILL_MS = 1400;
 
 /** After this many verdicts in a first session, one tip, once. */
@@ -29,7 +29,7 @@ type Share = { key: string; state: 'preparing' } | { key: string; state: 'ready'
  * `/t`: a feed of wallpapers, judged one at a time.
  *
  * Swipe right to keep one, left to pass; tap for a new wallpaper in the same
- * pattern, colours included; flick up or down to change only the colours. Every card is random, so the
+ * pattern, colours included; drag up or down to scrub through the colours. Every card is random, so the
  * whole design leans on one promise — nothing seen is lost by accident. Rewind
  * undoes every change of card, the feed survives the tab being killed, and a
  * card that has not finished drawing cannot be judged.
@@ -192,16 +192,57 @@ export function Feed() {
     say(undone.kind === 'like' ? 'Brought back, and removed from your gallery.' : 'Brought back.');
   }, [rewind, reduced]);
 
+  const pillFor = (p: FeedCard['palette']): string => {
+    const at = curatedPalettes.findIndex((c) => c.id === p.id);
+    return at === -1 ? p.name : `${p.name} · ${at + 1}/${curatedPalettes.length}`;
+  };
+
+  /** One palette along — the arrow keys. */
   const doPalette = useCallback(
     (direction: 1 | -1) => {
       const p = flickPalette(direction);
       if (!p) return;
-      const at = curatedPalettes.findIndex((c) => c.id === p.id);
-      const text = at === -1 ? p.name : `${p.name} · ${at + 1}/${curatedPalettes.length}`;
-      setPill((prev) => ({ text, n: (prev?.n ?? 0) + 1 }));
+      setPill((prev) => ({ text: pillFor(p), n: (prev?.n ?? 0) + 1 }));
       say(`Colours: ${p.name}.`);
     },
     [flickPalette],
+  );
+
+  /*
+   * A vertical drag scrubs: every step the finger crosses is another palette,
+   * counted from the one the drag began on, so dragging back puts it back.
+   *
+   * Each step goes straight into the feed with no history, as a flick did —
+   * rewind stays about cards. The renders are superseded on their channel, so
+   * a fast drag draws only where the finger is, not every palette it passed.
+   * The pill keeps one identity for the whole drag so it updates in place
+   * rather than popping in again on every step, and the announcement waits
+   * for the release: forty palette names read out in a second help nobody.
+   */
+  const scrubFrom = useRef<FeedCard | null>(null);
+  const [scrubbing, setScrubbing] = useState(false);
+  const doScrub = useCallback(
+    (steps: number) => {
+      if (!current) return;
+      if (!scrubFrom.current) {
+        scrubFrom.current = current;
+        setScrubbing(true);
+        setPill((prev) => ({ text: '', n: (prev?.n ?? 0) + 1 }));
+      }
+      const p = paletteAt(scrubFrom.current, steps).palette;
+      setPalette(p);
+      setPill((prev) => ({ text: pillFor(p), n: prev?.n ?? 0 }));
+    },
+    [current, setPalette],
+  );
+  const endScrub = useCallback(
+    (steps: number) => {
+      const from = scrubFrom.current;
+      scrubFrom.current = null;
+      setScrubbing(false);
+      if (from && steps !== 0) say(`Colours: ${paletteAt(from, steps).palette.name}.`);
+    },
+    [],
   );
 
   const doReroll = useCallback(
@@ -231,11 +272,13 @@ export function Feed() {
       },
       onCancel: springBack,
       onVerdict: (kind, dx) => judge(kind, dx),
-      onPalette: doPalette,
+      onPaletteScrub: doScrub,
+      onPaletteEnd: endScrub,
       onTap: (x, y) => doReroll(x, y),
     },
     !!feed && !menuOpen && !sheet,
     reduced,
+    curatedPalettes.length,
   );
 
   /* ------------------------------------------------------------ first run */
@@ -400,7 +443,9 @@ export function Feed() {
             {top ? (
               <img key={top} className={`${styles.picture} ${base ? styles.fadeIn : ''}`} src={top} alt={altOf(current)} draggable={false} />
             ) : null}
-            {!ready ? (
+            {/* Not while scrubbing: the last palette stays up until the next
+                is drawn, and a spinner blinking on every step is noise. */}
+            {!ready && !scrubbing ? (
               <span className={styles.spinner} role="status" aria-label={error ? 'This card could not be drawn' : 'Drawing'} />
             ) : null}
             <span className={`${styles.badge} ${styles.badgeLike}`} aria-hidden="true">

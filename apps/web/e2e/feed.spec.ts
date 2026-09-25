@@ -159,7 +159,7 @@ test('a press that lasts is not a tap', async ({ page }) => {
   expect(idText(await cardId(page))).toBe(idText(before));
 });
 
-test('a vertical flick changes the colours, and says which', async ({ page }) => {
+test('a vertical swipe changes the colours, and says which', async ({ page }) => {
   const before = await cardId(page);
   await drag(page, 4, -140);
   await expect.poll(async () => (await cardId(page)).palette).not.toBe(before.palette);
@@ -169,10 +169,46 @@ test('a vertical flick changes the colours, and says which', async ({ page }) =>
   expect(after.seed).toBe(before.seed);
   await expect(page.getByTestId('feed-palette-pill')).toContainText(/\d+\/\d+/);
 
-  // And a flick the other way undoes it — which is why colours stay out of
-  // rewind's history.
+  // And the same swipe the other way undoes it — which is why colours stay
+  // out of rewind's history.
   await drag(page, -4, 140);
   await expect.poll(async () => (await cardId(page)).palette).toBe(before.palette);
+});
+
+test('a vertical drag scrubs the colours while the finger is still down', async ({ page }) => {
+  /*
+   * Reported: "as I'm swiping up/down it should continuously change colours,
+   * not like now where each swipe changes it once". So everything here is
+   * read with the button still held — a version that changes the palette on
+   * release, once, sees one palette the whole way and fails.
+   */
+  const before = await cardId(page);
+  const picture = page.getByTestId('feed-card').locator('img[alt]:not([alt=""])');
+  const firstSrc = await picture.getAttribute('src');
+  const box = (await page.getByTestId('feed-card').boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y0 = box.y + box.height * 0.7;
+
+  await page.mouse.move(x, y0);
+  await page.mouse.down();
+  const seen = new Set<string>();
+  for (let i = 1; i <= 24; i++) {
+    await page.mouse.move(x, y0 - i * 10);
+    seen.add((await cardId(page)).palette);
+  }
+  expect(seen.size, 'the colours moved only once, or not at all, during the drag').toBeGreaterThanOrEqual(5);
+  // And the picture itself redrew mid-drag, not only the data attribute.
+  await expect.poll(() => picture.getAttribute('src')).not.toBe(firstSrc);
+  await expect(page.getByTestId('feed-palette-pill')).toContainText(/\d+\/\d+/);
+
+  // Back to where the finger started, still in the same drag: the colours
+  // are the ones it started with, because every step counts from there.
+  for (let i = 23; i >= 0; i--) await page.mouse.move(x, y0 - i * 10);
+  expect((await cardId(page)).palette).toBe(before.palette);
+  await page.mouse.up();
+  const after = await cardId(page);
+  expect(after.palette).toBe(before.palette);
+  expect(after.seed, 'a scrub changed the card, not only its colours').toBe(before.seed);
 });
 
 test.describe('rewind', () => {

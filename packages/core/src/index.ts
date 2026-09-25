@@ -94,6 +94,7 @@ export {
   FEED_AHEAD,
   FEED_HISTORY,
   cyclePalette,
+  paletteAt,
   feedOpen,
   feedReplace,
   feedReroll,

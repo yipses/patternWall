@@ -94,8 +94,8 @@ is driven by swipe, tap and a rail of icon buttons in the corner rather than by 
 `/m/collected` has no rail, just a chevron and a Select in one header across the top.
 
 `/t` is browsing rather than editing. Swipe right to keep a card and left to pass, tap for a new
-wallpaper in the same pattern (new settings and new colours), flick up or down to change only the
-colours. A ✕ · rewind · ♥ row sits at the
+wallpaper in the same pattern (new settings and new colours), drag up or down to scrub through
+the colour palettes continuously, changing only the colours. A ✕ · rewind · ♥ row sits at the
 bottom, a "•••" menu (Adjust, Colours, Share Image) bottom-right, and the Gallery top-right as a
 thumbnail of the last card you kept. Kept cards land in the same collection as everything else,
 and opening one there brings you back to `/t` showing it, with the card you were on next in line;

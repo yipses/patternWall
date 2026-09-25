@@ -1748,8 +1748,8 @@ test that was watched failing:
   takes the card back out of the collection — but only if that like is what put
   it there, which is why a like step records `added`. The card on screen at
   the moment of a rewind had no verdict, so it goes back to the *front of the
-  queue* rather than into the bin: history is a line, not a tree. Palette flicks
-  and slider changes stay out of history, because they are undone by flicking
+  queue* rather than into the bin: history is a line, not a tree. Palette scrubs
+  and slider changes stay out of history, because they are undone by scrubbing
   back and by moving the slider, and putting them in would make rewind walk
   through colours before it reached the card swiped away by mistake.
 - **The feed is persisted, card, queue and history.** Safari's own edge swipe
@@ -1770,8 +1770,14 @@ only place entropy is allowed near a render. Nothing random happens during the
 prerender — the static page is the ground, and the card arrives after mount.
 
 Gestures and where they stop: the card follows the finger only sideways, with
-a tilt; vertical is a flick that changes colours on release while the card stays
-put, because a card moving up reads as being thrown away. The axis lock is the
+a tilt; vertical scrubs the palettes under the finger while the card stays put,
+because a card moving up reads as being thrown away. It first changed colour
+once per swipe, on release, and was asked to change continuously; now the
+card's height covers the whole list (about 15px a palette on a phone), every
+step counts from the palette the drag began on, and the travel the axis lock
+spends deciding is dead on *both* sides of the start — anchoring it on one side
+only left a drag back to the starting point one palette short, which the e2e
+test caught on its first run. The axis lock is the
 lead-based one `/m` settled on. **Touches starting within 24px of either side
 edge never drag the card** — Safari owns both edges, back from the left and
 forward from the right once there is a forward entry — and page script cannot

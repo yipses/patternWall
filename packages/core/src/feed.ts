@@ -111,18 +111,30 @@ export function rerollCard(card: FeedCard, g: Generator, rng: Rng, palettes: rea
 }
 
 /**
- * The next or previous curated palette.
+ * The curated palette `offset` places along from the card's, wrapping.
+ *
+ * A vertical drag on the feed scrubs through the list, so this is asked for
+ * every step a finger crosses, always measured from the palette the drag
+ * started on — dragging back to where you began lands on the palette you began
+ * with, whatever happened on the way.
  *
  * A card can hold a palette that is not in the list — one edited in the
- * Colours sheet — and stepping from it has to land somewhere; it lands on the
- * first curated one going forward and the last going back, so both directions
- * leave a custom palette rather than one of them doing nothing.
+ * Colours sheet — and stepping from it has to land somewhere: forward counts
+ * from the first curated one and back from the last, so both directions leave
+ * a custom palette rather than one of them doing nothing.
  */
-export function cyclePalette(card: FeedCard, direction: 1 | -1, palettes: readonly Palette[] = curatedPalettes): FeedCard {
-  if (palettes.length === 0) return card;
+export function paletteAt(card: FeedCard, offset: number, palettes: readonly Palette[] = curatedPalettes): FeedCard {
+  const n = palettes.length;
+  if (n === 0 || offset === 0) return card;
   const at = palettes.findIndex((p) => p.id === card.palette.id);
-  const next = at === -1 ? (direction === 1 ? 0 : palettes.length - 1) : (at + direction + palettes.length) % palettes.length;
+  const from = at !== -1 ? at : offset > 0 ? -1 : n;
+  const next = (((from + offset) % n) + n) % n;
   return { ...card, palette: palettes[next] as Palette };
+}
+
+/** The next or previous curated palette: one step of `paletteAt`. */
+export function cyclePalette(card: FeedCard, direction: 1 | -1, palettes: readonly Palette[] = curatedPalettes): FeedCard {
+  return paletteAt(card, direction, palettes);
 }
 
 /* ---------------------------------------------------------------- history */
