@@ -154,6 +154,14 @@ interface TruchetFlavour {
   /** The top of the divisions slider. See the note above. */
   divisionMax: number;
   divisionNote: string;
+  /**
+   * Where the density and weight sliders stop. Set by the owner per pattern,
+   * by looking at renders, so each variant reaches only the settings worth
+   * having; the renderer itself still draws anything it is handed.
+   */
+  densityMin: number;
+  densityMax: number;
+  weightMax: number;
 }
 
 function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
@@ -164,9 +172,9 @@ function makeTruchet(KIND: TileKind, flavour: TruchetFlavour): Generator {
   tags: ['grid'],
   description: flavour.description,
   params: [
-    { key: 'density', label: 'Grid density', type: 'number', min: 3, max: 26, step: 1, default: 8, description: 'Columns across the canvas. Rows follow from the aspect ratio so cells stay square.' },
-    { key: 'weight', label: 'Stroke weight', type: 'number', min: 0.02, max: 0.5, step: 0.01, default: 0.16, description: 'How much of its own share of the cell each mark fills. An undivided tile has the whole cell to itself and this is a line width; divide it and the share is the gap between one mark and the next, so the same setting keeps the same look instead of the marks thickening until they merge. Past the default they do merge, which is what reads as solid.' },
-    { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.25, description: 'How much of the colour comes from the drifting field rather than from the direction below. At zero the palette runs cleanly along that axis; at one the direction does nothing and the colour pools into regions that wander across the image. It shipped at 0.6 for a while and the field dominated \u2014 a blob of one accent sitting in the middle of another, which is what a wandering field looks like once it is most of the mix.' },
+    { key: 'density', label: 'Grid density', type: 'number', min: flavour.densityMin, max: flavour.densityMax, step: 1, default: 8, description: 'Columns across the canvas. Rows follow from the aspect ratio so cells stay square.' },
+    { key: 'weight', label: 'Stroke weight', type: 'number', min: 0.02, max: flavour.weightMax, step: 0.01, default: 0.16, description: 'How much of its own share of the cell each mark fills. An undivided tile has the whole cell to itself and this is a line width; divide it and the share is the gap between one mark and the next, so the same setting keeps the same look instead of the marks thickening until they merge. Past the default they do merge, which is what reads as solid.' },
+    { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 0.65, step: 0.01, default: 0.25, description: 'How much of the colour comes from the drifting field rather than from the direction below. At zero the palette runs cleanly along that axis; toward the top the colour pools into regions that wander across the image. It shipped at 0.6 for a while and the field dominated \u2014 a blob of one accent sitting in the middle of another, which is what a wandering field looks like once it is most of the mix.' },
     { key: 'arcCount', label: 'Divisions', type: 'number', min: 1, max: flavour.divisionMax, step: 1, default: 1, description: flavour.divisionNote },
     ...(KIND === 'arcs'
       ? ([
@@ -734,7 +742,10 @@ export const truchetArcs = makeTruchet('arcs', {
   name: 'Truchet Arcs',
   tagline: 'Quarter circles on a grid, closing into loops nobody planned.',
   description: arcsDescription,
-  divisionMax: 12,
+  divisionMax: 8,
+  densityMin: 6,
+  densityMax: 14,
+  weightMax: 0.36,
   divisionNote:
     'How many concentric rings each quarter arc becomes, added either side of the radius that joins the neighbouring cells. They are spread evenly and centred on that radius, which is what makes each ring meet its opposite number across an edge; how far they reach is Arc spread\u2019s job rather than this one. Raising it adds detail inside a mark that keeps its size, and the stroke follows the gap it leaves rather than being clamped by it.',
 });
@@ -745,6 +756,9 @@ export const truchetDiagonals = makeTruchet('diagonals', {
   tagline: 'Corner to corner, and a lattice of switchbacks.',
   description: diagonalsDescription,
   divisionMax: 6,
+  densityMin: 3,
+  densityMax: 10,
+  weightMax: 0.4,
   divisionNote:
     'How many parallel chords cross each cell. The corner-to-corner line becomes a family spaced one cell width over the count, which is the only spacing that tiles: it puts every crossing at a multiple of itself along each edge, in both rotations, so every chord meets a partner across every edge. A family is 2n-1 chords, so this stops at six \u2014 past that one cell carries more than a dozen lines and the tiling reads as grey.',
 });

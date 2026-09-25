@@ -183,13 +183,13 @@ describe('a link older than the pattern it names', () => {
    */
   it('says the link is old rather than claiming settings were lost', () => {
     const truchet = getGenerator('truchet-arcs')!;
-    const short = Array.from({ length: truchet.params.length - 1 }, (_, i) => (i === 0 ? '17' : '1')).join('_');
+    const short = Array.from({ length: truchet.params.length - 1 }, (_, i) => (i === 0 ? '12' : '1')).join('_');
     const { config, notes } = decodeConfig('truchet-arcs', `?s=yarrow-129&q=${short}`);
 
     expect(notes.join(' '), 'a shorter link must not claim anything was reset').not.toMatch(/reset/i);
     expect(notes.join(' ')).toMatch(/predates/i);
     // the values it does carry still land where they did
-    expect(config.params.density).toBe(17);
+    expect(config.params.density).toBe(12);
     // and the appended one takes its own default
     const last = truchet.params[truchet.params.length - 1]!;
     expect(config.params[last.key]).toBe(last.default);

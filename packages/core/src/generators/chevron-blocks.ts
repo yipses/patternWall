@@ -87,12 +87,12 @@ export const chevronBlocks: Generator = {
   tags: ['isometric', 'grid'],
   description,
   params: [
-    { key: 'blockSize', label: 'Block size', type: 'number', min: 0.035, max: 0.16, step: 0.005, default: 0.075, description: 'The edge of one cube, as a fraction of the canvas width. Everything else is derived from it, so this is the only control that changes how many blocks there are.' },
+    { key: 'blockSize', label: 'Block size', type: 'number', min: 0.035, max: 0.1, step: 0.005, default: 0.075, description: 'The edge of one cube, as a fraction of the canvas width. Everything else is derived from it, so this is the only control that changes how many blocks there are.' },
     { key: 'relief', label: 'Relief', type: 'number', min: 0, max: 1, step: 0.01, default: 0.62, description: 'How far the stacks differ in height. At zero every stack is a single cube, the walls disappear and the pattern falls back to the flat diamond tiling underneath it; high up it becomes a landscape of terraces and deep shaded steps.' },
     { key: 'clumping', label: 'Clumping', type: 'number', min: 0.4, max: 3.5, step: 0.05, default: 0.8, description: 'How broad the high ground is. Low values give two or three massifs across the width; high values break the surface into small scattered towers.' },
     { key: 'faceLight', label: 'Face light', type: 'number', min: 0, max: 1, step: 0.01, default: 0.62, description: 'The lightness spread between a cube’s three faces. It is one accent at three lightnesses rather than three colours, which is what makes the eye read it as a light source. At zero the faces match and the solid collapses into flat hexagons.' },
-    { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.7, description: 'How much of the accent ramp the blocks walk as they cross the canvas. At zero every block is the middle of the palette and only the shading varies.' },
-    { key: 'mortar', label: 'Mortar', type: 'number', min: 0, max: 1, step: 0.01, default: 0.35, description: 'A hairline of background between one face and the next. It is the difference between a stack of separate blocks and one faceted surface; at zero the faces meet directly.' },
+    { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 0.65, step: 0.01, default: 0.65, description: 'How much of the accent ramp the blocks walk as they cross the canvas. At zero every block is the middle of the palette and only the shading varies.' },
+    { key: 'mortar', label: 'Mortar', type: 'number', min: 0, max: 0.3, step: 0.01, default: 0.3, description: 'A hairline of background between one face and the next. It is the difference between a stack of separate blocks and one faceted surface; at zero the faces meet directly.' },
   ],
 
   /**
@@ -115,8 +115,8 @@ export const chevronBlocks: Generator = {
     const relief = clamp(pNum(params, 'relief', 0.62), 0, 1);
     const clumping = clamp(pNum(params, 'clumping', 0.8), 0.4, 3.5);
     const faceLight = clamp(pNum(params, 'faceLight', 0.62), 0, 1);
-    const colorSpread = clamp(pNum(params, 'colorSpread', 0.7), 0, 1);
-    const mortar = clamp(pNum(params, 'mortar', 0.35), 0, 1);
+    const colorSpread = clamp(pNum(params, 'colorSpread', 0.65), 0, 1);
+    const mortar = clamp(pNum(params, 'mortar', 0.3), 0, 1);
 
     // The projection, in canvas units. `ux`/`uy` are one ground step; `uz` is
     // one storey. All three are fractions of the width, so the lattice is the

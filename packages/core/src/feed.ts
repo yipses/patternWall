@@ -25,37 +25,15 @@ export type FeedCard = PatternConfig;
 /**
  * Narrower ranges for browsing, keyed `generatorId.paramKey`.
  *
- * A slider's range is what a person can reach deliberately; the range a random
- * card is drawn from is a different and narrower thing, because the extremes
- * are where a pattern turns to grey noise or an empty field, and a feed full
- * of those feels like work rather than browsing. The sliders keep their whole
- * range — pushing past these by hand is still allowed.
- *
- * Set by the owner, by looking at renders, in the "PatternWall – browse
- * ranges" sheet. Only the settings that were narrowed are listed; anything
- * missing is drawn over its slider's whole range. A data change, not a code
- * change: the next pass edits this table and nothing else.
+ * Empty, and deliberately so. The owner set browse ranges from the
+ * "PatternWall – browse ranges" sheet, then decided nobody should be able to
+ * go past them by hand either — so they became the sliders' own ranges and
+ * this table had nothing left to narrow. It stays as the place a future pass
+ * would land if what a random card may be dealt ever needs to be narrower
+ * than what a person may choose. A unit test checks every entry names a live
+ * setting inside its slider.
  */
-export const BROWSE_RANGES: Record<string, { min: number; max: number }> = {
-  'truchet-arcs.density': { min: 6, max: 14 },
-  'truchet-arcs.weight': { min: 0.02, max: 0.36 },
-  'truchet-arcs.colorSpread': { min: 0, max: 0.65 },
-  'truchet-arcs.arcCount': { min: 1, max: 8 },
-
-  'truchet-diagonals.density': { min: 3, max: 10 },
-  'truchet-diagonals.weight': { min: 0.02, max: 0.4 },
-  'truchet-diagonals.colorSpread': { min: 0, max: 0.65 },
-
-  'chevron-blocks.blockSize': { min: 0.035, max: 0.1 },
-  'chevron-blocks.colorSpread': { min: 0, max: 0.65 },
-  'chevron-blocks.mortar': { min: 0, max: 0.3 },
-
-  'contours.levels': { min: 6, max: 30 },
-  'contours.scale': { min: 0.6, max: 2 },
-  'contours.weight': { min: 0.3, max: 1 },
-  'contours.indexEvery': { min: 0, max: 5 },
-  'contours.colorSpread': { min: 0, max: 0.65 },
-};
+export const BROWSE_RANGES: Record<string, { min: number; max: number }> = {};
 
 const SEED_WORDS = [
   'ash', 'bergamot', 'cinder', 'delta', 'ember', 'fenn', 'glass', 'hollow', 'iris', 'juniper', 'kelp', 'lumen',

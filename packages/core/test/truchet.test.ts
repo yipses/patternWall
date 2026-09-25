@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { curatedPalettes, defaultParams, getGenerator, renderToSvg } from '../src/index.js';
-import { rasterize } from './helpers.js';
+import { curatedPalettes, defaultParams, getGenerator } from '../src/index.js';
+import { rasterize, renderUnclamped } from './helpers.js';
 
 const arcs = getGenerator('truchet-arcs')!;
 const diagonals = getGenerator('truchet-diagonals')!;
@@ -27,7 +27,7 @@ const palette = curatedPalettes[0]!;
 function render(overrides: Record<string, number | string | boolean>, size = 400, seed = 'truchet-geometry'): string {
   const { tileSet: _tileSet, ...rest } = overrides;
   const generator = generatorFor(overrides);
-  return renderToSvg({
+  return renderUnclamped({
     generator,
     width: size,
     height: size,
@@ -685,7 +685,7 @@ describe('truchet colour resolution', () => {
    */
   it('resolves colour within a cell, not just between cells', () => {
     for (const generator of [arcs, diagonals]) {
-      const svg = renderToSvg({
+      const svg = renderUnclamped({
         generator,
         width: SIZE,
         height: SIZE,
@@ -828,7 +828,7 @@ describe('truchet colour direction', () => {
   };
 
   const render = (colorAxis: string): string =>
-    renderToSvg({
+    renderUnclamped({
       generator: diagonals,
       width: 300,
       height: 650,
@@ -947,7 +947,7 @@ describe('a truchet diagonal corner reaches as far as a mitre and no further', (
     [20, 2],
   ] as const) {
     it(`fills the corner at ${density} columns and ${arcCount} divisions`, () => {
-      const svg = renderToSvg({
+      const svg = renderUnclamped({
         generator: diagonals,
         width: W,
         height: H,

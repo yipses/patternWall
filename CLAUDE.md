@@ -258,6 +258,24 @@ test that was calibrated at the old end of it against the bug it was written to
 catch, because a test whose extreme has moved is a test that may no longer have
 one.
 
+**The owner then narrowed fifteen sliders at once**, to the ranges in the
+"PatternWall – ranges" sheet — "I don't want the user to adjust past what I
+set". `renderToSvg` coerces through the same clamp, so twenty-odd geometry
+tests written at the old tops (sixty contour lines, twelve divisions, a
+weight of 0.5) were suddenly running at the new ones: five failed loudly and
+the rest passed, which is the case above and the dangerous one. Rather than
+re-calibrate each, the tests that guard a mechanism at an extreme render
+through `renderUnclamped` in `test/helpers.ts`, which skips the clamp: the
+renderers still draw anything handed to them, and a guard keeps the extreme it
+was watched failing at. That was checked by logging every clamp that reached a
+render during the suite — twenty-seven distinct clamps across three files
+before, none after. `feed.test.ts` pins every slider's ends to the owner's
+numbers, because a slider that drifts back out would let links and random
+cards reach renders the owner ruled out and nothing else would notice. The
+cost, stated: a saved wallpaper or a link holding a value past a new end is
+pulled back to it when it loads, so it can look different from when it was
+kept.
+
 ---
 
 ## Deployment
@@ -1532,7 +1550,7 @@ result. Each was arrived at by breaking it first.
   which is exactly where the render is heaviest.
 
 Controls, on both: density, weight, colorSpread, colorAxis, arcCount (labelled
-Divisions; max 12 on arcs, 6 on diagonals), and arcSpacing (spread) on the arcs
+Divisions; max 8 on arcs, 6 on diagonals), and arcSpacing (spread) on the arcs
 alone.
 The two the picture is driven by — horizontal for density, vertical for
 arcCount — are promoted into the panel with their gesture written beside them;
@@ -1812,17 +1830,15 @@ would be a Share that silently does nothing. Sharing does *not* save to the
 collection — that was put to the owner and the answer was not to decide for
 people.
 
-`BROWSE_RANGES` in `feed.ts` narrows what a *random* card may be drawn from, as
-data, and the owner set it from the "PatternWall – browse ranges" sheet on
-Google Drive by looking at renders. It narrows only the feed: the sliders keep
-their whole range, so a person can still push past it by hand. Only narrowed
-settings are listed. A unit test asserts every entry names a live number
-setting inside its slider and on its steps — a range for a removed param would
-otherwise sit there doing nothing — and that cards stay inside the ranges and
-reach both ends of the coarse ones. Worth knowing on the first pass: the owner
-typed the ranges into the *slider* columns before moving them, so a sheet with
-two sets of min/max columns invites that; ask which set was meant rather than
-guessing.
+`BROWSE_RANGES` in `feed.ts` is empty, and briefly was not. The owner set
+browse-only ranges from a Drive sheet, then decided nobody should adjust past
+them by hand either, so they became the sliders' own ranges ("PatternWall –
+ranges" on Drive, one min and max per setting) and the table had nothing left
+to narrow. It stays for the day a random card should be dealt from narrower
+than a person may choose; a unit test checks each entry names a live setting
+inside its slider. Worth knowing for next time: a sheet with two sets of
+min/max columns was misfilled on the first pass — ask which set was meant
+rather than guessing, and a single set avoids the question.
 
 The chrome moved into a route group precisely so `/m` could exist without it,
 and both phone routes share their component with a site one rather than forking

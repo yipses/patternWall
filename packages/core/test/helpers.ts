@@ -1,5 +1,7 @@
 import { Resvg } from '@resvg/resvg-js';
 import { curatedPalettes, defaultParams, generators, retired, GRID_SIZE, packGrid, type Generator, type Palette } from '../src/index.js';
+import { createRenderContext, type RenderRequest } from '../src/render.js';
+import type { RenderContext } from '../src/types.js';
 
 export const TEST_PALETTES: Palette[] = ['obsidian', 'paper', 'riso-pink', 'crt-green', 'fog', 'neon-rain']
   .map((id) => curatedPalettes.find((p) => p.id === id))
@@ -83,4 +85,22 @@ export function sampleGrid(size: number = GRID_SIZE): string {
     }
   }
   return packGrid(cells, size);
+}
+
+/**
+ * A render that does not clamp to the sliders.
+ *
+ * The app coerces every setting to its slider's range, and `renderToSvg` does
+ * too, which is right for everything a person can reach. But the owner has
+ * since narrowed several sliders, and a test written at the old top — sixty
+ * contour lines, twelve divisions, a heavy pen — would then quietly run at
+ * the new top instead, which is the "a test whose extreme has moved" hazard
+ * CLAUDE.md records: it can go on passing with the mechanism it guards
+ * deleted. The renderers still draw whatever they are handed, so tests that
+ * guard a mechanism at its calibrated extreme render through this and keep
+ * the extreme they were written at.
+ */
+export function renderUnclamped(req: RenderRequest): string {
+  const ctx = createRenderContext(req);
+  return req.generator.render({ ...ctx, params: { ...defaultParams(req.generator), ...(req.params ?? {}) } as RenderContext['params'] });
 }

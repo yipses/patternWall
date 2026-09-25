@@ -319,7 +319,9 @@ test.describe('gesture', () => {
     await settled(page);
 
     const density = page.getByLabel('Grid density');
-    await density.fill('20');
+    // Inside the arcs' slider (6-14) and away from the default of 8, so the
+    // assertion below can tell a carried value from a reset one.
+    await density.fill('12');
     await density.blur();
     await settled(page);
 

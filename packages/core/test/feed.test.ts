@@ -87,7 +87,7 @@ describe('a random card', () => {
   });
 });
 
-describe('the browse ranges', () => {
+describe('the ranges', () => {
   /*
    * The owner narrowed what a random card may be drawn from, by looking at
    * renders, so a card outside those ranges is exactly the dud they were set
@@ -115,29 +115,55 @@ describe('the browse ranges', () => {
     }
   });
 
-  it('keeps every card inside them, and reaches both ends', () => {
-    const make = maker(19);
-    const seen = new Map<string, { lo: number; hi: number }>();
-    for (let i = 0; i < 2400; i++) {
-      const c = make();
-      for (const [k, v] of Object.entries(c.params)) {
-        const key = `${c.generatorId}.${k}`;
-        const r = BROWSE_RANGES[key];
-        if (!r || typeof v !== 'number') continue;
-        expect(v, `${key} drew ${v}, outside ${r.min} to ${r.max}`).toBeGreaterThanOrEqual(r.min - 1e-9);
-        expect(v, `${key} drew ${v}, outside ${r.min} to ${r.max}`).toBeLessThanOrEqual(r.max + 1e-9);
-        const s = seen.get(key) ?? { lo: Infinity, hi: -Infinity };
-        seen.set(key, { lo: Math.min(s.lo, v), hi: Math.max(s.hi, v) });
-      }
-    }
-    // Both ends of a coarse range come up; the fine ones (a hundred-odd steps)
-    // are checked by the bound above rather than hoped for here.
-    for (const key of ['truchet-arcs.density', 'truchet-arcs.arcCount', 'contours.levels', 'contours.indexEvery']) {
-      const r = BROWSE_RANGES[key]!;
-      expect(seen.get(key), `${key} never drawn`).toBeDefined();
-      expect(seen.get(key)!.lo, `${key} never reached ${r.min}`).toBe(r.min);
-      expect(seen.get(key)!.hi, `${key} never reached ${r.max}`).toBe(r.max);
-    }
+  /*
+   * The owner's ranges are the sliders now, not a narrower band inside them:
+   * "I don't want the user to adjust past what I set". Pinned here, the way
+   * param-order pins keys, because a slider edge that drifts back out lets
+   * every link and every random card reach the renders they ruled out, and
+   * nothing else in the suite would notice.
+   */
+  it('stops every slider where the owner set it', () => {
+    const OWNER: Record<string, [number, number]> = {
+      'truchet-arcs.density': [6, 14],
+      'truchet-arcs.weight': [0.02, 0.36],
+      'truchet-arcs.colorSpread': [0, 0.65],
+      'truchet-arcs.arcCount': [1, 8],
+      'truchet-arcs.arcSpacing': [0.15, 1],
+      'truchet-diagonals.density': [3, 10],
+      'truchet-diagonals.weight': [0.02, 0.4],
+      'truchet-diagonals.colorSpread': [0, 0.65],
+      'truchet-diagonals.arcCount': [1, 6],
+      'chevron-blocks.blockSize': [0.035, 0.1],
+      'chevron-blocks.relief': [0, 1],
+      'chevron-blocks.clumping': [0.4, 3.5],
+      'chevron-blocks.faceLight': [0, 1],
+      'chevron-blocks.colorSpread': [0, 0.65],
+      'chevron-blocks.mortar': [0, 0.3],
+      'contours.levels': [6, 30],
+      'contours.scale': [0.6, 2],
+      'contours.detail': [1, 5],
+      'contours.resolution': [40, 220],
+      'contours.weight': [0.3, 1],
+      'contours.indexEvery': [0, 5],
+      'contours.colorSpread': [0, 0.65],
+      'contours.seaLevel': [0, 0.75],
+      'contours.elevationTint': [0, 1],
+      'contours.hachures': [0, 1],
+      'contours.supplementary': [0, 1],
+      'contours.roughness': [0, 1],
+    };
+    const actual: Record<string, [number, number]> = {};
+    for (const g of generators)
+      for (const spec of g.params) if (spec.type === 'number') actual[`${g.id}.${spec.key}`] = [spec.min, spec.max];
+    expect(actual).toEqual(OWNER);
+    // And every default sits inside, or a new card opens on a value the
+    // slider cannot show.
+    for (const g of generators)
+      for (const spec of g.params)
+        if (spec.type === 'number') {
+          expect(spec.default, `${g.id}.${spec.key}`).toBeGreaterThanOrEqual(spec.min);
+          expect(spec.default, `${g.id}.${spec.key}`).toBeLessThanOrEqual(spec.max);
+        }
   });
 });
 

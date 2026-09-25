@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Resvg } from '@resvg/resvg-js';
-import { renderToSvg } from '../src/index.js';
-import { ALL_GENERATORS, baseParams, TEST_PALETTES } from './helpers.js';
+import { ALL_GENERATORS, baseParams, renderUnclamped, TEST_PALETTES } from './helpers.js';
 
 const contours = ALL_GENERATORS.find((g) => g.id === 'contours')!;
 
@@ -40,7 +39,7 @@ const CALIBRATED = {
 };
 
 function render(over: Record<string, number | string | boolean>, size = 600): string {
-  return renderToSvg({
+  return renderUnclamped({
     generator: contours,
     width: size,
     height: size,
@@ -473,7 +472,7 @@ describe('contours', () => {
     const ink = (over: Record<string, number>): { mean: number; worst: number } => {
       const W = 430;
       const H = 932;
-      const svg = renderToSvg({
+      const svg = renderUnclamped({
         generator: contours,
         width: W,
         height: H,

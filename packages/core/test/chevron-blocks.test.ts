@@ -1,14 +1,14 @@
 import { Resvg } from '@resvg/resvg-js';
 import { describe, expect, it } from 'vitest';
-import { hexToOklch, renderToSvg } from '../src/index.js';
-import { ALL_GENERATORS, baseParams, TEST_PALETTES } from './helpers.js';
+import { hexToOklch } from '../src/index.js';
+import { ALL_GENERATORS, baseParams, renderUnclamped, TEST_PALETTES } from './helpers.js';
 
 const blocks = ALL_GENERATORS.find((g) => g.id === 'chevron-blocks')!;
 const W = 430;
 const H = 932;
 
 function render(over: Record<string, number | string | boolean> = {}): string {
-  return renderToSvg({
+  return renderUnclamped({
     generator: blocks,
     width: W,
     height: H,
