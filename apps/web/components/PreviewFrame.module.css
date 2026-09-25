@@ -397,9 +397,10 @@
   height: auto;
   max-width: 100dvw;
   max-height: 100dvh;
-  /* Both, so whichever runs out first decides. `aspect-ratio` is set inline
-     from the device's own screen. */
+  /* Both, so whichever runs out first decides. The shape is the device's own
+     screen, handed in as a variable. */
   height: 100dvh;
+  aspect-ratio: var(--pw-screen-aspect);
   border-radius: 0;
   box-shadow: none;
 }
@@ -408,4 +409,24 @@
   width: 100%;
   height: 100%;
   object-fit: fill;
+}
+
+/*
+ * On a phone the picture is the screen, edge to edge — the same rule /t
+ * follows, for the same report: "on the phone, the website has a black
+ * border". The render is the whole screen's shape and Safari's bars take part
+ * of the screen, so fitting all of it in left black down both sides. It fills
+ * instead and is trimmed evenly top and bottom; what is exported is still
+ * drawn whole. Only `/m` fills, and it shows the picture flat, with nothing
+ * laid over it that claims a position on the screen and would now be off.
+ */
+@media (max-width: 600px) {
+  .phoneFill {
+    width: 100dvw;
+    aspect-ratio: auto;
+  }
+
+  .phoneFill img {
+    object-fit: cover;
+  }
 }

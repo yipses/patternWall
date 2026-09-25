@@ -35,6 +35,7 @@
   height: 100dvh;
   max-width: 100dvw;
   max-height: 100dvh;
+  aspect-ratio: var(--pw-screen-aspect);
 }
 
 .card {
@@ -451,5 +452,32 @@
 @media (prefers-reduced-motion: reduce) {
   .card {
     transition: none !important;
+  }
+}
+
+/*
+ * On a phone the card is the screen, edge to edge.
+ *
+ * The card is drawn at the shape of the whole screen, and Safari's own bars
+ * take part of that screen away — so fitting the whole picture in left the
+ * card about 305px wide on a 390px phone, with black down both sides. It was
+ * reported as "the website has a black border". The picture fills the space
+ * instead and is trimmed evenly top and bottom; what is kept or shared is
+ * still drawn whole at the screen's size, so only the preview is cropped.
+ * Above phone width a card shaped like a phone is the honest preview, so it
+ * stays one.
+ */
+@media (max-width: 600px) {
+  .deck {
+    width: 100dvw;
+    aspect-ratio: auto;
+  }
+
+  .card {
+    border-radius: 0;
+  }
+
+  .picture {
+    object-fit: cover;
   }
 }

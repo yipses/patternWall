@@ -416,7 +416,7 @@ export function Feed() {
       <div
         ref={rootRef}
         className={styles.deck}
-        style={{ aspectRatio: `${box.w} / ${box.h}` }}
+        style={{ '--pw-screen-aspect': `${box.w} / ${box.h}` } as React.CSSProperties}
         data-testid="feed-deck"
       >
         {/* The next card, already drawn, under the one being judged. */}

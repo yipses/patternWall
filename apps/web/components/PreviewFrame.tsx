@@ -108,7 +108,9 @@ export function PreviewFrame({
   const phoneCls = [styles.phone, gesture ? styles.phoneGrab : '', fill ? styles.phoneFill : '']
     .filter(Boolean)
     .join(' ');
-  const phoneStyle = fill ? { aspectRatio: `${fill.w} / ${fill.h}` } : undefined;
+  // A variable rather than `aspect-ratio` itself, so the stylesheet can let go
+  // of the shape on a phone, where the picture fills the screen instead.
+  const phoneStyle = fill ? ({ '--pw-screen-aspect': `${fill.w} / ${fill.h}` } as React.CSSProperties) : undefined;
 
   return (
     <div className={wrapCls}>

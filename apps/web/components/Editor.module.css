@@ -270,10 +270,13 @@
  * address bar *hidden*, so a full-height box is taller than what you can see
  * and the bottom of the picture sits under the toolbar. `dvh` tracks the bar.
  *
- * The stage is sized by aspect rather than stretched, so the render keeps the
- * device's shape and black fills whatever is left. On a phone that is nothing;
- * on a desktop it is most of the window, which is the point — this is a phone
- * view and it should look like one wherever it is opened.
+ * Above phone width the stage is sized by aspect rather than stretched, so the
+ * render keeps the device's shape and black fills whatever is left — most of a
+ * desktop window, which is the point: this is a phone view and it should look
+ * like one wherever it is opened. On a phone it fills the screen and trims the
+ * picture instead, because Safari's bars make the visible area shorter than
+ * the screen and "nothing left over" was never true there (see
+ * PreviewFrame.module.css).
  */
 .bare {
   display: grid;

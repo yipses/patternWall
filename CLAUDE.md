@@ -1834,6 +1834,20 @@ Four things about those two are easy to rediscover the hard way:
   aspect on every scroll. Off a phone it falls back to 390x845 rather than
   taking a landscape desktop literally. The collection's tiles use it too: a
   saved wallpaper shown at any other aspect is a picture of a different phone.
+- **On a phone, `/t` and `/m` fill the screen and trim the picture; above
+  600px they keep the phone's shape.** Rendering at the screen's shape and
+  then fitting the whole render into what is visible assumed the visible area
+  *was* the screen, and in Safari it never is: the address bar and toolbar
+  take about 180px, so the picture came out ~305px wide on a 390px phone with
+  black down both sides — reported as "the website has a black border". It is
+  `object-fit: cover` now, trimmed evenly top and bottom, and only the preview
+  is cropped: what is kept, shared or exported is still drawn whole. Safe on
+  `/m` only because it shows the picture flat — the lock and home mockups
+  place things by percentage of the screen, and a cropped picture would put
+  them in the wrong place. `phone-screen.spec.ts` guards both routes, and it
+  has to open its own browser context: `test.use({ screen })` did not reach
+  the page, which then saw a screen the size of its window, and the first
+  version of the test passed with the fix removed.
 - **The collection's chrome is two fixed layers and nothing else.** A header
   across the top — chevron left, the mode's title centred, Select/Done right,
   all on one centre line — and the build stamp in the bottom-left. Both follow
