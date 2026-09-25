@@ -187,6 +187,19 @@ export function feedReplace(s: FeedState, card: FeedCard): FeedState {
 }
 
 /**
+ * Bring a kept wallpaper to the front — opened from the gallery.
+ *
+ * The card that was on screen is not judged by this, so it goes to the front
+ * of the queue rather than into history or the bin: one swipe after looking
+ * at the kept one, you are back where you were. History is left alone, so
+ * rewind still walks the cards you actually judged.
+ */
+export function feedOpen(s: FeedState, card: FeedCard): FeedState {
+  if (JSON.stringify(card) === JSON.stringify(s.current)) return s;
+  return { current: card, queue: [s.current, ...s.queue], history: s.history };
+}
+
+/**
  * Put back what was on screen before, and undo whatever took it away.
  *
  * The card being looked at when rewind is pressed had no verdict, so it goes

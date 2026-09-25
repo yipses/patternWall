@@ -1788,6 +1788,13 @@ plain random pick repeats every few dozen taps and a tap whose colours stay put
 is exactly the report. The unit test runs two hundred taps, and a plain pick
 fails it at the fourteenth.
 
+The gallery opened from `/t` sends a tile back to `/t` (`?open=<collected id>`),
+not to `/m`: "it should take me to the screen I was on". By id rather than by an
+encoded configuration, so what opens is exactly what was kept, and the query is
+cleared on arrival so a reload does not reopen it over whatever came next. The
+card that was on screen goes to the front of the queue — one swipe away — and
+history is untouched, because opening a wallpaper is not a verdict.
+
 The share image is drawn when the "•••" menu opens rather than when Share is
 pressed: Safari only opens the share sheet while the press that asked for it is
 still fresh, and a dense pattern can take longer than that to rasterise, which

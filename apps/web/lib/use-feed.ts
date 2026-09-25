@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createRng,
   cyclePalette,
+  feedOpen,
   feedReplace,
   feedReroll,
   feedRewind,
@@ -14,6 +15,7 @@ import {
   initialConfig,
   randomCard,
   rerollCard,
+  restoreCard,
   restoreFeed,
   type FeedCard,
   type FeedState,
@@ -110,8 +112,27 @@ export function useFeed() {
     // rather than a random draw, so a first impression does not depend on the
     // dice. Hand-picked openers belong to the ranges pass; until then this is
     // the known-good one.
-    commit(restored ?? feedStart(initialConfig(generators[0]!.id), make));
-    setLatestSaved(loadCollected()[0] ?? null);
+    let state = restored ?? feedStart(initialConfig(generators[0]!.id), make);
+
+    /*
+     * Opened from the gallery: `?open=` names a kept wallpaper, and the feed
+     * shows it, with the card that was on screen next in line.
+     *
+     * By id rather than by an encoded configuration, so what opens is exactly
+     * what was kept — read from the same storage the gallery drew it from —
+     * and the address is cleared straight after, so a reload stays on the feed
+     * instead of opening the same wallpaper again over whatever came next.
+     */
+    const collected = loadCollected();
+    const openId = new URLSearchParams(window.location.search).get('open');
+    if (openId !== null) {
+      const item = collected.find((i) => i.id === openId);
+      const card = item ? restoreCard(item) : null;
+      if (card) state = feedOpen(state, card);
+      window.history.replaceState(window.history.state, '', window.location.pathname);
+    }
+    commit(state);
+    setLatestSaved(collected[0] ?? null);
     const h = readJson(HINTS_KEY) as Partial<FeedHints> | null;
     setHints({ nudged: h?.nudged === true, tipped: h?.tipped === true });
   }, [commit, make]);

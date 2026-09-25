@@ -5,6 +5,7 @@ import {
   createRng,
   curatedPalettes,
   cyclePalette,
+  feedOpen,
   feedReplace,
   feedReroll,
   feedRewind,
@@ -201,6 +202,28 @@ describe('the feed never loses a card it showed you', () => {
     // the copy that was kept before.
     s = feedVerdict(feedRewind(s).state, 'like', make, false);
     expect(feedRewind(s).undone).toMatchObject({ kind: 'like', added: false });
+  });
+
+  it('opening a kept wallpaper puts the card you were on next in line', () => {
+    // Opened from the gallery, the kept card takes the screen. The one it
+    // replaced had no verdict, so it must be one swipe away rather than gone.
+    const make = maker(17);
+    let s = feedStart(make(), make);
+    s = feedVerdict(s, 'like', make, true);
+    const kept = s.history[0]!.card;
+    const onScreen = s.current;
+    const history = s.history;
+
+    s = feedOpen(s, kept);
+    expect(same(s.current, kept)).toBe(true);
+    expect(s.history, 'opening a wallpaper is not a verdict').toEqual(history);
+    s = feedVerdict(s, 'skip', make);
+    expect(same(s.current, onScreen), 'the card on screen was lost').toBe(true);
+
+    // Opening the card already on screen changes nothing, rather than
+    // queueing a copy of it.
+    const before = JSON.stringify(s);
+    expect(JSON.stringify(feedOpen(s, s.current))).toBe(before);
   });
 
   it('keeps colours and adjustments out of history', () => {

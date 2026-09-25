@@ -412,10 +412,16 @@ export function Collected({ bare = false }: { bare?: boolean }) {
                 const query = g
                   ? encodeConfig({ generatorId: g.id, seed: item.seed, params: item.params, palette: item.palette })
                   : '';
-                // Back where you came from. Opened from `/m` a tile returns to
-                // `/m`, which carries its pattern in `?g=` rather than in the
-                // path; otherwise it opens the full editor route.
-                const href = bare ? `/m?g=${encodeURIComponent(g?.id ?? '')}&${query}` : `/p/${g?.id ?? ''}?${query}`;
+                // Back where you came from. Opened from the swipe feed a tile
+                // returns to the feed, showing that wallpaper — named by its id,
+                // so the feed opens exactly what was kept. Opened from `/m` it
+                // returns to `/m`, which carries its pattern in `?g=` rather
+                // than in the path; otherwise it opens the full editor route.
+                const href = !bare
+                  ? `/p/${g?.id ?? ''}?${query}`
+                  : backHref === '/t'
+                    ? `/t?open=${encodeURIComponent(item.id)}`
+                    : `/m?g=${encodeURIComponent(g?.id ?? '')}&${query}`;
 
                 return (
                   <li key={item.id} className={styles.item}>

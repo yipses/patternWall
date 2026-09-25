@@ -98,7 +98,8 @@ wallpaper in the same pattern (new settings and new colours), flick up or down t
 colours. A ✕ · rewind · ♥ row sits at the
 bottom, a "•••" menu (Adjust, Colours, Share Image) bottom-right, and the Gallery top-right as a
 thumbnail of the last card you kept. Kept cards land in the same collection as everything else,
-and opening one there takes you to `/m`, which is where a saved wallpaper gets adjusted.
+and opening one there brings you back to `/t` showing it, with the card you were on next in line;
+it can be adjusted there from the "•••" menu. Opened from `/m`, the same gallery opens into `/m`.
 
 They are not a second app. `/m` is `<Editor bare />` and `/m/collected` is `<Collected bare />` —
 one component each, two dressings — because a second copy would be a second set of gesture wiring

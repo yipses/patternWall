@@ -314,6 +314,35 @@ test('the gallery opens the liked wallpapers, and its back arrow comes back here
   expect(idText(await cardId(page)), 'coming back from the gallery dealt a different card').toBe(idText(b));
 });
 
+test('a wallpaper opened from the gallery opens here, not in the editor', async ({ page }) => {
+  // "It should take me to the screen I was on." Opened from the feed, the
+  // gallery sends a tile back to the feed showing that wallpaper — and the
+  // card that was on screen is one swipe away, not lost.
+  const kept = await cardId(page);
+  await page.getByTestId('feed-like').click();
+  await changedFrom(page, kept);
+  const onScreen = await cardId(page);
+
+  await page.getByTestId('feed-gallery').click();
+  await expect(page).toHaveURL(/\/m\/collected/);
+  await page.getByRole('link', { name: new RegExp(`seed ${kept.seed}$`) }).click();
+
+  await expect(page).toHaveURL(/\/t\/?$/);
+  await ready(page);
+  expect(idText(await cardId(page)), 'the gallery did not open the wallpaper that was tapped').toBe(idText(kept));
+
+  await page.getByTestId('feed-skip').click();
+  await expect.poll(async () => idText(await cardId(page)), { message: 'the card that was on screen was lost' }).toBe(idText(onScreen));
+
+  // And a reload after moving on stays where you are, rather than opening the
+  // kept wallpaper again from an address that still names it. A reload while
+  // still looking at it would pass either way, which is why it happens here.
+  await ready(page);
+  await page.reload();
+  await ready(page);
+  expect(idText(await cardId(page)), 'a reload reopened the gallery wallpaper').toBe(idText(onScreen));
+});
+
 test('a like that cannot be saved does not move on', async ({ page }) => {
   // Advancing past a card that did not save would be the worst outcome on the
   // screen: the person asked to keep it, and it is gone.
