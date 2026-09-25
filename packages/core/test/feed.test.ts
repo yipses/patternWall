@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BROWSE_RANGES,
   FEED_AHEAD,
   FEED_HISTORY,
   createRng,
@@ -83,6 +84,60 @@ describe('a random card', () => {
     if (spec.type !== 'number') throw new Error('arcCount is not a number');
     expect(divisions.has(spec.min)).toBe(true);
     expect(divisions.has(spec.max)).toBe(true);
+  });
+});
+
+describe('the browse ranges', () => {
+  /*
+   * The owner narrowed what a random card may be drawn from, by looking at
+   * renders, so a card outside those ranges is exactly the dud they were set
+   * to keep off the feed. And a range that names a setting that no longer
+   * exists, or reaches past its slider, is a typo that would otherwise sit
+   * there doing nothing.
+   */
+  const specOf = (key: string) => {
+    const [gid, pkey] = key.split('.') as [string, string];
+    const spec = getGenerator(gid)?.params.find((p) => p.key === pkey);
+    return spec?.type === 'number' ? spec : null;
+  };
+
+  it('each names a number setting of a pattern in the app, inside its slider and on its steps', () => {
+    for (const [key, r] of Object.entries(BROWSE_RANGES)) {
+      const spec = specOf(key);
+      expect(spec, `${key} is not a number setting of any pattern in the app`).not.toBeNull();
+      expect(r.min, key).toBeLessThan(r.max);
+      expect(r.min, key).toBeGreaterThanOrEqual(spec!.min);
+      expect(r.max, key).toBeLessThanOrEqual(spec!.max);
+      for (const end of [r.min, r.max]) {
+        const steps = (end - spec!.min) / spec!.step;
+        expect(Math.abs(steps - Math.round(steps)), `${key} ${end} is between slider steps`).toBeLessThan(1e-6);
+      }
+    }
+  });
+
+  it('keeps every card inside them, and reaches both ends', () => {
+    const make = maker(19);
+    const seen = new Map<string, { lo: number; hi: number }>();
+    for (let i = 0; i < 2400; i++) {
+      const c = make();
+      for (const [k, v] of Object.entries(c.params)) {
+        const key = `${c.generatorId}.${k}`;
+        const r = BROWSE_RANGES[key];
+        if (!r || typeof v !== 'number') continue;
+        expect(v, `${key} drew ${v}, outside ${r.min} to ${r.max}`).toBeGreaterThanOrEqual(r.min - 1e-9);
+        expect(v, `${key} drew ${v}, outside ${r.min} to ${r.max}`).toBeLessThanOrEqual(r.max + 1e-9);
+        const s = seen.get(key) ?? { lo: Infinity, hi: -Infinity };
+        seen.set(key, { lo: Math.min(s.lo, v), hi: Math.max(s.hi, v) });
+      }
+    }
+    // Both ends of a coarse range come up; the fine ones (a hundred-odd steps)
+    // are checked by the bound above rather than hoped for here.
+    for (const key of ['truchet-arcs.density', 'truchet-arcs.arcCount', 'contours.levels', 'contours.indexEvery']) {
+      const r = BROWSE_RANGES[key]!;
+      expect(seen.get(key), `${key} never drawn`).toBeDefined();
+      expect(seen.get(key)!.lo, `${key} never reached ${r.min}`).toBe(r.min);
+      expect(seen.get(key)!.hi, `${key} never reached ${r.max}`).toBe(r.max);
+    }
   });
 });
 

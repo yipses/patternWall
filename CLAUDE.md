@@ -1812,11 +1812,17 @@ would be a Share that silently does nothing. Sharing does *not* save to the
 collection — that was put to the owner and the answer was not to decide for
 people.
 
-`BROWSE_RANGES` in `feed.ts` is empty on purpose. It is where the pass that
-narrows each parameter to what makes a good *random* card lands, as data; until
-then cards draw over the slider's whole range, and the extremes are both the
-duds and the slow ones — contours at full resolution and sixty levels takes
-about a second to draw.
+`BROWSE_RANGES` in `feed.ts` narrows what a *random* card may be drawn from, as
+data, and the owner set it from the "PatternWall – browse ranges" sheet on
+Google Drive by looking at renders. It narrows only the feed: the sliders keep
+their whole range, so a person can still push past it by hand. Only narrowed
+settings are listed. A unit test asserts every entry names a live number
+setting inside its slider and on its steps — a range for a removed param would
+otherwise sit there doing nothing — and that cards stay inside the ranges and
+reach both ends of the coarse ones. Worth knowing on the first pass: the owner
+typed the ranges into the *slider* columns before moving them, so a sheet with
+two sets of min/max columns invites that; ask which set was meant rather than
+guessing.
 
 The chrome moved into a route group precisely so `/m` could exist without it,
 and both phone routes share their component with a site one rather than forking
