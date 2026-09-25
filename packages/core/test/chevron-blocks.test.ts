@@ -65,8 +65,8 @@ describe('chevron-blocks', () => {
    */
   it.each([
     ['defaults', {}],
-    ['tallest stacks', { relief: 1, skyline: 0 }],
-    ['largest blocks', { blockSize: 0.16, relief: 1, skyline: 0 }],
+    ['tallest stacks', { relief: 1 }],
+    ['largest blocks', { blockSize: 0.16, relief: 1 }],
     ['smallest blocks', { blockSize: 0.035 }],
   ])('covers the canvas with no gaps: %s', (_label, over) => {
     const svg = render({ ...over, mortar: 0 });
@@ -111,48 +111,41 @@ describe('chevron-blocks', () => {
   });
 
   /**
-   * Skyline is a claim about composition and it has to be structural to make
-   * it. The rule in this repo is that a factor keyed on height, applied to a
-   * uniform tiling, draws a horizontal band across it rather than a
-   * composition — so what falls away toward the top here is the relief itself,
-   * not the ink. Walls only exist where stacks differ, which makes the share of
-   * the drawing that is wall a direct measure of how much is going on.
+   * The same relief at the top of the canvas as at the bottom.
    *
-   * Measured as that share in the top quarter against the bottom third: 0.51 at
-   * skyline zero, 0.10 at the default and 0.00 at the top of the control. The
-   * zero end is not 1.0 because the top edge clips the stacks that cross it,
-   * which is why both ends are measured rather than assuming a flat baseline.
+   * A `skyline` control used to flatten the stacks toward the top so the clock
+   * sat on a quiet plain. The owner cut it as not needed, and asked for the
+   * effect to go with it rather than be frozen at its old default — so the
+   * guard is that nothing thins the top any more. Walls only exist where
+   * stacks differ, which makes the share of the drawing that is wall a direct
+   * measure of how much relief there is.
+   *
+   * Measured as that share in the top quarter against the bottom third. It is
+   * not 1.0 even with no bias at all, because the top edge clips the stacks
+   * that cross it: it read 0.51 when this was the skyline control at zero, and
+   * 0.10 at the old default of 0.85, which is the bias this rules out.
    */
-  it('empties the top of the canvas of stacks, and not at zero', () => {
-    const wallShare = (skyline: number): number => {
-      const f = faces(render({ skyline }));
-      let walls = 0;
-      let roofs = 0;
-      let lowWalls = 0;
-      let lowRoofs = 0;
-      for (const face of f) {
-        const cy = face.reduce((a, p) => a + p[1], 0) / face.length;
-        if (cy < H * 0.25) {
-          if (isWall(face)) walls += 1;
-          else roofs += 1;
-        } else if (cy >= H * 0.7) {
-          if (isWall(face)) lowWalls += 1;
-          else lowRoofs += 1;
-        }
+  it('does not flatten the top of the canvas', () => {
+    const f = faces(render({}));
+    let walls = 0;
+    let roofs = 0;
+    let lowWalls = 0;
+    let lowRoofs = 0;
+    for (const face of f) {
+      const cy = face.reduce((a, p) => a + p[1], 0) / face.length;
+      if (cy < H * 0.25) {
+        if (isWall(face)) walls += 1;
+        else roofs += 1;
+      } else if (cy >= H * 0.7) {
+        if (isWall(face)) lowWalls += 1;
+        else lowRoofs += 1;
       }
-      expect(lowWalls + lowRoofs, 'nothing in the lower canvas to compare against').toBeGreaterThan(50);
-      const top = walls / Math.max(1, walls + roofs);
-      const bottom = lowWalls / Math.max(1, lowWalls + lowRoofs);
-      return top / Math.max(1e-6, bottom);
-    };
-
-    const level = wallShare(0);
-    const composed = wallShare(0.85);
-    expect(level, `at skyline 0 the stacks should be as tall up top as below, got ${level.toFixed(3)}`).toBeGreaterThan(0.4);
-    expect(
-      composed,
-      `the default skyline left ${composed.toFixed(3)} of the lower canvas's wall share up top, against ${level.toFixed(3)} at zero`,
-    ).toBeLessThan(0.25);
+    }
+    expect(lowWalls + lowRoofs, 'nothing in the lower canvas to compare against').toBeGreaterThan(50);
+    const top = walls / Math.max(1, walls + roofs);
+    const bottom = lowWalls / Math.max(1, lowWalls + lowRoofs);
+    const ratio = top / Math.max(1e-6, bottom);
+    expect(ratio, `the top quarter carries ${ratio.toFixed(3)} of the lower canvas's wall share`).toBeGreaterThan(0.4);
   });
 
   /**

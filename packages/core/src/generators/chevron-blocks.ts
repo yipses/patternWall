@@ -1,7 +1,7 @@
 import { accentAt } from '../palette.js';
 import { hexToOklch, oklchToHex } from '../color.js';
 import { createNoise2D } from '../noise.js';
-import { clamp, smoothstep } from '../geometry.js';
+import { clamp } from '../geometry.js';
 import { el, num, points, svgRoot } from '../svg.js';
 import { pNum, type Generator, type RenderContext } from '../types.js';
 
@@ -11,8 +11,6 @@ A cube seen corner-on is three rhombi: a top face and two sides meeting at a ver
 Underneath it is a heightfield rather than a tiling. Every cell of a square ground grid carries a stack of cubes, the stack heights come from fractal noise, and the whole thing is projected isometrically: one step across the ground moves the drawing half a cube down and √3⁄2 across, and one storey up moves it a whole cube straight up. Nothing here is drawn in perspective, which is the point of the projection — a cube at the top of the canvas is exactly the same size and shape as one at the bottom, so the pattern reads as depth without ever having a vanishing point to give it away.
 
 Because it is a heightfield and not a pile of loose cubes, the visible geometry is small and exact. A column shows its top face, and it shows each of its two front walls only down to whatever its neighbour on that side has reached — below that the neighbour is in the way. So the drawing is the *surface*, never the inside, and there is no need to sort or hide anything: the walls are exactly as tall as the step between one stack and the next. **Relief** is the height of those steps. At zero every stack is one cube tall, the walls vanish and what is left is the flat diamond tiling the projection started from; wind it up and the surface breaks into terraces.
-
-**Skyline** is the composition control, and it is a structural one rather than a wash. Stacks grow taller toward the bottom of the canvas, so the upper third settles into a near-flat plain of top faces — quiet ground for a clock to sit on — while the lower canvas, which iOS leaves alone, carries the towers and the deep shaded walls. Nothing is dimmed to achieve that; there is simply less relief up there, the same way a distant plain has less to look at than the foreground.
 
 The three faces of every cube are one accent at three lightnesses, not three different colours: **face light** is the spread between them, and keeping the hue fixed is what makes the light read as light rather than as decoration. **Mortar** insets each face by a hairline of the background, which is the difference between a stack of blocks and a single faceted surface — at zero the faces meet directly and the pattern tips back toward being flat, which is worth looking at too.
 `.trim();
@@ -67,14 +65,6 @@ const BODY_TOWARD_PAPER = 0.42;
  */
 const BODY_MIN_FROM_PAPER = 0.34;
 
-/**
- * Where the skyline ramp starts and finishes, as fractions of the canvas
- * height. It begins below the clock so the whole of that zone is plain, and
- * finishes before the bottom so the towers have somewhere to stand.
- */
-const SKY_FROM = 0.18;
-const SKY_TO = 0.88;
-
 /** Lightness between the lit face and the shaded one, at full face light. */
 const FACE_SPREAD = 0.3;
 
@@ -99,7 +89,6 @@ export const chevronBlocks: Generator = {
   params: [
     { key: 'blockSize', label: 'Block size', type: 'number', min: 0.035, max: 0.16, step: 0.005, default: 0.075, description: 'The edge of one cube, as a fraction of the canvas width. Everything else is derived from it, so this is the only control that changes how many blocks there are.' },
     { key: 'relief', label: 'Relief', type: 'number', min: 0, max: 1, step: 0.01, default: 0.62, description: 'How far the stacks differ in height. At zero every stack is a single cube, the walls disappear and the pattern falls back to the flat diamond tiling underneath it; high up it becomes a landscape of terraces and deep shaded steps.' },
-    { key: 'skyline', label: 'Skyline', type: 'number', min: 0, max: 1, step: 0.01, default: 0.85, description: 'Grows the stacks toward the bottom of the canvas and flattens them toward the top, so the clock sits on a quiet plain and the towers fall in the lower half where iOS covers nothing. Structural rather than a dimming — there is genuinely less relief up there.' },
     { key: 'clumping', label: 'Clumping', type: 'number', min: 0.4, max: 3.5, step: 0.05, default: 0.8, description: 'How broad the high ground is. Low values give two or three massifs across the width; high values break the surface into small scattered towers.' },
     { key: 'faceLight', label: 'Face light', type: 'number', min: 0, max: 1, step: 0.01, default: 0.62, description: 'The lightness spread between a cube’s three faces. It is one accent at three lightnesses rather than three colours, which is what makes the eye read it as a light source. At zero the faces match and the solid collapses into flat hexagons.' },
     { key: 'colorSpread', label: 'Colour spread', type: 'number', min: 0, max: 1, step: 0.01, default: 0.7, description: 'How much of the accent ramp the blocks walk as they cross the canvas. At zero every block is the middle of the palette and only the shading varies.' },
@@ -114,11 +103,6 @@ export const chevronBlocks: Generator = {
    * a wall of bricks and a field of tesserae — and relief is what makes the
    * stacks read as depth rather than as a flat mosaic, so together they cover
    * the whole distance from a tiled floor to a city at dusk.
-   *
-   * Skyline was the other candidate for the vertical and it is the wrong kind
-   * of control for a gesture: it shapes where the detail sits in the frame,
-   * which is composition, and composition is not something you want moving
-   * under a thumb. It stays behind the gear where it can be set once.
    */
   primary: { x: 'blockSize', y: 'relief' },
 
@@ -129,7 +113,6 @@ export const chevronBlocks: Generator = {
 
     const size = clamp(pNum(params, 'blockSize', 0.075), 0.035, 0.16);
     const relief = clamp(pNum(params, 'relief', 0.62), 0, 1);
-    const skyline = clamp(pNum(params, 'skyline', 0.85), 0, 1);
     const clumping = clamp(pNum(params, 'clumping', 0.8), 0.4, 3.5);
     const faceLight = clamp(pNum(params, 'faceLight', 0.62), 0, 1);
     const colorSpread = clamp(pNum(params, 'colorSpread', 0.7), 0, 1);
@@ -168,15 +151,11 @@ export const chevronBlocks: Generator = {
       const nx = (size * SQRT3_2 * (i - j)) * TERRAIN_FIELD * clumping;
       const ny = (size * 0.5 * (i + j)) * TERRAIN_FIELD * clumping;
       const field = noise.fbm(nx, ny, 3) * 0.5 + 0.5;
-      // Skyline is a claim about composition, and it earns it structurally:
-      // what falls off toward the top is the amount of relief, not the ink. A
-      // factor keyed on height applied to a uniform tiling draws a horizontal
-      // band across it — that mistake is recorded elsewhere in this repo — but
-      // here the stacks up there genuinely are shorter, so the top of the
-      // canvas has less to say rather than being told to say it quietly.
-      const ground = clamp((uy * (i + j)) / Math.max(1, h), -0.3, 1.3);
-      const bias = 1 - skyline * (1 - smoothstep(SKY_FROM, SKY_TO, ground));
-      const rise = relief * MAX_STOREYS * bias;
+      // The same relief top to bottom. A `skyline` control used to flatten the
+      // stacks toward the top to leave the clock a quiet plain; the owner cut
+      // it as not needed, and cutting it means the effect too, not a fixed
+      // setting of it. See the note in CLAUDE.md on composing the clock zone.
+      const rise = relief * MAX_STOREYS;
       return 1 + Math.round(clamp(field, 0, 1) * rise);
     };
 
@@ -277,9 +256,17 @@ export const chevronBlocks: Generator = {
         // Everything this column draws sits between its roof and the lower of
         // its two neighbours' roofs. If that band is off the canvas, so is the
         // column.
-        const roofY = py(i, j, top);
-        const footY = py(i + 1, j + 1, Math.min(right, left));
-        if (footY < -uy || roofY > h + uy) continue;
+        //
+        // Counted in half-cube rows rather than pixels, because at the top the
+        // band often ends *exactly* one row above the canvas, and a pixel
+        // comparison then decides it by rounding: the same column was drawn at
+        // 430px and dropped at 108px, eight of them at the defaults. None is
+        // visible either way, but the document differed with the size, which
+        // is what the scale-invariance rule forbids. `skyline` hid this for as
+        // long as it existed, by keeping the top of the canvas one cube high.
+        const roofRows = i + j - 2 * top;
+        const footRows = i + j + 2 - 2 * Math.min(right, left);
+        if (footRows < -1 || roofRows > h / uy + 1) continue;
 
         const [topFace, leftFace, rightFace] = facesFor(tintAt(i, j));
 

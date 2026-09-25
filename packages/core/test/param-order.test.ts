@@ -26,7 +26,7 @@ import { ALL_GENERATORS } from './helpers.js';
 const ORDER: Record<string, string[]> = {
   'truchet-arcs': ['density', 'weight', 'colorSpread', 'arcCount', 'arcSpacing', 'colorAxis'],
   'truchet-diagonals': ['density', 'weight', 'colorSpread', 'arcCount', 'colorAxis'],
-  'chevron-blocks': ['blockSize', 'relief', 'skyline', 'clumping', 'faceLight', 'colorSpread', 'mortar'],
+  'chevron-blocks': ['blockSize', 'relief', 'clumping', 'faceLight', 'colorSpread', 'mortar'],
   contours: [
     'levels', 'scale', 'detail', 'resolution', 'weight', 'indexEvery', 'colorSpread',
     'seaLevel', 'elevationTint', 'hachures', 'supplementary', 'roughness',

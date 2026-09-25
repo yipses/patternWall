@@ -162,14 +162,12 @@ canvas takes a `quietTop` parameter and multiplies its local density, weight or 
 `quietFactor(...)`, so one honest control governs how far the pattern gets out of the clock's way.
 Detail and contrast are pushed into the lower canvas, where the app grid and dock live.
 
-Dimming is not the only way to do it, and on some patterns it is the wrong one. Chevron-blocks
-takes the structural route instead — its `skyline` control grows the stacks toward the bottom and
-flattens them toward the top, so there is genuinely less relief where the clock sits rather than the
-same relief painted fainter. Truchet has no such control at all, deliberately: a tiling is uniform
-by construction, and dimming its upper third read as a horizontal seam rather than as breathing
-room, so the control was removed rather than tuned. Contours composed structurally too until its
-control was dropped for spending its range on settings nobody wanted, and it currently makes no
-allowance for the clock zone.
+Dimming is not the only way to do it, and on some patterns it is the wrong one. The structural route
+changes how much there is to draw near the top rather than painting the same thing fainter;
+chevron-blocks did that with a `skyline` control and contours with a `relief` one, and both were
+removed at the owner's request, so no pattern in the app currently makes any allowance for the clock
+zone. Truchet never had one, deliberately: a tiling is uniform by construction, and dimming its upper
+third read as a horizontal seam rather than as breathing room.
 
 ### Bleed
 
@@ -211,7 +209,8 @@ What the contract asks of you:
   `quietFactor(y, height, quietTop, ctx.safeZones)`. Where it is not — a uniform tiling, say — do
   not fake it: a factor applied to a regular grid reads as a band, not as calm. Worth knowing before
   you reach for it: every current caller of `quietFactor` is a retired generator, so nothing in the
-  app uses it. chevron-blocks holds its clock zone back structurally instead, with `skyline`.
+  app uses it. The structural alternative is to have less to draw up there, which is what
+  chevron-blocks' `skyline` did before it was removed.
 - **Stay inside the vocabulary,** and emit numbers through `num()` so output stays byte-stable.
 - **Write the `description`.** Three to five paragraphs of plain-language prose explaining how the
   algorithm works and why the parameters are the ones they are. It is rendered on the pattern page

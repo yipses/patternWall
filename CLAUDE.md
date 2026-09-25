@@ -230,7 +230,11 @@ for the same reason, shifting the seven params after it, and then `grain` and
 `incision` together — slots 7 and 8 of fourteen, shifting the six after them —
 on the explicit word that nothing had been shared yet. Cutting the two in one
 go rather than one at a time is the only part of that worth copying: two
-removals are two shifts, and a link survives neither. That window is closing:
+removals are two shifts, and a link survives neither. Chevron-blocks' `skyline`
+followed — slot 2 of seven, shifting the four after it — on the owner's word
+that it was not needed. Saved wallpapers and the feed store params by *key*, so
+they survive a removal and simply drop the old value; only a share link, which
+is positional, misreads. That window is closing:
 the moment someone bookmarks a configuration, this stops being a free operation.
 If links ever need to survive, the encoding needs a version or named keys — it
 has neither today.
@@ -1963,7 +1967,7 @@ is a bright wallpaper whatever the palette says its background is, so its
 blocks are anchored a fixed lightness distance from the paper rather than
 painted at accent strength.
 
-**Three of the four patterns in the app now compose uniformly across the canvas**
+**All four patterns in the app now compose uniformly across the canvas**
 rather than holding the clock zone back, and for different reasons. Both truchets
 never could: a tiling is uniform by construction and any factor keyed on height
 draws a band across it. Contours could and no longer does — its `relief` param
@@ -1972,15 +1976,40 @@ which worked, and was removed on request because the range above its default did
 little. The consequence is plain in an A/B and worth knowing before anyone calls
 it a bug: the top third now carries the same contour density as the bottom.
 
-So chevron-blocks is the only one that holds it back at all, and the repo has
-two mechanisms rather than three. `quietFactor` dims what is drawn, which is
+Chevron-blocks was the last to hold it back, with `skyline`, which grew its
+stacks toward the bottom and flattened them toward the top. The owner cut it as
+not needed and asked for the effect to go too rather than be frozen at its old
+default, so its top quarter now carries as much relief as the bottom — measured
+as a wall share of 0.51 of the lower canvas's, against 0.10 with it — and a test
+holds that. Removing it was strictly additive against `skyline: 0`: 144 configs
+across block size, relief, clumping, mortar, two palettes and two seeds are
+byte-identical to the old code at zero.
+
+**And removing it exposed a scale fault it had been hiding.** With the top of
+the canvas as tall as the bottom, columns whose band ends *exactly* one row
+above the canvas became common, and the cull compared that in pixels — so the
+same column was drawn at 430px and dropped at 108px by rounding, and
+`determinism.test.ts` failed at 844 / 853 / 852 polygons against a tolerance of
+five. Skyline had kept the top one cube high, where the tie never came up. The
+cull counts half-cube rows now. That does change bytes — the 144-config matrix
+no longer hashes the same — so it was pixel-checked instead: 22 of 216 renders
+across sizes differ, by 2 to 81 pixels at most 19/255, every one inside the top
+8% bleed that the phone never shows, and the difference is paper-coloured
+slivers along the top edge being covered. The general form: **a control that
+reshapes the canvas can be the only reason an edge case never occurs**, so
+removing one means re-running the scale and edge tests rather than assuming
+"strictly additive" covers them — it covers the picture you had, not the new
+cases the new picture produces.
+
+So nothing in the app composes around the clock any more, and the repo has two
+mechanisms for it should that change. `quietFactor` dims what is drawn, which is
 right where density varies and wrong on a uniform tiling — and every one of its
-callers is retired, so nothing in the app reaches it. The other is structural:
-it changes how much there is to draw up there rather than how it is painted, and
-that is the family contours' `relief` belonged to. chevron-blocks' `skyline` is
-what is left of it, growing its stacks toward the bottom and flattening them
-toward the top. If contours ever wants its quiet top back, that is the shape of
-the answer, and reinstating its old `relief` beats inventing something new.
+callers is retired. The other is structural: it changes how much there is to
+draw up there rather than how it is painted, which is what both contours'
+`relief` and chevron-blocks' `skyline` did. If either wants its quiet top back,
+reinstating the old control beats inventing something new, and this file's
+"Adding a generator" advice to keep the clock zone quiet is now a default the
+owner has overridden on every shipping pattern, not a rule they hold.
 Mind the collision when reading either file: chevron-blocks has a param of its
 own called `relief`, and it means the height spread between stacks, which is a
 different thing entirely.
