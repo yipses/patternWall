@@ -28,8 +28,8 @@ type Share = { key: string; state: 'preparing' } | { key: string; state: 'ready'
 /**
  * `/t`: a feed of wallpapers, judged one at a time.
  *
- * Swipe right to keep one, left to pass; tap for new settings on the same
- * pattern; flick up or down for its colours. Every card is random, so the
+ * Swipe right to keep one, left to pass; tap for a new wallpaper in the same
+ * pattern, colours included; flick up or down to change only the colours. Every card is random, so the
  * whole design leans on one promise — nothing seen is lost by accident. Rewind
  * undoes every change of card, the feed survives the tab being killed, and a
  * card that has not finished drawing cannot be judged.
@@ -212,7 +212,7 @@ export function Feed() {
         const r = rootRef.current.getBoundingClientRect();
         setRipple((prev) => ({ x: x - r.left, y: y - r.top, n: (prev?.n ?? 0) + 1 }));
       }
-      say('New settings.');
+      say('Reshuffled.');
     },
     [reroll],
   );
@@ -453,7 +453,7 @@ export function Feed() {
 
         {tipOn ? (
           <div className={styles.tip} role="status" data-testid="feed-tip">
-            Tap for new settings · Swipe up or down for colours
+            Tap to reshuffle · Swipe up or down for colours
           </div>
         ) : null}
 
@@ -590,7 +590,7 @@ export function Feed() {
               // tap the card — and a word for what a tap does, for anyone who
               // never found out.
               <button type="button" className={styles.shuffle} data-testid="feed-shuffle" onClick={() => doReroll()}>
-                <DiceGlyph /> Shuffle settings
+                <DiceGlyph /> Shuffle
               </button>
             }
           />

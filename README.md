@@ -93,8 +93,9 @@ are. The last three live outside it and have none of that: on those the render *
 is driven by swipe, tap and a rail of icon buttons in the corner rather than by a panel;
 `/m/collected` has no rail, just a chevron and a Select in one header across the top.
 
-`/t` is browsing rather than editing. Swipe right to keep a card and left to pass, tap for new
-settings on the same pattern, flick up or down for its colours. A ✕ · rewind · ♥ row sits at the
+`/t` is browsing rather than editing. Swipe right to keep a card and left to pass, tap for a new
+wallpaper in the same pattern (new settings and new colours), flick up or down to change only the
+colours. A ✕ · rewind · ♥ row sits at the
 bottom, a "•••" menu (Adjust, Colours, Share Image) bottom-right, and the Gallery top-right as a
 thumbnail of the last card you kept. Kept cards land in the same collection as everything else,
 and opening one there takes you to `/m`, which is where a saved wallpaper gets adjusted.

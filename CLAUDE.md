@@ -1779,6 +1779,15 @@ win that fight, so it does not start it. A tap is strict (under 10px and 300ms)
 because it is the most accidental gesture on the screen and it replaces the
 card.
 
+A tap is a new wallpaper in the same pattern — new settings, new seed and a
+*different* palette. It first kept the palette, on the review's argument that a
+tap should mean "more like this"; the owner's reading of a tap is "a new
+wallpaper", and one arriving in the old colours was reported as the colours
+being broken. It always picks a palette other than the current one, because a
+plain random pick repeats every few dozen taps and a tap whose colours stay put
+is exactly the report. The unit test runs two hundred taps, and a plain pick
+fails it at the fourteenth.
+
 The share image is drawn when the "•••" menu opens rather than when Share is
 pressed: Safari only opens the share sheet while the press that asked for it is
 still fresh, and a dense pattern can take longer than that to rasterise, which

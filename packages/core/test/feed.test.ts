@@ -85,18 +85,24 @@ describe('a random card', () => {
 });
 
 describe('a tap re-roll', () => {
-  it('keeps the pattern and the colours and changes what makes this one this one', () => {
+  /*
+   * The owner's rule, in their words: "when I tap on the screen and get a new
+   * wallpaper, colour should change". It first shipped keeping the palette,
+   * and a new wallpaper in the old colours was reported as the colours being
+   * broken. Only the pattern holds.
+   */
+  it('keeps the pattern and changes the colours, every time', () => {
     const rng = createRng(5);
-    const card = randomCard(rng, generators);
+    let card = randomCard(rng, generators);
     const g = getGenerator(card.generatorId)!;
-    let changed = 0;
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 200; i++) {
       const next = rerollCard(card, g, rng);
       expect(next.generatorId).toBe(card.generatorId);
-      expect(next.palette).toEqual(card.palette);
-      if (next.seed !== card.seed || JSON.stringify(next.params) !== JSON.stringify(card.params)) changed++;
+      // Every time, not usually: a tap whose colours stay put is the report.
+      expect(next.palette.id, `tap ${i} kept the colours`).not.toBe(card.palette.id);
+      expect(next.seed === card.seed && JSON.stringify(next.params) === JSON.stringify(card.params)).toBe(false);
+      card = next;
     }
-    expect(changed).toBe(20);
   });
 });
 

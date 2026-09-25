@@ -93,15 +93,21 @@ export function randomCard(rng: Rng, pool: readonly Generator[], palettes: reado
 }
 
 /**
- * The same pattern and the same colours, with new settings and a new seed.
+ * A new wallpaper in the same pattern: new settings, new seed, new colours.
  *
- * Keeping the palette is what makes a tap mean "more like this" rather than a
- * weaker skip: the two things a person judges first — which pattern, what
- * colours — stay put, and everything that makes this particular one hold
- * steady moves.
+ * It first shipped keeping the palette, on the argument that a tap should mean
+ * "more like this" rather than a weaker skip. The owner's reading of a tap is
+ * "give me a new wallpaper", and a new wallpaper in the old colours read as the
+ * colours being broken — reported as exactly that. So only the pattern holds.
+ *
+ * The palette is always a *different* one. With a few dozen in the library a
+ * plain random pick lands on the same palette now and then, and a tap whose
+ * colours do not move is the very thing that was reported.
  */
-export function rerollCard(card: FeedCard, g: Generator, rng: Rng): FeedCard {
-  return { generatorId: card.generatorId, seed: randomSeedWord(rng), params: randomParams(g, rng), palette: card.palette };
+export function rerollCard(card: FeedCard, g: Generator, rng: Rng, palettes: readonly Palette[] = curatedPalettes): FeedCard {
+  const others = palettes.filter((p) => p.id !== card.palette.id);
+  const palette = others.length > 0 ? rng.pick(others) : card.palette;
+  return { generatorId: card.generatorId, seed: randomSeedWord(rng), params: randomParams(g, rng), palette };
 }
 
 /**

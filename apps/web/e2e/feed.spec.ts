@@ -121,14 +121,29 @@ test('a drag that starts at the edge of the screen is left to the browser', asyn
   expect(idText(await cardId(page))).toBe(idText(before));
 });
 
-test('a tap re-rolls the settings and keeps the pattern and the colours', async ({ page }) => {
-  const before = await cardId(page);
-  const box = (await page.getByTestId('feed-card').boundingBox())!;
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.4);
-  await expect.poll(async () => (await cardId(page)).seed).not.toBe(before.seed);
-  const after = await cardId(page);
-  expect(after.generator).toBe(before.generator);
-  expect(after.palette).toBe(before.palette);
+test('a tap is a new wallpaper in the same pattern, and its colours change', async ({ page }) => {
+  // "When I tap on the screen and get a new wallpaper, colour should change."
+  // It first kept the colours, and that read as the colours being broken. So
+  // the palette is asserted on the picture actually drawn, not only on the
+  // card's own record of it — a record that changed under a picture that did
+  // not would pass a test about the record.
+  const pictureOf = async (): Promise<string> =>
+    page.getByTestId('feed-card').evaluate((el) => {
+      const imgs = el.querySelectorAll('img');
+      return imgs[imgs.length - 1]?.getAttribute('src') ?? '';
+    });
+  for (let i = 0; i < 3; i++) {
+    const before = await cardId(page);
+    const drawn = await pictureOf();
+    const box = (await page.getByTestId('feed-card').boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.4);
+    await expect.poll(async () => (await cardId(page)).seed).not.toBe(before.seed);
+    const after = await cardId(page);
+    expect(after.generator).toBe(before.generator);
+    expect(after.palette, `tap ${i + 1} kept the colours`).not.toBe(before.palette);
+    await ready(page);
+    await expect.poll(pictureOf, { message: `tap ${i + 1} did not redraw` }).not.toBe(drawn);
+  }
 });
 
 test('a press that lasts is not a tap', async ({ page }) => {
@@ -326,7 +341,7 @@ test('one tip after the third card, and never again', async ({ page }) => {
     await page.getByTestId('feed-skip').click();
     await changedFrom(page, before);
   }
-  await expect(page.getByTestId('feed-tip')).toContainText('Tap for new settings');
+  await expect(page.getByTestId('feed-tip')).toContainText('Tap to reshuffle');
 
   // Any gesture dismisses it...
   await drag(page, 4, -140);

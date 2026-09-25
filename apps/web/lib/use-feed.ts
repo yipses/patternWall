@@ -148,7 +148,7 @@ export function useFeed() {
     return 'liked';
   }, [commit, make]);
 
-  /** A tap: new settings and seed, same pattern and colours. */
+  /** A tap: a new wallpaper in the same pattern — new settings, seed and colours. */
   const reroll = useCallback(() => {
     const s = ref.current;
     if (!s) return;
